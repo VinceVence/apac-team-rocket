@@ -1,0 +1,222 @@
+"""Loopback-only local server. Database and credentials are outside the public directory."""
+import argparse
+import functools
+import json
+import secrets
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import urlsplit
+
+from agents import Agents
+from lab import Lab, LabError, encoded
+from world import World
+from science import Science
+from macro import Macro,TABLES as MACRO_TABLES
+from science_ops import ScienceTeam,TABLES as SCIENCE_TABLES
+from mesh import Mesh,TABLES as MESH_TABLES
+from customer_data import CustomerData,TABLES as CUSTOMER_TABLES
+from fraud_desk import FraudDesk,TABLES as FRAUD_TABLES
+from fraud_agent import FraudAgent
+
+ROOT=Path(__file__).resolve().parent
+
+
+def make_server(port=3000, db_path=None, config=None):
+    (ROOT/'data').mkdir(exist_ok=True)
+    lab=Lab(db_path or ROOT/'data'/'minttown.sqlite3'); agents=Agents(lab,config)
+    world=World(lab);science=Science(lab)
+    macro=Macro(lab,world,agents);world.macro=macro
+    science_team=ScienceTeam(lab,science,agents)
+    try:science_team.autorun()
+    except LabError:pass  # A recorded failed quality gate must not prevent the UI from opening.
+    customer_data=CustomerData(lab);world.customer_data=customer_data
+    mesh=Mesh(lab,world,macro,science_team,agents,customer_data)
+    fraud_desk=FraudDesk(lab,world);world.fraud_desk=fraud_desk
+    fraud_agent=FraudAgent(fraud_desk,agents)
+    csrf=secrets.token_urlsafe(32)
+
+    class Handler(SimpleHTTPRequestHandler):
+        def __init__(self,*args,**kwargs):
+            super().__init__(*args,directory=str(ROOT/'dist'),**kwargs)
+
+        def allowed_host(self):
+            return self.headers.get('Host') in ('localhost:'+str(self.server.server_port),'127.0.0.1:'+str(self.server.server_port))
+
+        def end_headers(self):
+            self.send_header('X-Content-Type-Options','nosniff')
+            self.send_header('Cache-Control','no-store')
+            self.send_header('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'")
+            super().end_headers()
+
+        def reply(self,status,value):
+            body=encoded(value).encode()
+            self.send_response(status);self.send_header('Content-Type','application/json; charset=utf-8')
+            self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
+
+        def do_GET(self):
+            if not self.allowed_host(): return self.reply(403,{'error':'Use the loopback address.'})
+            path=urlsplit(self.path).path
+            try:
+                if path=='/api/state':
+                    with lab.lock:
+                        result=lab.snapshot();result.update(budget=agents.budget(),csrf_token=csrf)
+                        result['world']=world.status()
+                        result['macro']={'policy':macro.policy(),'metrics':macro.metrics(world.state()['tick']),'goods':macro.goods(),'due':macro.due()}
+                        for table in ('simulation_state','service_actions','model_runs','fraud_agent_turns',*MACRO_TABLES,*SCIENCE_TABLES,*MESH_TABLES,*CUSTOMER_TABLES,*FRAUD_TABLES):
+                            result['tables'][table]=lab.db.execute('SELECT count(*) FROM '+table).fetchone()[0]
+                    return self.reply(200,result)
+                if path=='/api/science':return self.reply(200,science_team.dashboard())
+                if path=='/api/customer-data':return self.reply(200,customer_data.dashboard())
+                if path=='/api/fraud-desk':return self.reply(200,fraud_desk.dashboard())
+                if path.startswith('/api/fraud-desk/reports/'):
+                    return self.reply(200,fraud_desk.detail(path.rsplit('/',1)[-1]))
+                if path=='/api/mesh':
+                    from adk_mesh import runtime
+                    return self.reply(200,{**mesh.catalogue(),'runtime':runtime()})
+                if path.startswith('/api/mesh/runs/'):
+                    with lab.lock:return self.reply(200,mesh.run(path.rsplit('/',1)[-1]))
+                if path=='/api/macro':return self.reply(200,macro.dashboard())
+                if path.startswith('/api/evidence/'):
+                    with lab.lock: packet=lab.evidence(path.rsplit('/',1)[-1])
+                    return self.reply(200,{'packet':packet,'evidence_hash':lab.fingerprint(packet)})
+                if path.startswith('/api/runs/'):
+                    with lab.lock: run=agents.public_run(path.rsplit('/',1)[-1])
+                    return self.reply(200,run)
+                if path.startswith('/api/'): return self.reply(404,{'error':'Endpoint not found.'})
+                if path not in ('/','/index.html','/app.js','/mesh-ui.js','/customer-ui.js','/fraud-ui.js','/town.js','/styles.css','/mark.svg','/favicon.svg') and not path.startswith('/fonts/'):
+                    return self.reply(404,{'error':'File not found.'})
+                if '..' in path or '%' in path: return self.reply(404,{'error':'File not found.'})
+                return super().do_GET()
+            except LabError as exc: return self.reply(exc.status,{'error':str(exc)})
+
+        def do_POST(self):
+            origins=('http://localhost:'+str(self.server.server_port),'http://127.0.0.1:'+str(self.server.server_port))
+            if (not self.allowed_host() or self.headers.get('Origin') not in (None,*origins) or
+                not secrets.compare_digest(self.headers.get('X-MintTown-Token',''),csrf)):
+                return self.reply(403,{'error':'Request origin or session token was rejected.'})
+            try:
+                size=int(self.headers.get('Content-Length','0'))
+                if not 0<size<=12288: raise LabError('Invalid request size.',413)
+                body=json.loads(self.rfile.read(size))
+                if not isinstance(body,dict): raise LabError('Expected a JSON object.')
+                path=urlsplit(self.path).path
+                if path=='/api/fraud-agent/start':
+                    if set(body) not in ({'report_id'},{'report_id','mode'}):raise LabError('Invalid ADK start command.')
+                    return self.reply(200,fraud_agent.start(**body))
+                if path=='/api/fraud-agent/step':
+                    if set(body)!={'run_id','expected_step'}:raise LabError('Invalid ADK generation command.')
+                    return self.reply(200,fraud_agent.step(**body))
+                if path=='/api/fraud-agent/handoff':
+                    if set(body)!={'run_id'}:raise LabError('Invalid analyst handoff.')
+                    return self.reply(200,fraud_agent.handoff(**body))
+                if path.startswith('/api/fraud-desk/'):
+                    commands={
+                        '/api/fraud-desk/demo': (fraud_desk.demo, {'scenario','request_id'}),
+                        '/api/fraud-desk/report': (fraud_desk.create, {'customer_id','story','message','event_ids','request_id'}),
+                        '/api/fraud-desk/investigate': (fraud_desk.start, {'report_id'}),
+                        '/api/fraud-desk/step': (fraud_desk.step, {'run_id','expected_step'}),
+                        '/api/fraud-desk/review': (fraud_desk.review, {'report_id','investigation_id','disposition','action','note','publish_memory','lesson','next_question'}),
+                        '/api/fraud-desk/reply': (fraud_desk.answer, {'report_id','answer','expected_revision'})}
+                    if path not in commands:raise LabError('Endpoint not found.',404)
+                    handler,fields=commands[path]
+                    if set(body)!=fields:raise LabError('Invalid fraud-desk command fields.')
+                    return self.reply(200,handler(**body))
+                if path=='/api/customer-data/advance':
+                    if set(body)!={'expected_tick','days','activity'} or type(body['days']) is not int or not 1<=body['days']<=7 or type(body['expected_tick']) is not int or type(body['activity']) is not int or body['activity'] not in range(1,5):raise LabError('Use a current tick, 1–7 days and 1–4 payments per hour.')
+                    with lab.lock:
+                        if body['expected_tick']!=world.state()['tick']:return self.reply(200,{'replayed':True,'world':world.status()})
+                        for _ in range(body['days']*24):
+                            result=world.advance(world.state()['tick'],body['activity'])
+                            if result.get('day_closed'):science_team.autorun()
+                        return self.reply(200,{'replayed':False,'world':world.status(),'customer_data':customer_data.summary()})
+                if path=='/api/mesh/start':
+                    if not {'playbook_id','mode','request_id'}<=set(body) or set(body)-{'playbook_id','mode','request_id','case_id','objective'}:raise LabError('Invalid playbook run request.')
+                    return self.reply(200,mesh.start(**body))
+                if path.startswith('/api/mesh/playbooks/'):
+                    if set(body)!={'expected_revision','objective','prompts','max_turns'}:raise LabError('Only the objective, role prompts and turn limit can be edited.')
+                    return self.reply(200,mesh.save(path.rsplit('/',1)[-1],**body))
+                if path.startswith('/api/mesh/runs/') and path.endswith('/step'):
+                    if set(body)!={'expected_step'}:raise LabError('Expected the current turn number.')
+                    from adk_mesh import dispatch
+                    return self.reply(200,dispatch(mesh,path.split('/')[-2],body['expected_step']))
+                if path=='/api/macro/review':
+                    if set(body)!={'mode'} or not isinstance(body['mode'],str):raise LabError('Invalid policy review request.')
+                    return self.reply(200,macro.review(body['mode']))
+                if path=='/api/policy/apply':
+                    if set(body)!={'decision_id'} or not isinstance(body['decision_id'],str):raise LabError('Invalid policy command.')
+                    return self.reply(200,macro.apply(body['decision_id']))
+                if path=='/api/bank/loan':
+                    if set(body)!={'customer_id','amount_minor','operation_id'}:raise LabError('Invalid bank request.')
+                    return self.reply(200,macro.request_loan(body['customer_id'],body['amount_minor'],body['operation_id']))
+                if path=='/api/world/step':
+                    if set(body)!={'expected_tick','activity','scenario'}:raise LabError('Invalid world step.')
+                    result=world.advance(body['expected_tick'],body['activity'],body['scenario'])
+                    if result.get('day_closed'):
+                        try:
+                            science_result=science_team.autorun()
+                            if science_result:
+                                pipeline=science_result['pipeline']
+                                result['science_handoff']={'id':pipeline['id'],'cutoff':pipeline['cutoff'],
+                                    'status':pipeline['status'],'stages':pipeline['stages'],
+                                    'analysis':pipeline['report'].get('analysis'),
+                                    'mode':pipeline['report'].get('mode','baseline'),
+                                    'created_models':pipeline['report'].get('created_models',0),
+                                    'trained_models':pipeline['report'].get('trained_models',0),
+                                    'releases':pipeline['report'].get('releases',[]),
+                                    'batch_scored':pipeline['report'].get('batch_scored',{})}
+                        except LabError as exc:result['science_notice']=str(exc)
+                    return self.reply(200,result)
+                if path=='/api/science/run':
+                    if set(body) not in (set(),{'mode'}):raise LabError('Only a specialist mode may be selected.')
+                    return self.reply(200,science_team.run_pipeline(body.get('mode','baseline')))
+                if path=='/api/models/promote':
+                    if set(body)!={'model_id','expected_active_id'} or not isinstance(body['model_id'],str) or not (body['expected_active_id'] is None or isinstance(body['expected_active_id'],str)):raise LabError('Invalid release request.')
+                    return self.reply(200,science_team.promote(body['model_id'],body['expected_active_id']))
+                if path.startswith('/api/models/'):
+                    parts=path.split('/')
+                    if len(parts)!=5:raise LabError('Endpoint not found.',404)
+                    kind,action=parts[3:]
+                    if action=='predict':
+                        if set(body)!={'customer_id'}:raise LabError('Predictions accept a known customer ID; raw feature injection is disabled.')
+                        return self.reply(200,science_team.serve(kind,body['customer_id']))
+                    if action=='rollback':
+                        if set(body)!={'expected_active_id'} or not isinstance(body['expected_active_id'],str):raise LabError('Invalid rollback request.')
+                        return self.reply(200,science_team.rollback(kind,body['expected_active_id']))
+                    raise LabError('Endpoint not found.',404)
+                if path=='/api/services/block-device':
+                    if set(body)!={'case_id','run_id'} or not all(isinstance(v,str) for v in body.values()):raise LabError('Invalid service request.')
+                    return self.reply(200,world.block_device(body['case_id'],body['run_id']))
+                if path=='/api/analyze':
+                    if set(body)!={'case_id','mode'} or not all(isinstance(v,str) for v in body.values()): raise LabError('Invalid investigation request.')
+                    return self.reply(200,agents.analyze(body['case_id'],body['mode']))
+                if path=='/api/apply':
+                    if set(body)!={'case_id','run_id'} or not all(isinstance(v,str) for v in body.values()): raise LabError('Invalid decision request.')
+                    return self.reply(200,lab.apply_decision(body['case_id'],body['run_id']))
+                raise LabError('Endpoint not found.',404)
+            except LabError as exc: return self.reply(exc.status,{'error':str(exc)})
+            except (ValueError,TypeError): return self.reply(400,{'error':'Invalid JSON request.'})
+            except Exception: return self.reply(500,{'error':'The local service could not complete this request.'})
+
+        def log_message(self,format,*args):
+            # Request bodies, headers and provider credentials never enter access logs.
+            pass
+
+    server=ThreadingHTTPServer(('127.0.0.1',port),Handler)
+    server.lab=lab;server.agents=agents
+    server.world=world;server.science=science
+    server.macro=macro
+    server.science_team=science_team
+    server.mesh=mesh
+    server.customer_data=customer_data
+    server.fraud_desk=fraud_desk
+    server.fraud_agent=fraud_agent
+    return server
+
+
+if __name__=='__main__':
+    parser=argparse.ArgumentParser();parser.add_argument('--port',type=int,default=3000)
+    args=parser.parse_args(); server=make_server(args.port)
+    print('MintTown: http://127.0.0.1:%d · %s' % (server.server_port,server.agents.budget()['mode']),flush=True)
+    try: server.serve_forever()
+    except KeyboardInterrupt: pass
+    finally: server.server_close();server.lab.db.close()

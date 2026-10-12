@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#1e1f22"><meta name="description" content="MintTown: a simulated town and a fraud-resolution workspace."><title>MintTown · Town</title><link rel="icon" href="favicon.svg?v=neighborhood" type="image/svg+xml"><link rel="stylesheet" href="styles.css"><script type="module" src="app.js"></script></head>
+<body>
+<svg class="icon-library" aria-hidden="true"><symbol id="i-world" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c5 5 5 13 0 18-5-5-5-13 0-18Z"/></symbol><symbol id="i-data" viewBox="0 0 24 24"><rect x="5" y="3" width="15" height="18" rx="2"/><path d="M9 7h7m-7 5h7m-7 5h5"/></symbol></svg>
+<a class="skip-link" href="#workspace">Skip to workspace</a>
+<div id="mint-town" class="discord-app focused-workspace">
+<nav class="server-rail" aria-label="Quick navigation"><a href="/" class="brand-mark" aria-label="MintTown home"><img src="mark.svg" width="44" height="44" alt="MintTown neighborhood emblem"></a><div class="rail-separator"></div><button data-view="world" aria-pressed="true" aria-label="Town"><svg><use href="#i-world"/></svg></button><button data-view="resolution" aria-pressed="false" aria-label="Scam desk"><svg><use href="#i-data"/></svg></button></nav>
+<button id="sidebar-backdrop" class="sidebar-backdrop" aria-label="Close navigation" hidden></button>
+<aside id="parameters" class="lab-sidebar" aria-label="Navigation and simulation controls">
+<header class="sidebar-heading"><div><strong>MintTown</strong><span>Fraud resolution lab</span></div><button id="close-menu" class="icon-button mobile-only" aria-label="Close navigation">×</button></header>
+<div class="lab-sidebar-scroll"><nav class="lab-nav" aria-label="Channels"><button data-view="world" aria-pressed="true"><span>#</span> town</button><button data-view="resolution" aria-pressed="false"><span>#</span> scam-desk</button></nav>
+<section id="town-settings" class="controls-group"><h2 class="sidebar-label">Simulation</h2><label class="field-label">Speed <span id="speed-label">1×</span></label><div class="speed-options" role="group" aria-label="Simulation speed"><button data-speed="1" aria-pressed="true">1×</button><button data-speed="2" aria-pressed="false">2×</button><button data-speed="4" aria-pressed="false">4×</button></div><label class="field-label" for="activity">Payments per hour <output id="activity-value">2</output></label><input id="activity" type="range" min="1" max="4" value="2"></section>
+<details class="sidebar-disclosure"><summary>About this demo</summary><p class="field-help">Synthetic payments. Real ADK tools. Fake model. Analyst-approved memory. Gemini off.</p></details>
+</div><footer class="sidebar-footer"><span class="local-avatar">MT<i></i></span><div><strong>Local demo</strong><small id="provider-label">Gemini off · $0</small></div></footer>
+</aside>
+<main id="workspace" class="lab-main"><header class="lab-toolbar"><button id="open-menu" class="icon-button mobile-only" aria-label="Open navigation" aria-expanded="false" aria-controls="parameters">☰</button><span class="hash">#</span><h1 id="view-title">town</h1><span id="world-time" class="toolbar-time"></span><div id="world-controls" class="playback"><button id="step-world" class="text-button" title="Advance one hour">Step</button><button id="play-world" class="primary-button">Run world</button></div></header>
+<div class="lab-content"><p id="app-error" class="app-error" role="alert" hidden></p><div id="loading-state" class="loading-state" role="status">Loading MintTown…</div>
+<section id="case-view" hidden>
+<div class="world-intro"><div><h2>A town in motion.</h2><p>Every payment becomes evidence.</p></div><span id="running-label" class="run-status">Paused</span></div>
+<div class="map-shell"><div class="map-toolbar"><span><i class="map-dot"></i> Market neighborhood</span><span id="map-date"></span></div><canvas id="town-map" width="768" height="480" role="img" aria-label="A pixel town with residents walking between shops and making simulated payments."></canvas><div class="map-footer"><span>24 residents on the map</span><span id="ledger-health">Ledger balanced</span></div></div>
+<div class="town-next"><div><h3>A suspicious transfer?</h3><p>Follow a report through investigation and review.</p></div><button id="world-report" class="primary-button">Start scam demo →</button></div>
+<details class="world-details"><summary>Recent payments</summary><div id="world-events" class="world-events"></div></details>
+</section>
+<section id="fraud-view" hidden>
+  <div class="science-heading"><div><h2>Scam desk</h2><p>Report. Investigate. Review. Remember.</p></div></div>
+  <p class="fraud-mode"><span id="fraud-runtime-label">ADK · fake model</span><span id="fraud-provider-note">No live AI calls</span></p>
+  <ol class="fraud-stages" aria-label="Demo flow"><li data-fraud-stage="report" class="current">1. Report</li><li data-fraud-stage="investigate">2. Investigate</li><li data-fraud-stage="review">3. Review</li><li data-fraud-stage="memory">4. Remember</li><li data-fraud-stage="repeat">5. Repeat</li></ol>
+  <div class="fraud-toolbar"><button id="fraud-first" class="primary-button">New demo report</button><button id="fraud-repeat" class="text-button" disabled>Similar report →</button><span id="fraud-status" role="status" aria-live="polite">Ready</span></div>
+  <div id="fraud-history" hidden><label class="field-label" for="fraud-select">Case</label><select id="fraud-select" aria-label="Choose a scam report"></select></div>
+  <p id="fraud-empty" class="fraud-empty">A resident reports a suspicious transfer. Start a case to investigate it.</p>
+  <div id="fraud-case" hidden>
+    <section class="fraud-report"><h3 id="fraud-case-title"></h3><p id="fraud-case-meta" class="fraud-meta"></p><p id="fraud-early-warning" class="fraud-callout" hidden></p><span class="eyebrow">CUSTOMER REPORT</span><blockquote id="fraud-story"></blockquote><details class="world-details"><summary>Messages & details</summary><p id="fraud-message"></p><div id="fraud-replies"></div><p class="surface-note">Demo evidence uses text transcripts.</p></details></section>
+    <div class="section-heading"><h3>Investigation</h3><span id="fraud-tool-count"></span></div>
+    <p id="fraud-agent-budget" class="fraud-meta" hidden></p>
+    <p id="fraud-agent-stop" class="fraud-callout" role="status" hidden></p>
+    <button id="fraud-agent-handoff" class="text-button" hidden>Review available evidence</button>
+    <p id="fraud-agent-question" class="fraud-callout" hidden></p>
+
+    <div class="fraud-toolbar"><button id="fraud-run" class="primary-button">Investigate</button><button id="fraud-step" class="text-button">Next tool only</button></div>
+    <p id="fraud-context" class="fraud-callout" hidden></p><details id="fraud-tools" class="world-details"><summary>Investigation trail</summary><p id="fraud-trace-empty" class="surface-note">No tools run yet.</p><ol id="fraud-trace" class="fraud-trace"></ol></details>
+    <section id="fraud-packet" class="fraud-packet" hidden><h3 id="fraud-assessment"></h3><p id="fraud-next-question"></p><details class="world-details"><summary>Assessment & sources</summary><p id="fraud-recommendation"></p><ul id="fraud-questions"></ul><p id="fraud-citations" class="fraud-meta"></p></details></section>
+    <form id="fraud-review-form" class="fraud-form" hidden>
+      <h3>Analyst review</h3>
+      <div class="fraud-fields"><div><label for="fraud-disposition">Decision</label><select id="fraud-disposition"><option value="confirmed_scam">Scam confirmed</option><option value="not_scam">Scam not confirmed</option><option value="needs_information">Need more information</option></select></div><div><label for="fraud-action">Next action</label><select id="fraud-action"><option value="request_recall">Request transfer recall</option><option value="support_followup">Support follow-up</option></select></div></div>
+      <label for="fraud-note">Analyst findings</label><textarea id="fraud-note" rows="3" minlength="10" maxlength="2000" required placeholder="What did you verify?"></textarea>
+      <label class="fraud-check"><input id="fraud-publish" type="checkbox" checked> Remember this reviewed case</label>
+      <details class="world-details"><summary>Edit the saved lesson</summary><label for="fraud-lesson">Reviewed lesson</label><textarea id="fraud-lesson" rows="3" minlength="10" maxlength="1000"></textarea><label for="fraud-question">Question for the next case</label><textarea id="fraud-question" rows="2" minlength="10" maxlength="500"></textarea></details>
+      <button id="fraud-approve" class="primary-button" type="submit">Save review</button>
+    </form>
+    <section id="fraud-resolution" class="fraud-packet" hidden><h3>Customer update</h3><p id="fraud-resolution-copy"></p><details class="world-details"><summary>Simulated receipt</summary><p id="fraud-receipt" class="fraud-meta"></p></details></section>
+    <form id="fraud-reply-form" class="fraud-form" hidden><label for="fraud-reply">Customer follow-up</label><textarea id="fraud-reply" rows="3" minlength="10" maxlength="2000" required></textarea><button class="primary-button" type="submit">Add reply</button></form>
+  </div>
+  <details id="fraud-memory-panel" class="world-details"><summary>Case memory <span id="fraud-memory-count">0 approved</span></summary><div id="fraud-memory-list"></div><p class="surface-note">Reviewed examples help the next case. They do not retrain the model.</p></details>
+  <details id="fraud-extras" class="world-details"><summary>More scenarios</summary><button id="fraud-benign" class="text-button">Try a benign payment</button></details>
+  <details id="fraud-new-report" class="world-details"><summary>Report another payment</summary><form id="fraud-report-form" class="fraud-form"><label for="fraud-customer">Customer</label><select id="fraud-customer"></select><label for="fraud-event">Transaction</label><select id="fraud-event"></select><label for="fraud-report-story">Customer report</label><textarea id="fraud-report-story" rows="4" minlength="20" maxlength="4000" required></textarea><label for="fraud-report-message">Message (optional)</label><textarea id="fraud-report-message" rows="2" maxlength="2000"></textarea><button id="fraud-submit-report" class="primary-button" type="submit">Submit report</button></form></details>
+</section>
+
+</div></main>
+</div></body></html>
