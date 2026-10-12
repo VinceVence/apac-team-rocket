@@ -1,5 +1,6 @@
 """Real ADK runners with fake responses: branching, questions, scope and durable spending."""
 import logging
+import asyncio
 import json
 import os
 import sqlite3
@@ -10,6 +11,7 @@ import unittest
 import warnings
 from pathlib import Path
 from unittest.mock import patch
+from types import SimpleNamespace
 
 from agents import Agents, Config
 from fraud_adk import FakeInvestigator, fixture_choice
@@ -353,6 +355,54 @@ class AgentChecks(unittest.TestCase):
                 if limit=='daily': self.assertIn('Daily cost',result['context']['stop_reason'])
                 if limit=='lifetime': self.assertIn('Lifetime',result['context']['stop_reason'])
                 if limit=='generations': self.assertIn('generation limit',result['context']['stop_reason'])
+
+    def test_turn_timeout_retains_reservation_without_retry(self):
+        class Slow(FakeInvestigator):
+            async def generate_content_async(self,llm_request,stream=False):
+                await asyncio.sleep(1)
+                async for response in super().generate_content_async(llm_request,stream):yield response
+        self.agent.model_factory=Slow
+        _,run=self.start('benign')
+        result=self.agent.step(run['id'],0,timeout=.01)
+        self.assertEqual(result['status'],'failed');self.assertIn('timed out',result['context']['stop_reason'])
+        self.assertEqual(result['budget']['case_calls'],1)
+        self.assertEqual(result['budget']['case_committed_microusd'],RESERVE_MICROUSD)
+
+    def test_automatic_deadline_stops_before_generating(self):
+        report=self.desk.demo('benign','deadline')
+        with patch('fraud_runner.RUN_TIMEOUT_SECONDS',0),patch('google.genai.Client.__init__',side_effect=AssertionError('No client')):
+            result=self.settled(self.automatic(report))
+        self.assertEqual(result['status'],'interrupted');self.assertEqual(result['budget']['case_calls'],0)
+
+    def test_live_admission_spaces_calls_and_prevents_overlapping_requests(self):
+        request=SimpleNamespace(model_dump=lambda **kwargs:{'test':'no network'})
+        self.agent.clock=lambda:'2026-10-12T00:00:00+00:00'
+        with patch.object(self.agent,'live_enabled',return_value=True):
+            first=self.agent.start(self.desk.demo('benign','live-one')['id'],'gemini')
+            second=self.agent.start(self.desk.demo('benign','live-two')['id'],'gemini')
+            turn=self.agent.reserve(first['id'],request)
+            with self.assertRaisesRegex(LabError,'spacing'):self.agent.reserve(second['id'],request)
+            self.agent.clock=lambda:'2026-10-12T00:00:07+00:00'
+            with self.assertRaisesRegex(LabError,'in progress'):self.agent.reserve(second['id'],request)
+            with self.lab.db:self.lab.db.execute("UPDATE fraud_agent_turns SET status='completed' WHERE id=?",(turn,))
+            self.agent.reserve(second['id'],request)
+        self.assertEqual(self.agents.budget('2026-10-12')['calls_today'],2)
+
+    def test_live_failure_opens_persistent_circuit_without_a_second_request(self):
+        request=SimpleNamespace(model_dump=lambda **kwargs:{'test':'no network'})
+        async def broken(controller,run,packet):
+            controller.reserve(run['id'],request)
+            raise TimeoutError('Synthetic provider timeout')
+        with patch.object(self.agent,'live_enabled',return_value=True),patch('fraud_adk.run_turn',side_effect=broken),patch('google.genai.Client.__init__',side_effect=AssertionError('No live SDK client')) as client:
+            first=self.agent.start(self.desk.demo('benign','circuit-one')['id'],'gemini')
+            result=self.agent.step(first['id'],0)
+            self.assertEqual(result['budget']['case_calls'],1)
+            second=self.agent.start(self.desk.demo('benign','circuit-two')['id'],'gemini')
+            stopped=self.agent.step(second['id'],0)
+            self.assertIn('circuit is open',stopped['context']['stop_reason'])
+            self.assertEqual(stopped['budget']['case_calls'],0);client.assert_not_called()
+        self.agent=FraudAgent(self.desk,self.agents)
+        self.assertTrue(self.agent.runtime()['live_circuit_open'])
 
 
 if __name__ == '__main__': unittest.main(verbosity=2)

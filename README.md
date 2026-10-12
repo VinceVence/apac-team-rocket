@@ -50,8 +50,10 @@ The case's decision trail spans revisions and shows the selected tool, public pu
 - Up to **6 model generations per case**, including follow-ups and re-investigations.
 - **$0.02 per case**, **$0.10 per UTC day**, **$1 lifetime** and **10 calls per UTC day** by default.
 - Reserve **$0.01 before a generation**, then reconcile reported input, output and reasoning tokens. Ambiguous failures retain their reservation.
-- Fake calls use a separate simulated-spend ledger; actual API cost remains zero. The HTTP rehearsal raises only its isolated fake call-count allowance to exercise all examples.
+- Fake calls use a separate simulated-spend ledger; actual model API cost remains zero. The main two-case rehearsal uses the normal 10-call daily allowance.
 - Invalid tools, out-of-scope accounts, fabricated citations, stale evidence and repeated requests cannot bypass the server checks. A stopped run can be handed to the analyst explicitly.
+- One active investigation and one queued investigation, a 180-second automatic-run deadline, and a 30-second deadline for each model turn. Customer replies keep the same case budget.
+- Live calls are spaced at least 6 seconds apart with at most one live request in flight. SDK attempts are set to one; there are no automatic provider retries or model upgrades. A failed live turn opens a durable circuit breaker. An operator must reconcile its receipt before clearing the circuit; browser actions cannot reset it. These controls are implemented, but hosted Gemini remains disabled.
 
 The local application assumes one server process owns its SQLite database. A distributed deployment needs database-level atomic reservations across service instances.
 
@@ -80,3 +82,62 @@ The hosted town has an explicit **Export next batch** action. Each atomic BigQue
 The application issues no analytical query jobs. The project query quota is 1 GiB per day. BigQuery partitions and staged exports retain 7 days of data; the live state object is retained and overwritten without object version history. Exporting is explicit, with no always-on scheduler or streaming pipeline.
 
 Cloud Run uses one instance, one CPU, 1 GiB memory, no minimum instances, instance-based billing for the background worker, and a $1 monthly spend cap. Whole-project $5 alerts include other services but are not an overall hard cap. Google enforcement delays can cause overages. Cloud Build is bounded to a 600-second build. Credential/config/data/report directories are excluded by the explicit `.gcloudignore` and `.dockerignore` upload allowlists.
+
+Hosted API access is limited to the town, scam desk, automatic investigator and bounded exports. Old training, macro-policy, marketing and manual-stepping routes are disabled in cloud mode. Background science training no longer runs at cloud startup or on a simulated day boundary. Limits are shared across viewers: 600 admitted writes, 240 world-step requests and 4 new report attempts per UTC day, with 60 writes and 120 API reads per minute. Write allowances are checkpointed before work and survive cold starts; failures retain them. Per-minute burst counters are process-local, so these are a supplement to IAP, durable daily admission and infrastructure controls, not an anonymous-traffic defense. The browser polls only active visible cases, backs off from 1.5 to 5 seconds, and stops after 210 seconds or on an error.
+
+## Hosted rehearsal
+
+[web/simulate_hosted.py](web/simulate_hosted.py) calls the actual Cloud Run endpoints through IAP using a 15-minute service-account JWT signed by IAM Credentials. It creates no service-account keys, grants no IAM roles, resets no budgets, and never enables Gemini. The caller needs an authorized, preferably temporary, runner identity with IAP access to this service and scoped permission to sign for that identity. [Google's IAP authentication guide](https://docs.cloud.google.com/iap/docs/authentication-howto) describes this authentication method.
+
+```sh
+# Load the existing ignored ADC configuration first. Never paste a token into this command.
+PYTHONPATH=web .venv/bin/python web/simulate_hosted.py \
+  --service-account=minttown-demo-runner@minttown-apac-2026.iam.gserviceaccount.com \
+  --run-id=hosted-20261012
+```
+
+Reuse the run ID after an interruption. Mutation requests are never automatically retried. Read-only polling backs off to five seconds and stops after three minutes. Reports, approval and memory publication are replay-safe. The detailed receipt is saved locally under ignored `web/reports/hosted-investigation.json`; it contains synthetic case data, not credentials.
+
+The October 12, 2026 hosted rehearsal completed with 10 fake-model turns, zero Gemini calls, a balanced ledger, and 21 GET / 8 POST requests. First case `SC-5c75a25565` was approved as a synthetic scam and published `MEM-5977ccbec9`. Second case `SC-a2b42ec772` retrieved that exact memory, asked its follow-up question, consumed the answer and returned to analyst review. The second transfer also received an ingestion-time reviewed-recipient flag. No money was refunded or real bank service contacted.
+
+| First investigation, before approval | Second investigation, after approval |
+|---|---|
+| Get transactions | Search approved memory first |
+| Search memory: no matching approved case | Get transactions and verify this case |
+| Compare spending behavior | Ask the question from the approved case; pause |
+| Trace recipient | After the customer reply, trace recipient |
+| Submit for review | Submit for review, citing the approved memory |
+
+This is in-context retrieval of analyst-approved knowledge. It does not change model weights or prove live Gemini investigation quality. The fake model supplies transparent fixture choices through the real ADK tools.
+
+## Safe public demo plan — not enabled
+
+Publish a separate **browser-only replay** first: the pixel simulator, synthetic report fixtures and a sanitized recording of the completed investigation. Bundle its data as static assets and run interactions in the visitor's browser. Give that site no operational API credentials, no Vertex permissions, no BigQuery export button and no connection to the private case database. The real analyst workbench stays behind IAP. This avoids per-visitor LLM calls and shared mutable cases; static hosting still needs its own traffic/billing controls.
+
+Before publishing, verify its network traffic never calls the private API, scans find no credentials or customer-supplied content, and the demo clearly labels recorded/fake decisions. Do not make the current Cloud Run service anonymous: it contains analyst approval and shared-memory publication APIs. A future public live pilot needs login, customer/analyst roles, case ownership checks, independently enforced per-user and global limits, abuse controls, and transactional reservations across instances. Those are release requirements, not capabilities of the current single-writer demo.
+
+```mermaid
+flowchart LR
+    Visitor[Public visitor] --> Replay[Static simulator + recorded case replay]
+    Analyst[Approved analyst] --> IAP[Google IAP]
+    IAP --> API[Private case API + admission limits]
+    API --> Worker[One investigation worker]
+    Worker --> ADK[ADK: choose one tool per turn]
+    ADK -. gated future integration .-> Vertex[Gemini on Vertex AI]
+    ADK --> Evidence[Frozen transaction evidence]
+    ADK --> Memory[Approved case memory]
+    ADK --> Review[Recommendation / customer question]
+    Review --> Analyst
+    Analyst -->|Approve and publish| Memory
+    API --> State[Durable state + spend ledger]
+    API -->|Bounded explicit export| BQ[BigQuery]
+```
+
+## Vertex rollout plan — paid calls remain off
+
+1. Keep the public replay separate from the private investigation service. Preserve the current hosted fake-only gate until an explicitly approved pilot. At activation, deliberately replace that gate with an operator-configured private-pilot gate; a browser request must never enable it. Reuse the dedicated MintTown runtime identity and add only the required Vertex prediction permission, scoped to this project. Keep its existing bucket/dataset grants scoped to the demo resources; add no service-account keys, broad Vertex job-management permissions, project-editor role or public invocation. Keep one instance and the existing durable admission ledger.
+2. Use the existing `google-genai` Vertex adapter inside the metered ADK loop. Gemini receives a bounded case packet, chooses one of six allowlisted tools, reads its actual result on the next turn, and either asks for missing evidence or submits for analyst review. Approval and memory publication remain outside the model's tool set. No open-ended agent-to-agent loops, automatic escalation to a larger model, web grounding or model-training jobs.
+3. Start with the pinned `gemini-3.5-flash-lite` model and re-check availability/prices immediately before activation. The current global standard price is $0.30/million input tokens and $2.50/million output/reasoning tokens. For illustration, five turns each using 3,000 input and 200 output tokens would cost approximately $0.007. This estimate excludes hosting and depends on actual usage. [Google pricing](https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing).
+4. Retain the 16,000-byte request envelope, 512-token output ceiling, one-cent reservation, $0.02/case, $0.10/day, $1 lifetime and 10-call daily gates. Cases may stop before six turns when a budget is insufficient. A 429, timeout, missing usage, invalid response or unsafe tool result stops the run; never sleep-and-retry the same paid request automatically. Further live calls remain blocked until operator review. Cold starts cannot reset cost history.
+5. Evaluate synthetic held-out cases before expanding the pilot: impersonation, ambiguous reports, legitimate transfers, contradictory evidence, malicious report text, misleading prior memories, API throttling and interrupted requests. Check citations, question usefulness, safe stopping, false accusations, token use and latency. Google warns that minimal thinking can terminate multi-step tools prematurely, so compare reasoning settings deliberately within the existing evaluation budget; do not silently change them at runtime or schedule retries after the daily cap. [Model guidance](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/3-5-flash-lite).
+6. After explicit approval, enable a small private live pilot and observe one case. Keep the dedicated project's existing Vertex spend cap as a second layer, retain a kill switch, and stop on any uncertainty. Move reservations and job ownership to a transactional managed database before increasing Cloud Run instances. Never treat Cloud Billing alerts or delayed spend caps as a guaranteed whole-project dollar ceiling.

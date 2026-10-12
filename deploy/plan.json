@@ -20,6 +20,20 @@
     "monthly_spend_cap_usd": 1
   },
   "project_monthly_alert_usd": 5,
+  "application": {
+    "public_access": false,
+    "max_pending_investigations_including_active": 2,
+    "investigation_timeout_seconds": 180,
+    "model_turn_timeout_seconds": 30,
+    "live_call_minimum_interval_seconds": 6,
+    "sdk_attempts": 1,
+    "daily_mutating_requests": 600,
+    "daily_world_steps": 240,
+    "daily_new_report_attempts": 4,
+    "api_reads_per_minute_per_process": 120,
+    "api_writes_per_minute_per_process": 60,
+    "legacy_training_endpoints": false
+  },
   "bigquery": {
     "batch_loads_only": true,
     "exports_per_utc_day": 3,

@@ -144,7 +144,7 @@ async def run_turn(controller, run, packet):
     agent = LlmAgent(name='fraud_investigator', model=MeteredModel(), instruction=SYSTEM,
                      tools=tools_for(controller, run['id']),
                      generate_content_config=types.GenerateContentConfig(max_output_tokens=MAX_OUTPUT_TOKENS,
-                         temperature=.1, thinking_config=types.ThinkingConfig(thinking_level='MINIMAL', include_thoughts=False),
+                         thinking_config=types.ThinkingConfig(thinking_level='MINIMAL', include_thoughts=False),
                          tool_config=types.ToolConfig(function_calling_config=types.FunctionCallingConfig(mode='ANY', allowed_function_names=list(TOOLS)))))
     runner = Runner(agent=agent, app_name='minttown_fraud', session_service=sessions)
     trace = []

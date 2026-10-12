@@ -21,6 +21,7 @@ from customer_data import CustomerData,TABLES as CUSTOMER_TABLES
 from fraud_desk import FraudDesk,TABLES as FRAUD_TABLES
 from fraud_agent import FraudAgent
 from fraud_runner import InvestigationRunner
+from demo_guard import DemoGuard
 
 ROOT=Path(__file__).resolve().parent
 
@@ -37,14 +38,16 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
     world=World(lab);science=Science(lab)
     macro=Macro(lab,world,agents);world.macro=macro
     science_team=ScienceTeam(lab,science,agents)
-    try:science_team.autorun()
-    except LabError:pass  # A recorded failed quality gate must not prevent the UI from opening.
+    if not cloud:
+        try:science_team.autorun()
+        except LabError:pass  # A recorded failed quality gate must not prevent the UI from opening.
     customer_data=CustomerData(lab);world.customer_data=customer_data
     mesh=Mesh(lab,world,macro,science_team,agents,customer_data)
     fraud_desk=FraudDesk(lab,world);world.fraud_desk=fraud_desk
     checkpoint=(lambda: cloud.save(lab)) if cloud else None
     fraud_agent=FraudAgent(fraud_desk,agents,checkpoint=checkpoint)
     fraud_runner=InvestigationRunner(fraud_agent)
+    guard=DemoGuard(lab,checkpoint) if cloud else None
     if cloud: cloud.initialize(lab)
     csrf=secrets.token_urlsafe(32)
 
@@ -74,6 +77,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
             if cloud and not cloud.healthy and path.startswith('/api/'):
                 return self.reply(503,{'error':'Cloud state is unavailable. Retry after this instance restarts.'})
             try:
+                if guard and path.startswith('/api/'):guard.allow('GET',path)
                 if path=='/api/state':
                     with lab.lock:
                         result=lab.snapshot();result.update(budget=agents.budget(),csrf_token=csrf)
@@ -85,7 +89,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                 if path=='/api/science':return self.reply(200,science_team.dashboard())
                 if path=='/api/customer-data':return self.reply(200,customer_data.dashboard())
                 if path=='/api/fraud-desk':return self.reply(200,fraud_desk.dashboard())
-                if path=='/api/cloud':return self.reply(200,cloud.status(lab) if cloud else {'enabled':False})
+                if path=='/api/cloud':return self.reply(200,{**cloud.status(lab),'guardrails':guard.status()} if cloud else {'enabled':False})
                 if path.startswith('/api/fraud-desk/reports/'):
                     return self.reply(200,fraud_desk.detail(path.rsplit('/',1)[-1]))
                 if path=='/api/mesh':
@@ -120,6 +124,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                 body=json.loads(self.rfile.read(size))
                 if not isinstance(body,dict): raise LabError('Expected a JSON object.')
                 path=urlsplit(self.path).path
+                if guard:guard.allow('POST',path,body)
                 if path=='/api/cloud/export':
                     if not cloud:raise LabError('BigQuery export is available on the hosted demo.',409)
                     if set(body)!={'request_id'}:raise LabError('Exports require a request ID and use only the approved simulator tables.')
@@ -179,7 +184,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                 if path=='/api/world/step':
                     if set(body)!={'expected_tick','activity','scenario'}:raise LabError('Invalid world step.')
                     result=world.advance(body['expected_tick'],body['activity'],body['scenario'])
-                    if result.get('day_closed'):
+                    if result.get('day_closed') and not cloud:
                         try:
                             science_result=science_team.autorun()
                             if science_result:
@@ -239,6 +244,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
     server.fraud_desk=fraud_desk
     server.fraud_agent=fraud_agent
     server.fraud_runner=fraud_runner
+    server.demo_guard=guard
     return server
 
 

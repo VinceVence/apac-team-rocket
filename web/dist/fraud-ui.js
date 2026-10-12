@@ -1,5 +1,5 @@
 export function createFraudUI({$,api,state,setPlaying,setBusy,refresh,error,focusCustomer}){
-  let dashboard=null,report=null,working=false,pollTimer=null;
+  let dashboard=null,report=null,working=false,pollTimer=null,pollKey='',pollDelay=1500,pollRun='',pollStarted=0;
   const running=()=>['queued','running'].includes(report?.investigation?.context.execution?.status);
   const el=(tag,text,cls)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node};
   const money=value=>'₱'+(value/100).toLocaleString('en-PH',{maximumFractionDigits:2});
@@ -61,7 +61,7 @@ export function createFraudUI({$,api,state,setPlaying,setBusy,refresh,error,focu
     const flags=report.transactions.flatMap(t=>t.metadata.review_flags||[]);
     $('fraud-early-warning').hidden=!flags.length;$('fraud-early-warning').textContent=flags.length?'Flagged before the report: this recipient appears in a reviewed scam case.':'';
     $('fraud-run').hidden=reviewed||report.status==='awaiting_customer'||!!stopped||automatic;
-    $('fraud-step').hidden=$('fraud-run').hidden||run?.status==='awaiting_review';$('fraud-run').textContent=run?.status==='awaiting_review'?'Recheck evidence':run?'Continue':'Investigate';
+    $('fraud-step').hidden=state.hosted||$('fraud-run').hidden||run?.status==='awaiting_review';$('fraud-run').textContent=run?.status==='awaiting_review'?'Recheck evidence':run?'Continue':'Investigate';
     $('fraud-run').classList.toggle('primary-button',run?.status!=='awaiting_review');$('fraud-run').classList.toggle('text-button',run?.status==='awaiting_review');
     const trail=report.decision_trail?.length?report.decision_trail:(run?.trace||[]).map(t=>({number:t.step,tool:t.tool,purpose:t.summary,finding:t.finding,result:t.output,provenance:t.provenance,status:'completed'}));
     $('fraud-tools').hidden=!trail.length;$('fraud-tool-count').textContent=trail.length?trail.length+' model turns':'';
@@ -102,6 +102,10 @@ export function createFraudUI({$,api,state,setPlaying,setBusy,refresh,error,focu
   function schedulePoll(){
     clearTimeout(pollTimer);
     if(!running()||document.hidden||state.view!=='resolution')return;
+    const run=report.investigation,key=`${run.id}:${run.step}:${run.status}`;
+    if(pollRun!==run.id){pollRun=run.id;pollStarted=Date.now()}
+    if(Date.now()-pollStarted>210000){$('fraud-status').textContent='Progress polling stopped. Reopen the case to check its saved status.';return}
+    pollDelay=key===pollKey?Math.min(5000,pollDelay*1.5):1500;pollKey=key;
     pollTimer=setTimeout(async()=>{
       if(working||state.busy){schedulePoll();return}
       const id=report.id;
@@ -111,11 +115,11 @@ export function createFraudUI({$,api,state,setPlaying,setBusy,refresh,error,focu
         report=next;render();
         if(!running()){$('fraud-status').textContent=names[report.status]||'Investigation paused';await refresh();await load()}
       }catch(e){error(e.message);$('fraud-status').textContent='Progress unavailable. Reopen the case to reconnect.'}
-    },650);
+    },pollDelay);
   }
   document.addEventListener('visibilitychange',()=>{if(document.hidden)clearTimeout(pollTimer);else if(state.view==='resolution')load().catch(e=>error(e.message))});
   async function load(){dashboard=await api('/api/fraud-desk');if(report)report=await api('/api/fraud-desk/reports/'+report.id);else if(dashboard.reports.length)report=await api('/api/fraud-desk/reports/'+dashboard.reports[0].id);render()}
-  async function select(id){report=await api('/api/fraud-desk/reports/'+encodeURIComponent(id));$('fraud-note').value='';render();focusCustomer(report.customer_id)}
+  async function select(id){pollRun='';report=await api('/api/fraud-desk/reports/'+encodeURIComponent(id));$('fraud-note').value='';render();focusCustomer(report.customer_id)}
   async function perform(fn){
     if(working||state.busy||state.stepping)return;let succeeded=false;working=true;setPlaying(false);setBusy(true);error('');$('fraud-status').textContent='Working locally…';
     const controls=[...$('fraud-view').querySelectorAll('button,input,select,textarea')],disabled=controls.map(n=>n.disabled);controls.forEach(n=>n.disabled=true);

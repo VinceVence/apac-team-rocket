@@ -4,7 +4,7 @@ import {createFraudUI} from './fraud-ui.js';
 const $=id=>document.getElementById(id);
 const drawTown=createTown($('town-map'));
 const money=n=>'₱'+(n/100).toLocaleString('en-PH',{maximumFractionDigits:2});
-const state={data:null,view:'world',busy:false,playing:false,speed:1,timer:null,stepping:false,customerId:null};
+const state={data:null,view:'world',busy:false,playing:false,speed:1,timer:null,stepping:false,customerId:null,hosted:false};
 const labels={world:'town',resolution:'scam-desk'};
 
 async function api(path,body){
@@ -41,9 +41,12 @@ async function refresh(){state.data=await api('/api/state');renderWorld()}
 async function cloudStatus(){
   const cloud=await api('/api/cloud');$('cloud-data-panel').hidden=!cloud.enabled;
   if(cloud.enabled){
+    state.hosted=true;
     $('deployment-label').textContent='Cloud demo';
     $('cloud-data-status').textContent=`${cloud.daily_exports}/${cloud.daily_export_limit} batches today · ${cloud.pending_events.toLocaleString()} events awaiting export`;
-    $('cloud-export').disabled=!cloud.healthy||(cloud.daily_exports>=cloud.daily_export_limit&&!sessionStorage.getItem('minttown-export-request'));
+    const pending=!!sessionStorage.getItem('minttown-export-request');
+    $('cloud-export').textContent=pending?'Check export status':'Export next batch';
+    $('cloud-export').disabled=!cloud.healthy||(cloud.daily_exports>=cloud.daily_export_limit&&!pending);
   }
 }
 function setPlaying(on){
@@ -52,7 +55,7 @@ function setPlaying(on){
   $('play-world').textContent=on?'Pause world':'Run world';$('running-label').textContent=on?'Running':'Paused';
   if(on)scheduleStep();
 }
-function scheduleStep(){clearTimeout(state.timer);if(state.playing)state.timer=setTimeout(stepWorld,3000/state.speed)}
+function scheduleStep(){clearTimeout(state.timer);if(state.playing)state.timer=setTimeout(stepWorld,Math.max(1100,3000/state.speed))}
 async function stepWorld(){
   if(state.stepping||state.busy)return;state.stepping=true;error('');
   try{

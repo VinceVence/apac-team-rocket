@@ -17,6 +17,8 @@ PROMPT_VERSION = 'fraud-investigator-v1'
 MAX_INPUT_BYTES = 16000
 MAX_OUTPUT_TOKENS = 512
 RESERVE_MICROUSD = 10000
+TURN_TIMEOUT_SECONDS = 30
+LIVE_INTERVAL_SECONDS = 6
 TOOLS = ('get_transactions', 'compare_behavior', 'trace_recipient', 'search_reviewed_cases', 'ask_customer', 'submit_for_review')
 ARG_FIELDS = {'get_transactions': {'event_ids','purpose'}, 'compare_behavior': {'window_days','purpose'},
               'trace_recipient': {'recipient_id','purpose'}, 'search_reviewed_cases': {'query','purpose'},
@@ -64,13 +66,19 @@ class FraudAgent:
           decision TEXT, tool_result TEXT, error TEXT, created_at TEXT NOT NULL,
           request_json TEXT NOT NULL DEFAULT '{}',
           UNIQUE(run_id,seq));
+        CREATE TABLE IF NOT EXISTS fraud_live_control(
+          id INTEGER PRIMARY KEY CHECK(id=1), next_call_at REAL NOT NULL DEFAULT 0,
+          blocked_reason TEXT NOT NULL DEFAULT '');
+        INSERT OR IGNORE INTO fraud_live_control(id) VALUES(1);
         ''')
         if 'request_json' not in {r['name'] for r in self.lab.rows('PRAGMA table_info(fraud_agent_turns)')}:
             self.lab.db.execute("ALTER TABLE fraud_agent_turns ADD COLUMN request_json TEXT NOT NULL DEFAULT '{}'")
         with self.lab.lock, self.lab.db:
-            self.lab.db.execute("UPDATE fraud_agent_turns SET status='uncertain',error='Process stopped during this model turn; reservation retained.' WHERE status='reserved'")
+            self.lab.db.execute("UPDATE fraud_agent_turns SET status='uncertain',error='Process stopped during this model turn; recorded cost or reservation retained.' WHERE status IN ('reserved','responded')")
             for row in self.lab.rows("SELECT id FROM fraud_investigations WHERE json_extract(context,'$.controller')='adk' AND (status='stepping' OR (status='running' AND json_extract(context,'$.execution.status') IN ('queued','running')))"):
                 self.stop(row['id'], 'interrupted', 'Server restarted during an investigation. Evidence and cost reservations were retained; no request was retried.')
+            if self.lab.db.execute("SELECT 1 FROM fraud_agent_turns WHERE provider='gemini' AND status='uncertain'").fetchone():
+                self.lab.db.execute("UPDATE fraud_live_control SET blocked_reason='An earlier live request is unconfirmed. Operator reconciliation is required.' WHERE id=1")
         desk.agent = self
 
     def stop(self, run_id, status, message):
@@ -125,10 +133,18 @@ class FraudAgent:
         except importlib.metadata.PackageNotFoundError: version = None
         return {'engine': 'google-adk', 'version': version, 'default_mode': 'fake', 'model': MODEL,
                 'live_enabled': self.live_enabled(), 'case_limit_usd': self.case_limit / 1e6,
-                'max_case_calls': self.max_case_calls, 'automatic_runner': True}
+                'max_case_calls': self.max_case_calls, 'automatic_runner': True,
+                'turn_timeout_seconds': TURN_TIMEOUT_SECONDS, 'live_interval_seconds': LIVE_INTERVAL_SECONDS,
+                'live_circuit_open': bool(self.lab.db.execute('SELECT blocked_reason FROM fraud_live_control WHERE id=1').fetchone()[0])}
 
     def live_enabled(self):
         return bool(self.agents.config.live and os.getenv('MINTTOWN_FRAUD_LIVE') == '1' and os.getenv('GOOGLE_CLOUD_PROJECT'))
+
+    def live_delay(self, run):
+        if run['context']['provider']!='gemini':return 0
+        with self.lab.lock:
+            next_at=self.lab.db.execute('SELECT next_call_at FROM fraud_live_control WHERE id=1').fetchone()[0]
+        return max(0,next_at-dt.datetime.fromisoformat(self.clock()).timestamp())
 
     def budget(self, report_id, mode):
         day = self.clock()[:10]
@@ -194,6 +210,12 @@ class FraudAgent:
         with self.lab.lock, self.lab.db:
             run = self.desk.run(run_id); mode = run['context']['provider']
             if mode == 'gemini' and not self.live_enabled(): raise LabError('Live Gemini is off.', 409)
+            if mode=='gemini':
+                gate=self.lab.db.execute('SELECT * FROM fraud_live_control WHERE id=1').fetchone()
+                if gate['blocked_reason']:raise LabError('Live circuit is open: '+gate['blocked_reason'],409)
+                if self.live_delay(run)>0:raise LabError('Live request spacing limit reached. No model request was made.',409)
+                if self.lab.db.execute("SELECT 1 FROM fraud_agent_turns WHERE provider='gemini' AND status IN ('reserved','responded')").fetchone():
+                    raise LabError('Another live model request is in progress. No request was made.',409)
             b = self.budget(run['report_id'], mode)
             if b['case_calls'] >= b['max_case_calls']: raise LabError('Per-case generation limit reached.', 429)
             if b['daily_calls'] >= b['daily_call_limit']: raise LabError('Daily model-call limit reached.', 429)
@@ -204,6 +226,9 @@ class FraudAgent:
             identifier = run_id + ':' + str(run['step'])
             self.lab.db.execute('INSERT INTO fraud_agent_turns(id,report_id,run_id,seq,provider,model,status,reserved_microusd,created_at,request_json) VALUES(?,?,?,?,?,?,?,?,?,?)',
                                 (identifier, run['report_id'], run_id, run['step'], mode, MODEL, 'reserved', RESERVE_MICROUSD, self.clock(), encoded(payload)))
+            if mode=='gemini':
+                self.lab.db.execute('UPDATE fraud_live_control SET next_call_at=? WHERE id=1',
+                                    (dt.datetime.fromisoformat(self.clock()).timestamp()+LIVE_INTERVAL_SECONDS,))
         self.checkpoint()
         return identifier
 
@@ -344,7 +369,7 @@ class FraudAgent:
             self.lab.db.execute("UPDATE fraud_reports SET status='awaiting_review' WHERE id=?", (report['id'],))
             return self.desk.detail(report['id'])
 
-    def step(self, run_id, expected_step, automatic=False):
+    def step(self, run_id, expected_step, automatic=False, timeout=TURN_TIMEOUT_SECONDS):
         run_id = text(run_id, 'Investigation ID', 1, 80)
         if type(expected_step) is not int or expected_step < 0: raise LabError('Use the current generation number.')
         with self.lab.lock, self.lab.db:
@@ -364,7 +389,9 @@ class FraudAgent:
                     raise LabError('Transaction evidence changed. Hand this case to an analyst.', 409)
                 packet = self.packet(run)
             from fraud_adk import run_turn
-            events = asyncio.run(run_turn(self, run, packet))
+            async def bounded_turn():
+                return await asyncio.wait_for(run_turn(self,run,packet),timeout=timeout)
+            events = asyncio.run(bounded_turn())
             with self.lab.lock, self.lab.db:
                 latest = self.desk.run(run_id)
                 if latest['step'] == expected_step: raise LabError('The model did not execute a valid investigation tool.', 422)
@@ -372,9 +399,13 @@ class FraudAgent:
                 self.lab.db.execute('UPDATE fraud_investigations SET context=? WHERE id=?', (encoded(latest['context']), run_id))
                 return self.desk.run(run_id)
         except Exception as exc:
-            message = str(exc) if isinstance(exc, LabError) else 'ADK could not complete this turn. No automatic retry was made.'
+            message = ('Model turn timed out. Its reservation is retained; no automatic retry was made.' if isinstance(exc,TimeoutError)
+                       else str(exc) if isinstance(exc, LabError) else 'ADK could not complete this turn. No automatic retry was made.')
             with self.lab.lock, self.lab.db:
                 status = 'budget_exhausted' if isinstance(exc, LabError) and exc.status == 429 else 'failed'
                 self.stop(run_id, status, message)
                 self.lab.db.execute("UPDATE fraud_agent_turns SET status='failed',error=? WHERE run_id=? AND seq=? AND status!='completed'", (message, run_id, expected_step))
+                if run['context']['provider']=='gemini' and self.lab.db.execute('SELECT 1 FROM fraud_agent_turns WHERE run_id=? AND seq=?',(run_id,expected_step)).fetchone():
+                    self.lab.db.execute('UPDATE fraud_live_control SET blocked_reason=? WHERE id=1',
+                                        ('A live turn failed. Review its receipt before enabling further calls.',))
                 return self.desk.run(run_id)

@@ -1,8 +1,13 @@
 """One local worker; every generation still passes through FraudAgent's durable gates."""
 from concurrent.futures import ThreadPoolExecutor
+import threading
+import time
 
+from fraud_agent import TURN_TIMEOUT_SECONDS
 from lab import LabError, encoded, now
 
+RUN_TIMEOUT_SECONDS = 180
+MAX_PENDING = 2
 
 class InvestigationRunner:
     def __init__(self, agent):
@@ -11,6 +16,7 @@ class InvestigationRunner:
         self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix='investigation')
         self.pending = set()
         self.closed = False
+        self.stopping = threading.Event()
 
     def execution(self, run_id, status):
         run = self.desk.run(run_id)
@@ -22,7 +28,7 @@ class InvestigationRunner:
             if self.closed: raise LabError('The investigation worker is stopping.', 503)
             run = self.agent.start(report_id, mode)
             if run['status'] != 'running' or run['id'] in self.pending: return run
-            if len(self.pending) >= 16: raise LabError('The investigation queue is full. Retry starting this saved report shortly.', 429)
+            if len(self.pending) >= MAX_PENDING: raise LabError('The investigation queue is full. Retry starting this saved report shortly.', 429)
             with self.lab.db: self.execution(run['id'], 'queued')
             self.agent.checkpoint()
             self.pending.add(run['id'])
@@ -30,6 +36,7 @@ class InvestigationRunner:
             return self.desk.run(run['id'])
 
     def work(self, run_id):
+        deadline=time.monotonic()+RUN_TIMEOUT_SECONDS
         try:
             with self.lab.lock, self.lab.db: self.execution(run_id, 'running')
             # The extra iteration lets the admission gate record a clean limit stop.
@@ -38,7 +45,13 @@ class InvestigationRunner:
                     if self.closed: break
                     run = self.desk.run(run_id)
                 if run['status'] != 'running': break
-                self.agent.step(run_id, run['step'], automatic=True)
+                delay=self.agent.live_delay(run)
+                if self.stopping.wait(min(delay,max(0,deadline-time.monotonic()))):break
+                remaining=deadline-time.monotonic()
+                if remaining<=0:
+                    with self.lab.lock,self.lab.db:self.agent.stop(run_id,'interrupted','Investigation time limit reached. No additional model request was made.')
+                    break
+                self.agent.step(run_id, run['step'], automatic=True,timeout=min(TURN_TIMEOUT_SECONDS,remaining))
                 self.agent.checkpoint()
         except Exception:
             with self.lab.lock, self.lab.db:
@@ -66,7 +79,7 @@ class InvestigationRunner:
             return updated
 
     def close(self):
-        with self.lab.lock: self.closed = True
+        with self.lab.lock: self.closed = True; self.stopping.set()
         self.pool.shutdown(wait=True, cancel_futures=True)
         with self.lab.lock, self.lab.db:
             for run_id in self.pending:
