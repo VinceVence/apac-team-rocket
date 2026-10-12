@@ -45,10 +45,16 @@ The HTTP rehearsal uses a temporary database, exercises the actual ADK runner an
 
 The local application assumes one server process owns its SQLite database. A distributed deployment needs database-level atomic reservations across service instances.
 
+These are application admission limits, not an account-wide billing ceiling. Keep the database: deleting it resets the local spend history. Other scripts and direct Cloud Console calls do not pass through this ledger.
+
+For Vertex AI, also configure a Google Cloud **spend cap enforcement** budget scoped to one dedicated project and `aiplatform.googleapis.com`. The current MintTown setup uses a **$1 monthly** cap, with notifications at 50%, 80% and 100%. Google pauses new eligible usage when the estimated threshold is reached, but reporting delays and in-flight requests can produce overages. The cap resets each month and does not cover unrelated services or persistent infrastructure charges. See [Google's spend-cap documentation](https://docs.cloud.google.com/billing/docs/how-to/budgets-spend-caps). Keep live calls off until the console shows the cap as **Configured** and authentication is ready.
+
 ## Gemini integration
 
 The guarded Vertex AI adapter targets `gemini-3.5-flash-lite`. It remains disabled unless the server is explicitly configured with **both** `MINTTOWN_LIVE=1` and `MINTTOWN_FRAUD_LIVE=1`, a `GOOGLE_CLOUD_PROJECT`, supported `GOOGLE_CLOUD_LOCATION` (default `global`), and Application Default Credentials. The UI currently creates fake-mode investigations. No credentials belong in browser code or committed files.
 
 Live model behavior, endpoint access and real token consumption still require an explicitly enabled evaluation. No fine-tuning, external MCP service or paid cloud deployment is required for the local demo.
+
+Local Vertex setup uses an ignored `web/.env.vertex` file and an isolated Cloud SDK/credential directory under ignored `output/google-cloud/`. From the repository root, load the local file with `set -a; source web/.env.vertex; set +a` before starting the server. Both live switches remain `0`; loading the file never enables inference. User ADC inherits the signed-in user's Cloud permissions; it is not an IAM boundary for just this project. Use a dedicated service identity with inference-only permissions for deployment.
 
 See [the investigation implementation](web/fraud_agent.py), [ADK adapter and fake model](web/fraud_adk.py), and [tests](web/test_fraud_agent.py).
