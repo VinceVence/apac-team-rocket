@@ -42,8 +42,8 @@ async function cloudStatus(){
   const cloud=await api('/api/cloud');$('cloud-data-panel').hidden=!cloud.enabled;
   if(cloud.enabled){
     $('deployment-label').textContent='Cloud demo';
-    $('cloud-data-status').textContent=`${cloud.dataset} · ${cloud.daily_exports}/${cloud.daily_export_limit} exports today`;
-    $('cloud-export').disabled=!cloud.healthy||cloud.daily_exports>=cloud.daily_export_limit;
+    $('cloud-data-status').textContent=`${cloud.daily_exports}/${cloud.daily_export_limit} batches today · ${cloud.pending_events.toLocaleString()} events awaiting export`;
+    $('cloud-export').disabled=!cloud.healthy||(cloud.daily_exports>=cloud.daily_export_limit&&!sessionStorage.getItem('minttown-export-request'));
   }
 }
 function setPlaying(on){
@@ -87,7 +87,13 @@ $('world-report').onclick=async()=>{if(state.busy||state.stepping)return;await s
 $('cloud-export').onclick=async()=>{
   if(state.busy||state.stepping)return;setPlaying(false);setBusy(true);$('cloud-export').disabled=true;error('');
   $('cloud-export-result').textContent='Saving a bounded batch…';
-  try{const result=await api('/api/cloud/export',{});$('cloud-export-result').textContent=`${result.row_count.toLocaleString()} records · ${result.status}${result.replayed?' · existing export':''}`}
+  try{
+    const requestId=sessionStorage.getItem('minttown-export-request')||crypto.randomUUID();
+    sessionStorage.setItem('minttown-export-request',requestId);
+    const result=await api('/api/cloud/export',{request_id:requestId});
+    if(['completed','failed'].includes(result.status))sessionStorage.removeItem('minttown-export-request');
+    $('cloud-export-result').textContent=result.row_count?`${result.row_count.toLocaleString()} records · ${result.status} · ${result.remaining_events.toLocaleString()} events remaining`:'All events exported. No new load job needed.';
+  }
   catch(e){error(e.message);$('cloud-export-result').textContent='Export could not be confirmed.'}
   finally{setBusy(false);await cloudStatus().catch(e=>error(e.message))}
 };

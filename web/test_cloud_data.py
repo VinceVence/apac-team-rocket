@@ -9,7 +9,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from unittest.mock import patch
 
 from agents import Agents, Config
-from cloud_data import CloudData
+from cloud_data import CloudData, MAX_EXPORT_BYTES, MAX_EXPORT_ROWS
 from fraud_agent import FraudAgent
 from fraud_desk import FraudDesk
 from lab import Lab, LabError
@@ -25,14 +25,17 @@ class Response:
 
 
 class FakeCloud:
-    def __init__(self): self.objects={}; self.jobs=[]; self.fail_jobs=False
+    def __init__(self): self.objects={}; self.jobs=[]; self.fail_jobs=False; self.fail_lookup=False; self.job_error=False
     def request(self, method, url, **kwargs):
         parts=urlsplit(url)
         if parts.netloc=='bigquery.googleapis.com':
             if method=='POST':
                 self.jobs.append(kwargs['json'])
                 if self.fail_jobs: raise TimeoutError('Ambiguous batch submission')
-            return Response(data={'status':{'state':'DONE'}})
+            elif self.fail_lookup: return Response(503)
+            status={'state':'DONE'}
+            if self.job_error:status['errorResult']={'reason':'invalid','message':'Test load failure'}
+            return Response(data={'status':status})
         if method=='POST':
             query=parse_qs(parts.query); name=query['name'][0]; wanted=query['ifGenerationMatch'][0]
             current=self.objects.get(name,('0',b''))
@@ -99,7 +102,7 @@ class CloudChecks(unittest.TestCase):
         self.assertEqual(result['budget']['case_committed_microusd'],10000)
 
     def test_export_is_one_idempotent_batch_with_partitionable_records(self):
-        result=self.cloud.export(self.lab)
+        result=self.cloud.export(self.lab,'first-batch')
         self.assertEqual(result['status'],'completed');self.assertEqual(len(self.remote.jobs),1)
         job=self.remote.jobs[0]
         self.assertNotIn('query',job['configuration'])
@@ -110,19 +113,75 @@ class CloudChecks(unittest.TestCase):
         self.assertEqual(len(records),result['row_count'])
         self.assertEqual({r['source_table'] for r in records},{'customers','accounts','financial_events','ledger_entries'})
         self.assertTrue(all(r['batch_id']==result['id'] and r['exported_at'] and isinstance(r['payload'],dict) for r in records))
-        replay=self.cloud.export(self.lab)
+        replay=self.cloud.export(self.lab,'first-batch')
         self.assertTrue(replay['replayed']);self.assertEqual(len(self.remote.jobs),1)
+        noop=self.cloud.export(self.lab,'unchanged')
+        self.assertEqual(noop['row_count'],0);self.assertEqual(len(self.remote.jobs),1)
+        with self.lab.db:self.lab.event('new-event','C001','test',0,self.lab.clock_day)
+        self.assertEqual(self.cloud.export(self.lab,'unchanged')['row_count'],0)
+        self.assertEqual(self.cloud.status(self.lab)['daily_exports'],1)
+
+    def test_full_hosted_economy_exports_in_complete_bounded_batches(self):
+        from server import make_server
+        remote=FakeCloud(); cloud=CloudData('test-project','full-seed','simulation',session=remote)
+        server=make_server(0,self.root/'full-seed.db',cloud=cloud)
+        try:
+            lab=server.lab
+            self.assertEqual(lab.db.execute('SELECT count(*) FROM customers').fetchone()[0],240)
+            expected={r['id'] for r in lab.rows('SELECT id FROM financial_events')}
+            self.assertGreater(sum(lab.db.execute('SELECT count(*) FROM '+table).fetchone()[0] for table in ('customers','accounts','financial_events','ledger_entries')),MAX_EXPORT_ROWS)
+            seen=set(); leg_ids=set()
+            for n in range(2):
+                result=cloud.export(lab,'full-batch-'+str(n))
+                self.assertEqual(result['status'],'completed')
+                self.assertLessEqual(result['row_count'],MAX_EXPORT_ROWS)
+                self.assertLessEqual(result['size_bytes'],MAX_EXPORT_BYTES)
+                self.assertEqual(cloud.export(lab,'full-batch-'+str(n))['id'],result['id'])
+                records=[json.loads(line) for line in gzip.decompress(remote.objects['exports/'+result['id']+'.jsonl.gz'][1]).splitlines()]
+                events={r['record_id'] for r in records if r['source_table']=='financial_events'}
+                self.assertFalse(seen & events);seen.update(events)
+                legs=[r['payload'] for r in records if r['source_table']=='ledger_entries']
+                self.assertTrue(all(leg['event_id'] in events for leg in legs))
+                for event_id in events:
+                    expected_legs={r['id'] for r in lab.rows('SELECT id FROM ledger_entries WHERE event_id=?',(event_id,))}
+                    actual={leg['id'] for leg in legs if leg['event_id']==event_id}
+                    self.assertEqual(expected_legs,actual)
+                    self.assertEqual(sum(leg['delta_minor'] for leg in legs if leg['event_id']==event_id),0)
+                leg_ids.update(leg['id'] for leg in legs)
+            self.assertEqual(seen,expected)
+            self.assertEqual(len(leg_ids),lab.db.execute('SELECT count(*) FROM ledger_entries').fetchone()[0])
+            self.assertEqual(result['remaining_events'],0)
+            self.assertEqual(len(remote.jobs),2)
+            self.assertEqual(cloud.status(lab)['pending_events'],0)
+        finally:server.server_close();server.lab.db.close()
+
+    def test_uncertain_export_blocks_new_batch_until_job_is_confirmed(self):
+        self.remote.fail_jobs=self.remote.fail_lookup=True
+        first=self.cloud.export(self.lab,'uncertain-job')
+        self.assertEqual(first['status'],'uncertain')
+        with self.lab.db:self.lab.event('after-export','C001','test',0,self.lab.clock_day)
+        self.assertEqual(self.cloud.export(self.lab,'uncertain-job')['id'],first['id'])
+        with self.assertRaisesRegex(LabError,'still unconfirmed'):self.cloud.export(self.lab,'next-job')
+        self.assertEqual(len(self.remote.jobs),1)
+        self.remote.fail_jobs=self.remote.fail_lookup=False
+        self.assertEqual(self.cloud.export(self.lab,'uncertain-job')['status'],'completed')
+        following=self.cloud.export(self.lab,'next-job')
+        self.assertEqual(following['event_count'],1)
+        self.assertEqual(following['event_start'],first['event_end'])
+        self.assertEqual(len(self.remote.jobs),2)
 
     def test_failed_exports_retain_allowance_and_daily_and_size_caps_apply(self):
-        self.remote.fail_jobs=True
+        with patch('cloud_data.MAX_EXPORT_ROWS',2),self.assertRaisesRegex(LabError,'row cap'):self.cloud.export(self.lab,'row-limit')
+        with patch('cloud_data.MAX_EXPORT_BYTES',32),self.assertRaisesRegex(LabError,'payload cap'):self.cloud.export(self.lab,'byte-limit')
+        self.assertEqual(len(self.remote.jobs),0)
+        self.remote.job_error=True
         for n in range(3):
             with self.lab.db:self.lab.event('batch-change-'+str(n),'C001','test',0,self.lab.clock_day)
-            result=self.cloud.export(self.lab);self.assertEqual(result['status'],'uncertain')
-            self.assertTrue(self.cloud.export(self.lab)['replayed'])
+            result=self.cloud.export(self.lab,'failed-'+str(n));self.assertEqual(result['status'],'failed')
+            self.assertTrue(self.cloud.export(self.lab,'failed-'+str(n))['replayed'])
         with self.lab.db:self.lab.event('over-budget','C001','test',0,self.lab.clock_day)
-        with self.assertRaisesRegex(LabError,'Daily BigQuery export'):self.cloud.export(self.lab)
+        with self.assertRaisesRegex(LabError,'Daily BigQuery export'):self.cloud.export(self.lab,'over-budget')
         self.assertEqual(len(self.remote.jobs),3)
-        with patch('cloud_data.MAX_EXPORT_ROWS',2),self.assertRaisesRegex(LabError,'row cap'):self.cloud.export(self.lab)
 
     def test_restore_and_save_have_a_database_size_cap(self):
         with patch('cloud_data.MAX_STATE_BYTES',16),self.assertRaisesRegex(LabError,'database size cap'):self.cloud.save(self.lab)

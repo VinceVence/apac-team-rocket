@@ -122,8 +122,8 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                 path=urlsplit(self.path).path
                 if path=='/api/cloud/export':
                     if not cloud:raise LabError('BigQuery export is available on the hosted demo.',409)
-                    if body:raise LabError('Exports use only the approved simulator tables.')
-                    return self.reply(200,cloud.export(lab))
+                    if set(body)!={'request_id'}:raise LabError('Exports require a request ID and use only the approved simulator tables.')
+                    return self.reply(200,cloud.export(lab,body['request_id']))
                 if path=='/api/fraud-agent/start':
                     if 'report_id' not in body or set(body)-{'report_id','mode','automatic'}:raise LabError('Invalid ADK start command.')
                     automatic=body.pop('automatic',True)

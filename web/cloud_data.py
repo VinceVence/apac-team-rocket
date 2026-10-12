@@ -9,6 +9,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import time
 from pathlib import Path
 from urllib.parse import quote, urlencode
@@ -19,7 +20,6 @@ MAX_STATE_BYTES = 64 * 1024 * 1024
 MAX_EXPORT_BYTES = 16 * 1024 * 1024
 MAX_EXPORT_ROWS = 20000
 DAILY_EXPORTS = 3
-SOURCE_TABLES = ('customers', 'accounts', 'financial_events', 'ledger_entries')
 
 
 class CloudData:
@@ -70,6 +70,13 @@ class CloudData:
             lab.db.execute('''CREATE TABLE IF NOT EXISTS cloud_exports(
                 id TEXT PRIMARY KEY, created_at TEXT NOT NULL, status TEXT NOT NULL,
                 row_count INTEGER NOT NULL, size_bytes INTEGER NOT NULL, job_id TEXT NOT NULL)''')
+            columns = {row['name'] for row in lab.db.execute('PRAGMA table_info(cloud_exports)')}
+            for name, definition in {'request_id':'TEXT', 'event_start':'INTEGER NOT NULL DEFAULT 0',
+                                     'event_end':'INTEGER NOT NULL DEFAULT 0', 'event_count':'INTEGER NOT NULL DEFAULT 0',
+                                     'profile_hash':"TEXT NOT NULL DEFAULT ''"}.items():
+                if name not in columns: lab.db.execute('ALTER TABLE cloud_exports ADD COLUMN ' + name + ' ' + definition)
+            lab.db.execute('CREATE UNIQUE INDEX IF NOT EXISTS cloud_export_request ON cloud_exports(request_id)')
+            lab.db.execute('CREATE INDEX IF NOT EXISTS ledger_event ON ledger_entries(event_id)')
         self.save(lab)
 
     def save(self, lab):
@@ -91,36 +98,93 @@ class CloudData:
 
     def status(self, lab):
         with lab.lock:
-            exports = lab.rows('SELECT * FROM cloud_exports ORDER BY created_at DESC LIMIT 5')
-            today = lab.db.execute('SELECT count(*) FROM cloud_exports WHERE substr(created_at,1,10)=?', (now()[:10],)).fetchone()[0]
+            exports = lab.rows('SELECT * FROM cloud_exports WHERE row_count>0 ORDER BY rowid DESC LIMIT 5')
+            today = self.daily_exports(lab)
+            cursor = self.cursor(lab)
+            pending = lab.db.execute('SELECT count(*) FROM financial_events WHERE rowid>?', (cursor,)).fetchone()[0]
         return {'enabled':True, 'healthy':self.healthy, 'project':self.project, 'dataset':self.dataset,
                 'table':'simulation_records', 'daily_exports':today, 'daily_export_limit':DAILY_EXPORTS,
-                'exports':exports, 'gemini':'disabled in the hosted demo'}
+                'pending_events':pending, 'exports':exports, 'gemini':'disabled in the hosted demo'}
 
-    def export(self, lab):
+    def daily_exports(self, lab):
+        return lab.db.execute('SELECT count(*) FROM cloud_exports WHERE row_count>0 AND substr(created_at,1,10)=?', (now()[:10],)).fetchone()[0]
+
+    def cursor(self, lab):
+        return lab.db.execute("SELECT coalesce(max(event_end),0) FROM cloud_exports WHERE status='completed'").fetchone()[0]
+
+    def reconcile(self, lab):
+        # Unknown submissions keep their allowance. Only a terminal job receipt can release the cursor.
+        for row in lab.rows("SELECT * FROM cloud_exports WHERE status IN ('reserved','submitted','uncertain')"):
+            try:
+                response = self.request('GET', self.job_url() + '/' + row['job_id'], params={'location':self.location})
+                response.raise_for_status(); job = response.json()
+                if job.get('status', {}).get('state') != 'DONE': continue
+                state = 'failed' if job['status'].get('errorResult') else 'completed'
+            except Exception: continue
+            with lab.db: lab.db.execute('UPDATE cloud_exports SET status=? WHERE id=?', (state,row['id']))
+            self.save(lab)
+
+    def job_url(self):
+        return 'https://bigquery.googleapis.com/bigquery/v2/projects/%s/jobs' % quote(self.project, safe='')
+
+    def receipt(self, lab, batch_id, replayed):
+        row = dict(lab.db.execute('SELECT * FROM cloud_exports WHERE id=?', (batch_id,)).fetchone())
+        remaining = lab.db.execute('SELECT count(*) FROM financial_events WHERE rowid>?', (row['event_end'],)).fetchone()[0]
+        return row | {'replayed':replayed, 'remaining_events':remaining}
+
+    def export(self, lab, request_id):
+        if not isinstance(request_id, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,100}', request_id):
+            raise LabError('A valid export request ID is required.')
         with lab.lock:
             if not self.healthy: raise LabError('Cloud state is unavailable.', 503)
+            self.reconcile(lab)
+            prior = lab.db.execute('SELECT id FROM cloud_exports WHERE request_id=?', (request_id,)).fetchone()
+            if prior: return self.receipt(lab, prior['id'], True)
+            if lab.db.execute("SELECT 1 FROM cloud_exports WHERE status IN ('reserved','submitted','uncertain')").fetchone():
+                raise LabError('The previous export is still unconfirmed. Retry its request ID; no new batch was submitted.', 409)
+            start = end = self.cursor(lab)
+            stamp = now(); event_count = size = 0
             records = []
-            for table in SOURCE_TABLES:
+            def record(table, row):
+                return {'source_table':table, 'record_id':str(row['id']),
+                        'customer_id':row.get('customer_id') or (row['id'] if table=='customers' else None), 'payload':row}
+            def bytes_used(rows):
+                return sum(len(encoded(dict(r, batch_id='0'*64, exported_at=stamp)).encode()) + 1 for r in rows)
+            for table in ('customers','accounts'):
                 for row in lab.rows('SELECT * FROM ' + table + ' ORDER BY id LIMIT ?', (MAX_EXPORT_ROWS + 1,)):
-                    records.append({'source_table':table, 'record_id':str(row['id']),
-                                    'customer_id':row.get('customer_id') or (row['id'] if table=='customers' else None), 'payload':row})
-                    if len(records) > MAX_EXPORT_ROWS: raise LabError('Export row cap reached. This demo exports at most 20,000 records.', 413)
-            batch_id = hashlib.sha256(encoded(records).encode()).hexdigest()
-            prior = lab.db.execute('SELECT * FROM cloud_exports WHERE id=?', (batch_id,)).fetchone()
-            if prior: return dict(prior) | {'replayed':True}
-            if lab.db.execute('SELECT count(*) FROM cloud_exports WHERE substr(created_at,1,10)=?', (now()[:10],)).fetchone()[0] >= DAILY_EXPORTS:
+                    records.append(record(table, row))
+                    if len(records)>MAX_EXPORT_ROWS: raise LabError('Customer/account snapshots exceed the export row cap.', 413)
+            size = bytes_used(records)
+            if size>MAX_EXPORT_BYTES: raise LabError('Customer/account snapshots exceed the 16 MiB payload cap.', 413)
+            profile_hash = hashlib.sha256(encoded(records).encode()).hexdigest()
+            # ponytail: one bounded SQLite snapshot under the lab lock; use CDC before scaling this demo.
+            for row in lab.rows('SELECT rowid AS cursor,* FROM financial_events WHERE rowid>? ORDER BY rowid LIMIT ?', (start,MAX_EXPORT_ROWS+1)):
+                event_end = row.pop('cursor')
+                legs = lab.rows('SELECT * FROM ledger_entries WHERE event_id=? ORDER BY id LIMIT ?', (row['id'],MAX_EXPORT_ROWS+1))
+                group = [record('financial_events',row)] + [record('ledger_entries',leg) for leg in legs]
+                group_size = bytes_used(group)
+                if len(records)+len(group)>MAX_EXPORT_ROWS or size+group_size>MAX_EXPORT_BYTES:
+                    if not event_count: raise LabError('One complete transaction exceeds the export row cap or 16 MiB payload cap.', 413)
+                    break
+                records.extend(group); size += group_size; end = event_end; event_count += 1
+            latest = lab.db.execute("SELECT profile_hash FROM cloud_exports WHERE status='completed' ORDER BY rowid DESC LIMIT 1").fetchone()
+            if not event_count and latest and latest['profile_hash']==profile_hash:
+                records=[]  # Persist an idempotent no-op receipt without consuming a load-job allowance.
+            if records and self.daily_exports(lab)>=DAILY_EXPORTS:
                 raise LabError('Daily BigQuery export limit reached.', 429)
-            stamp = now(); job_id = 'minttown_' + batch_id
+            batch_id = hashlib.sha256(encoded([request_id,start,end,records]).encode()).hexdigest()
+            job_id = 'minttown_' + batch_id if records else ''
             body = '\n'.join(encoded(dict(r, batch_id=batch_id, exported_at=stamp)) for r in records).encode()
-            if len(body) > MAX_EXPORT_BYTES: raise LabError('Export exceeds the 16 MiB payload cap.', 413)
             with lab.db:
-                lab.db.execute('INSERT INTO cloud_exports VALUES(?,?,?,?,?,?)', (batch_id, stamp, 'reserved', len(records), len(body), job_id))
+                lab.db.execute('''INSERT INTO cloud_exports(id,created_at,status,row_count,size_bytes,job_id,
+                    request_id,event_start,event_end,event_count,profile_hash) VALUES(?,?,?,?,?,?,?,?,?,?,?)''',
+                    (batch_id,stamp,'reserved' if records else 'completed',len(records),len(body),job_id,request_id,start,end,event_count,profile_hash))
             self.save(lab)  # Reserve the daily allowance before any external batch job.
+            if not records: return self.receipt(lab,batch_id,False)
         try:
             object_name = 'exports/' + batch_id + '.jsonl.gz'
             self.upload(object_name, gzip.compress(body, mtime=0), '0')
-            job_url = 'https://bigquery.googleapis.com/bigquery/v2/projects/%s/jobs' % quote(self.project, safe='')
+            job_url = self.job_url()
             response = self.request('POST', job_url, json={
                 'jobReference':{'projectId':self.project,'jobId':job_id,'location':self.location},
                 'configuration':{'load':{'sourceUris':['gs://' + self.bucket + '/' + object_name],
@@ -138,4 +202,4 @@ class CloudData:
         with lab.lock, lab.db:
             lab.db.execute('UPDATE cloud_exports SET status=? WHERE id=?', (state, batch_id))
         self.save(lab)
-        return {'id':batch_id,'status':state,'row_count':len(records),'size_bytes':len(body),'job_id':job_id,'replayed':False}
+        with lab.lock: return self.receipt(lab,batch_id,False)
