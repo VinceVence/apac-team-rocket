@@ -38,6 +38,14 @@ function renderWorld(){
   drawTown(state.data.customers,state.customerId,state.customerId?'fraud':'world');
 }
 async function refresh(){state.data=await api('/api/state');renderWorld()}
+async function cloudStatus(){
+  const cloud=await api('/api/cloud');$('cloud-data-panel').hidden=!cloud.enabled;
+  if(cloud.enabled){
+    $('deployment-label').textContent='Cloud demo';
+    $('cloud-data-status').textContent=`${cloud.dataset} · ${cloud.daily_exports}/${cloud.daily_export_limit} exports today`;
+    $('cloud-export').disabled=!cloud.healthy||cloud.daily_exports>=cloud.daily_export_limit;
+  }
+}
 function setPlaying(on){
   on=on&&!document.hidden&&state.view==='world';state.playing=on;clearTimeout(state.timer);state.timer=null;
   drawTown.setRunning(on);$('mint-town').classList.toggle('is-running',on);
@@ -76,9 +84,17 @@ $('activity').oninput=()=>{$('activity-value').textContent=$('activity').value};
 $('play-world').onclick=()=>{if(!state.busy&&!state.stepping)setPlaying(!state.playing)};
 $('step-world').onclick=()=>{setPlaying(false);stepWorld()};
 $('world-report').onclick=async()=>{if(state.busy||state.stepping)return;await showView('resolution');await fraudUI.demo('first')};
+$('cloud-export').onclick=async()=>{
+  if(state.busy||state.stepping)return;setPlaying(false);setBusy(true);$('cloud-export').disabled=true;error('');
+  $('cloud-export-result').textContent='Saving a bounded batch…';
+  try{const result=await api('/api/cloud/export',{});$('cloud-export-result').textContent=`${result.row_count.toLocaleString()} records · ${result.status}${result.replayed?' · existing export':''}`}
+  catch(e){error(e.message);$('cloud-export-result').textContent='Export could not be confirmed.'}
+  finally{setBusy(false);await cloudStatus().catch(e=>error(e.message))}
+};
 window.addEventListener('hashchange',()=>showView(!location.hash||location.hash==='#live-world'?'world':'resolution'));
 try{
   await refresh();$('loading-state').hidden=true;
+  await cloudStatus();
   await showView(!location.hash||location.hash==='#live-world'?'world':'resolution');
   await document.fonts.ready;renderWorld();
 }catch(e){$('loading-state').hidden=true;error('Cannot reach MintTown. Start the local server and refresh. '+e.message)}

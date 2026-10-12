@@ -1,0 +1,7 @@
+**
+!Dockerfile
+!web/
+!web/*.py
+!web/requirements-google.txt
+!web/dist/
+!web/dist/**

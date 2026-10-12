@@ -7,10 +7,12 @@ Use the [root README](../README.md) for setup, the current demo and cost limits.
 - `fraud_desk.py`: customer reports, ledger evidence, analyst review and approved memory. Retains the original deterministic five-step rehearsal for comparison.
 - `fraud_agent.py`: durable case state, scoped tools, token accounting and cost/call limits.
 - `fraud_adk.py`: a real ADK `LlmAgent` and native function tools, with an injected fake model by default and a separately gated Vertex AI adapter.
+- `fraud_runner.py`: one background worker, duplicate-start protection, automatic reply continuation and orderly interruption.
+- `cloud_data.py`: generation-checked state checkpoints and bounded, idempotent BigQuery batches for the fake-only hosted demo.
 - `server.py`: loopback HTTP API, Host/origin checks and session token validation.
 - `dist/`: the two-channel UI and original pixel town.
 
-One HTTP step invokes one model generation and executes its single selected function through ADK. The ADK tool response stops that invocation; the next generation receives the saved report, customer replies and actual observations. There is no prescribed tool order. This explicit per-turn boundary supports the UI's step control and makes budget admission and replay protection durable. It does not preserve private reasoning transcripts.
+Each worker iteration invokes one model generation and executes its single selected function through ADK. The ADK tool response stops that invocation; the next iteration receives the saved report, customer replies and actual observations. The browser starts a job and polls; it does not drive the tool loop. There is no prescribed tool order. Manual stepping remains available for diagnosis. Each iteration keeps durable budget admission and replay protection and does not preserve private reasoning transcripts.
 
 ## Endpoints
 
@@ -18,17 +20,17 @@ One HTTP step invokes one model generation and executes its single selected func
 |---|---|
 | `GET /api/fraud-desk` | Reports, approved memories, local runtime availability |
 | `GET /api/fraud-desk/reports/{id}` | Case, tool trail, current question and budget |
-| `POST /api/fraud-agent/start` | Start/reuse a case revision; defaults to fake mode |
+| `POST /api/fraud-agent/start` | Queue/reuse a case revision; defaults to fake + automatic; `automatic: false` enables manual stepping |
 | `POST /api/fraud-agent/step` | Execute one generation with an expected-step guard |
 | `POST /api/fraud-agent/handoff` | Operator-only handoff after a stopped investigation |
-| `POST /api/fraud-desk/reply` | Append a customer reply using the report revision |
+| `POST /api/fraud-desk/reply` | Append a customer reply using the report revision and resume automatic cases |
 | `POST /api/fraud-desk/review` | Operator review, simulated receipt and optional approved memory |
 
 The model has six tools: transaction retrieval, historical comparisons, recipient tracing, reviewed-case search, asking the customer, and submitting a recommendation. Review approval and memory publication are deliberately absent from the model's tools. Related-recipient queries return bounded transaction evidence without other customer profiles. The descriptive behavior checks are not trained fraud classifiers.
 
 ## Storage and costs
 
-The 35-table local database retains the existing simulator, historical science/marketing data, fraud cases and `fraud_agent_turns`. Each new turn stores its bounded model input, selected command, tool result, token usage, provider, requested model, reservation, actual or simulated cost, UTC timestamp and failure state. Integer micro-USD accounting rounds upward. Reasoning tokens count as output.
+The 36-table local database retains the existing simulator, historical science/marketing data, fraud cases, `fraud_agent_turns` and immutable `fraud_evidence_snapshots`. Hosted mode adds `cloud_exports` to account for data exports. Each new turn stores its bounded model input, selected command, tool result, token usage, provider, requested model, reservation, actual or simulated cost, UTC timestamp and failure state. Integer micro-USD accounting rounds upward. Reasoning tokens count as output.
 
 Live fraud-agent usage joins the application's existing Gemini budget. Fake usage is isolated and labeled simulated, but goes through the same reservation and limit checks. Limits are cumulative across all revisions of a report. Failed requests without trustworthy usage keep their reservation; startup marks unfinished reservations uncertain. No automatic retries or model upgrades occur.
 

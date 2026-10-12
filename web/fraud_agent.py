@@ -6,6 +6,7 @@ import json
 import os
 import re
 import statistics
+import uuid
 from decimal import Decimal, ROUND_CEILING
 
 from fraud_desk import LESSON, QUESTION, cues, text
@@ -40,12 +41,20 @@ def micro(value):
 
 
 class FraudAgent:
-    def __init__(self, desk, agents, model_factory=None, case_usd=.02, max_case_calls=6, clock=now):
+    def __init__(self, desk, agents, model_factory=None, case_usd=.02, max_case_calls=6, clock=now, checkpoint=None):
         self.desk, self.lab, self.agents = desk, desk.lab, agents
         self.model_factory, self.case_limit, self.max_case_calls, self.clock = model_factory, micro(case_usd), max_case_calls, clock
+        self.checkpoint = checkpoint or (lambda: None)
         if not 0 < self.case_limit <= 100000 or not 1 <= max_case_calls <= 6:
             raise ValueError('Use a positive case budget up to $0.10 and 1–6 generations.')
         self.lab.db.executescript('''
+        CREATE TABLE IF NOT EXISTS fraud_evidence_snapshots(
+          id TEXT PRIMARY KEY, run_id TEXT NOT NULL UNIQUE REFERENCES fraud_investigations(id),
+          report_id TEXT NOT NULL REFERENCES fraud_reports(id), captured_at TEXT NOT NULL,
+          as_of TEXT NOT NULL, event_watermark INTEGER NOT NULL, evidence_hash TEXT NOT NULL,
+          data_json TEXT NOT NULL);
+        CREATE TRIGGER IF NOT EXISTS immutable_fraud_snapshot
+          BEFORE UPDATE ON fraud_evidence_snapshots BEGIN SELECT RAISE(ABORT,'Evidence snapshots are immutable'); END;
         CREATE TABLE IF NOT EXISTS fraud_agent_turns(
           id TEXT PRIMARY KEY, report_id TEXT NOT NULL REFERENCES fraud_reports(id),
           run_id TEXT NOT NULL REFERENCES fraud_investigations(id), seq INTEGER NOT NULL,
@@ -60,15 +69,63 @@ class FraudAgent:
             self.lab.db.execute("ALTER TABLE fraud_agent_turns ADD COLUMN request_json TEXT NOT NULL DEFAULT '{}'")
         with self.lab.lock, self.lab.db:
             self.lab.db.execute("UPDATE fraud_agent_turns SET status='uncertain',error='Process stopped during this model turn; reservation retained.' WHERE status='reserved'")
-            self.lab.db.execute("UPDATE fraud_investigations SET status='interrupted' WHERE status='stepping' AND json_extract(context,'$.controller')='adk'")
+            for row in self.lab.rows("SELECT id FROM fraud_investigations WHERE json_extract(context,'$.controller')='adk' AND (status='stepping' OR (status='running' AND json_extract(context,'$.execution.status') IN ('queued','running')))"):
+                self.stop(row['id'], 'interrupted', 'Server restarted during an investigation. Evidence and cost reservations were retained; no request was retried.')
         desk.agent = self
+
+    def stop(self, run_id, status, message):
+        run = self.desk.run(run_id)
+        run['context']['stop_reason'] = message
+        if 'execution' in run['context']: run['context']['execution']['status'] = status
+        self.lab.db.execute('UPDATE fraud_investigations SET status=?,context=? WHERE id=?', (status, encoded(run['context']), run_id))
+        self.lab.db.execute("UPDATE fraud_reports SET status='needs_review' WHERE id=?", (run['report_id'],))
+
+    def capture(self, run, report):
+        """Materialize bounded evidence under the same lock/transaction as case creation."""
+        transactions = self.desk.transactions(report)
+        cutoff = min(t['occurred_at'] for t in transactions)
+        since = (dt.date.fromisoformat(cutoff[:10]) - dt.timedelta(days=30)).isoformat()
+        watermark = self.lab.db.execute('SELECT coalesce(max(rowid),0) FROM financial_events').fetchone()[0]
+        history = self.lab.rows("SELECT id,amount_minor,to_account,occurred_at FROM financial_events WHERE customer_id=? AND kind='payment' AND status='settled' AND occurred_at>=? AND occurred_at<? ORDER BY occurred_at DESC,id DESC LIMIT 60", (report['customer_id'], since, cutoff))
+        recipients = {payee: self.lab.rows("SELECT id,amount_minor,to_account,occurred_at FROM financial_events WHERE to_account=? AND kind='payment' AND status='settled' AND occurred_at<=? ORDER BY rowid DESC LIMIT 10", (payee, self.lab.clock_day + 'T23:59:59.999Z'))
+                      for payee in sorted({t['to_account'] for t in transactions if t['to_account']})}
+        memories = [m for m in self.desk.memories() if m['source_report_id'] != report['id'] and m['validation']['passed']][:100]
+        data = {'transactions': transactions, 'history': history, 'recipients': recipients, 'memories': memories}
+        snapshot_id = 'SNP-' + uuid.uuid4().hex[:12]
+        self.lab.db.execute('INSERT INTO fraud_evidence_snapshots VALUES(?,?,?,?,?,?,?,?)',
+            (snapshot_id, run['id'], report['id'], self.clock(), self.lab.clock_day, watermark, self.lab.fingerprint(data), encoded(data)))
+        return self.snapshot(snapshot_id)
+
+    def snapshot(self, snapshot_id):
+        row = self.lab.db.execute('SELECT * FROM fraud_evidence_snapshots WHERE id=?', (snapshot_id,)).fetchone()
+        if not row: raise LabError('This saved run has no evidence snapshot. Hand it to an analyst or create a new report.', 409)
+        result = dict(row); result['data'] = json.loads(result.pop('data_json'))
+        if self.lab.fingerprint(result['data']) != result['evidence_hash']:
+            raise LabError('The saved evidence snapshot failed its integrity check.', 409)
+        return result
+
+    def timeline(self, report_id):
+        trail = []
+        for row in self.lab.rows('SELECT t.*,i.report_revision,i.context,i.trace FROM fraud_agent_turns t JOIN fraud_investigations i ON i.id=t.run_id WHERE t.report_id=? ORDER BY t.rowid', (report_id,)):
+            decision = json.loads(row['decision']) if row['decision'] else {}
+            receipt = next((r for r in json.loads(row['trace']) if r['step'] == row['seq'] + 1), {})
+            trail.append({'number': len(trail) + 1, 'turn_id': row['id'], 'run_id': row['run_id'],
+                'revision': row['report_revision'], 'tool': decision.get('tool'),
+                'purpose': decision.get('args', {}).get('purpose', ''), 'status': row['status'],
+                'finding': receipt.get('finding', ''), 'provenance': receipt.get('provenance'),
+                'result': json.loads(row['tool_result']) if row['tool_result'] else None,
+                'error': row['error'], 'provider': row['provider'], 'created_at': row['created_at'],
+                'input_tokens': row['input_tokens'], 'output_tokens': row['output_tokens'],
+                'committed_usd': (row['cost_microusd'] if row['cost_microusd'] is not None else row['reserved_microusd']) / 1e6,
+                'cost_is_reserved': row['cost_microusd'] is None})
+        return trail
 
     def runtime(self):
         try: version = importlib.metadata.version('google-adk')
         except importlib.metadata.PackageNotFoundError: version = None
         return {'engine': 'google-adk', 'version': version, 'default_mode': 'fake', 'model': MODEL,
                 'live_enabled': self.live_enabled(), 'case_limit_usd': self.case_limit / 1e6,
-                'max_case_calls': self.max_case_calls}
+                'max_case_calls': self.max_case_calls, 'automatic_runner': True}
 
     def live_enabled(self):
         return bool(self.agents.config.live and os.getenv('MINTTOWN_FRAUD_LIVE') == '1' and os.getenv('GOOGLE_CLOUD_PROJECT'))
@@ -105,24 +162,28 @@ class FraudAgent:
             if run['trace']: raise LabError('This report already has a fixed rehearsal. Create a new report for ADK.', 409)
             report = self.desk.report(report_id)
             context = dict(old['context']) if old and old['context'].get('controller') == 'adk' else {}
+            snapshot = self.capture(run, report)
             source_hash = self.lab.fingerprint(self.desk.transactions(report))
-            if context.get('source_hash') and context['source_hash'] != source_hash:
-                context = {}  # Reuse the case budget, never observations from a changed ledger snapshot.
+            if context.get('snapshot_hash') != snapshot['evidence_hash']:
+                context = {}  # A new evidence revision must not reuse obsolete observations.
             context.update(controller='adk', provider=mode, model=MODEL, prompt_version=PROMPT_VERSION,
-                           source_hash=source_hash,
+                           source_hash=source_hash, snapshot_id=snapshot['id'], snapshot_hash=snapshot['evidence_hash'],
                            report_story=report['story'], report_message=report['message'], answers=report['answers'],
                            cues=cues(' '.join([report['story'], report['message']] + [a['text'] for a in report['answers']])))
             context.pop('pending_question', None); context.pop('stop_reason', None)
+            context.pop('execution', None)
             context.setdefault('observations', []); context.setdefault('memories', [])
             self.lab.db.execute('UPDATE fraud_investigations SET context=? WHERE id=?', (encoded(context), run['id']))
             return self.desk.run(run['id'])
 
     def packet(self, run):
         report = self.desk.report(run['report_id'])
+        snapshot = self.snapshot(run['context'].get('snapshot_id'))
         return {'report_id': report['id'], 'customer_id': report['customer_id'],
                 'story': report['story'], 'message_transcript': report['message'], 'event_ids': report['event_ids'],
                 'customer_replies': report['answers'],
-                'ingestion_flags': [f for t in self.desk.transactions(report) for f in t['metadata'].get('review_flags', [])],
+                'evidence_snapshot': {'id': snapshot['id'], 'as_of': snapshot['as_of'], 'event_watermark': snapshot['event_watermark']},
+                'ingestion_flags': [f for t in snapshot['data']['transactions'] for f in t['metadata'].get('review_flags', [])],
                 'observations': run['context'].get('observations', []),
                 'remaining_generations': max(0, self.max_case_calls - self.budget(report['id'], run['context']['provider'])['case_calls'])}
 
@@ -143,7 +204,8 @@ class FraudAgent:
             identifier = run_id + ':' + str(run['step'])
             self.lab.db.execute('INSERT INTO fraud_agent_turns(id,report_id,run_id,seq,provider,model,status,reserved_microusd,created_at,request_json) VALUES(?,?,?,?,?,?,?,?,?,?)',
                                 (identifier, run['report_id'], run_id, run['step'], mode, MODEL, 'reserved', RESERVE_MICROUSD, self.clock(), encoded(payload)))
-            return identifier
+        self.checkpoint()
+        return identifier
 
     def record_response(self, turn_id, response):
         usage = response.usage_metadata
@@ -176,6 +238,8 @@ class FraudAgent:
                 raise LabError('Case state changed before tool execution.', 409)
             if context['source_hash'] != self.lab.fingerprint(self.desk.transactions(report)):
                 raise LabError('Transaction evidence changed. Hand this case to an analyst.', 409)
+            snapshot = self.snapshot(context.get('snapshot_id')); evidence = snapshot['data']
+            source_ids, memory_ids = [], []
             turn_id = run_id + ':' + str(run['step'])
             repeated = self.lab.db.execute("SELECT 1 FROM fraud_agent_turns WHERE run_id=? AND status='completed' AND json_remove(decision,'$.args.purpose')=?", (run_id, encoded({'tool': name, 'args': args}))).fetchone()
             if repeated and name != 'submit_for_review': raise LabError('Repeated tool call without new evidence. Investigation paused.', 409)
@@ -183,42 +247,50 @@ class FraudAgent:
                 ids = args['event_ids'] or report['event_ids']
                 if not isinstance(ids, list) or not ids or len(ids) > 10 or any(not isinstance(i, str) or i not in report['event_ids'] for i in ids):
                     raise LabError('Transaction IDs must belong to this report.', 403)
-                transactions = [t for t in self.desk.transactions(report) if t['id'] in ids]
+                transactions = [t for t in evidence['transactions'] if t['id'] in ids]
                 known = {t['id']: t for t in context.get('transactions', [])}; known.update({t['id']: t for t in transactions})
-                context['transactions'] = list(known.values()); context['evidence_hash'] = self.lab.fingerprint(self.desk.transactions(report))
+                context['transactions'] = list(known.values()); context['evidence_hash'] = context['source_hash']
                 output = {'transactions': [{k: t[k] for k in ('id','customer_id','amount_minor','occurred_at','status','to_account')} | {'authorization_recorded': t['metadata'].get('authorization_verified'), 'device_known': t['metadata'].get('device_known')} for t in transactions]}
+                source_ids = [t['id'] for t in transactions]
+                finding = '%d reported transfer(s) verified against the saved ledger evidence.' % len(transactions)
             elif name == 'compare_behavior':
                 days = args['window_days']
                 if type(days) is not int or not 1 <= days <= 30: raise LabError('Use a 1–30 day history window.')
-                tx = self.desk.transactions(report); cutoff = min(t['occurred_at'] for t in tx)
+                tx = evidence['transactions']; cutoff = min(t['occurred_at'] for t in tx)
                 since = (dt.date.fromisoformat(cutoff[:10]) - dt.timedelta(days=days)).isoformat()
-                history = self.lab.rows("SELECT id,amount_minor,to_account FROM financial_events WHERE customer_id=? AND kind='payment' AND status='settled' AND occurred_at>=? AND occurred_at<? ORDER BY occurred_at DESC,id DESC LIMIT 60", (report['customer_id'], since, cutoff))
+                history = [h for h in evidence['history'] if h['occurred_at'] >= since]
                 median = statistics.median(h['amount_minor'] for h in history) if history else None
                 output = {'window_days': days, 'history_count': len(history), 'median_minor': median,
                           'unusual_amount': any(t['amount_minor'] > 4 * median for t in tx) if median else None,
                           'new_recipient': any(t['to_account'] not in {h['to_account'] for h in history} for t in tx) if history else None,
                           'method': 'Historical comparisons, not a trained fraud model.'}
                 context['signals'] = output
+                source_ids = [t['id'] for t in tx] + [h['id'] for h in history]
+                finding = 'Compared %d prior payments over %d days. Unusual amount: %s; new recipient: %s.' % (len(history), days, output['unusual_amount'], output['new_recipient'])
             elif name == 'trace_recipient':
                 recipient = args['recipient_id']
-                if recipient not in {t['to_account'] for t in self.desk.transactions(report)}: raise LabError('Recipient is outside this case.', 403)
-                linked = self.lab.rows("SELECT id,amount_minor,to_account FROM financial_events WHERE to_account=? AND kind='payment' AND status='settled' ORDER BY rowid DESC LIMIT 10", (recipient,))
+                if recipient not in evidence['recipients']: raise LabError('Recipient is outside this case.', 403)
+                linked = evidence['recipients'][recipient]
                 output = {'recipient_id': recipient, 'related_transfers': linked, 'limit': 'Shared recipient is a lead, not proof of a scam.'}
+                source_ids = [t['id'] for t in linked]
+                finding = '%d transfer(s) to this recipient were present when the evidence was saved. A shared recipient is a lead, not proof.' % len(linked)
             elif name == 'search_reviewed_cases':
                 query = text(args['query'], 'Search query', 3, 200)
                 tokens = set(re.findall(r'[a-z_]+', query.lower())) | set(cues(query))
                 matches = []
-                for m in self.desk.memories():
-                    if m['source_report_id'] == report['id']: continue
+                for m in evidence['memories']:
                     if tokens & set(m['pattern']['cues']) or any(p in query for p in m['pattern']['recipient_accounts']):
                         matches.append(m)
                 context['memories'] = matches[:3]
                 output = {'matches': [{'id': m['id'], 'source_report_id': m['source_report_id'], 'review_id': m['review_id'], 'lesson': m['lesson'], 'next_question': m['next_question']} for m in context['memories']]}
+                memory_ids = [m['id'] for m in context['memories']]
+                finding = '%d analyst-approved case(s) matched. Retrieved lessons are leads to verify.' % len(memory_ids)
             elif name == 'ask_customer':
                 question = text(args['question'], 'Customer question', 10, 400)
                 context['pending_question'] = question; output = {'question': question, 'status': 'awaiting_customer'}
                 run['status'] = 'awaiting_customer'
                 self.lab.db.execute("UPDATE fraud_reports SET status='awaiting_customer' WHERE id=?", (report['id'],))
+                finding = 'Paused for the customer: ' + question
             else:
                 if args['assessment'] not in ('suspected_scam','needs_information','likely_legitimate'): raise LabError('Unsupported assessment.')
                 if args['action'] not in ('request_recall','support_followup'): raise LabError('Unsupported proposed action.')
@@ -238,7 +310,13 @@ class FraudAgent:
                 output = {'status': 'awaiting_review', 'recommendation': run['recommendation']}
                 run['status'] = 'awaiting_review'
                 self.lab.db.execute("UPDATE fraud_reports SET status='awaiting_review' WHERE id=?", (report['id'],))
-            receipt = {'step': run['step'] + 1, 'tool': name, 'args': args, 'summary': purpose, 'output': output, 'created_at': self.clock()}
+                source_ids = ids; memory_ids = args['memory_ids']
+                finding = 'Submitted %s with %d transaction citation(s) and %d reviewed memory citation(s). No action was executed.' % (args['assessment'].replace('_', ' '), len(ids), len(memory_ids))
+            provenance = {'snapshot_id': snapshot['id'], 'as_of': snapshot['as_of'], 'captured_at': snapshot['captured_at'],
+                          'event_watermark': snapshot['event_watermark'], 'evidence_hash': snapshot['evidence_hash'],
+                          'record_ids': source_ids, 'memory_ids': memory_ids}
+            receipt = {'step': run['step'] + 1, 'tool': name, 'args': args, 'summary': purpose, 'finding': finding,
+                       'provenance': provenance, 'output': output, 'created_at': self.clock()}
             run['trace'].append(receipt); context['observations'].append({'tool': name, 'result': output})
             self.lab.db.execute("UPDATE fraud_agent_turns SET status='completed',tool_result=? WHERE id=?", (encoded(output), turn_id))
             status = 'running' if run['status'] == 'stepping' else run['status']
@@ -266,20 +344,25 @@ class FraudAgent:
             self.lab.db.execute("UPDATE fraud_reports SET status='awaiting_review' WHERE id=?", (report['id'],))
             return self.desk.detail(report['id'])
 
-    def step(self, run_id, expected_step):
+    def step(self, run_id, expected_step, automatic=False):
         run_id = text(run_id, 'Investigation ID', 1, 80)
         if type(expected_step) is not int or expected_step < 0: raise LabError('Use the current generation number.')
         with self.lab.lock, self.lab.db:
             run = self.desk.run(run_id)
             if run['context'].get('controller') != 'adk': raise LabError('This is not an ADK investigation.', 409)
+            if not automatic and run['context'].get('execution', {}).get('status') in ('queued', 'running'):
+                raise LabError('The automatic runner owns this investigation. Read its progress instead.', 409)
             if expected_step < run['step']: return run
             if expected_step > run['step'] or run['status'] == 'stepping': raise LabError('Investigation generation changed or is already running.', 409)
             if run['status'] != 'running': return run
             report = self.desk.report(run['report_id'])
             if report['revision'] != run['report_revision']: raise LabError('The report changed; start the current revision.', 409)
             self.lab.db.execute("UPDATE fraud_investigations SET status='stepping' WHERE id=?", (run_id,))
-            packet = self.packet(run)
         try:
+            with self.lab.lock:
+                if run['context']['source_hash'] != self.lab.fingerprint(self.desk.transactions(report)):
+                    raise LabError('Transaction evidence changed. Hand this case to an analyst.', 409)
+                packet = self.packet(run)
             from fraud_adk import run_turn
             events = asyncio.run(run_turn(self, run, packet))
             with self.lab.lock, self.lab.db:
@@ -291,9 +374,7 @@ class FraudAgent:
         except Exception as exc:
             message = str(exc) if isinstance(exc, LabError) else 'ADK could not complete this turn. No automatic retry was made.'
             with self.lab.lock, self.lab.db:
-                run = self.desk.run(run_id); run['context']['stop_reason'] = message
                 status = 'budget_exhausted' if isinstance(exc, LabError) and exc.status == 429 else 'failed'
-                self.lab.db.execute('UPDATE fraud_investigations SET status=?,context=? WHERE id=?', (status, encoded(run['context']), run_id))
-                self.lab.db.execute("UPDATE fraud_reports SET status='needs_review' WHERE id=?", (run['report_id'],))
+                self.stop(run_id, status, message)
                 self.lab.db.execute("UPDATE fraud_agent_turns SET status='failed',error=? WHERE run_id=? AND seq=? AND status!='completed'", (message, run_id, expected_step))
                 return self.desk.run(run_id)

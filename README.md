@@ -18,11 +18,11 @@ Open http://localhost:3000. The UI has two channels: **Town** and **Scam desk**.
 
 ## Demo
 
-1. Start a scam demo from the town, then choose **Investigate**.
+1. Start a scam demo from the town, then choose **Investigate**. A server worker runs the investigation; the browser only reads its progress.
 2. Inspect the ADK tool trail and submit an analyst review with a saved lesson.
 3. Create a **Similar report**. The fake model chooses memory retrieval first, verifies the transfer and asks a targeted question.
-4. Answer the question and continue. The same case budget survives the reply and the investigation proposes a resolution for review.
-5. Use **More scenarios** for a benign payment. It takes a shorter tool path.
+4. Answer the question. The worker resumes automatically, the same case budget survives, and the investigation proposes a resolution for review.
+5. Use **More scenarios** for a benign payment. It takes a shorter tool path when daily allowance remains.
 
 All transfers, recall requests and customer messages are simulated. No real money is moved. Only the operator can approve a case or publish memory.
 
@@ -34,6 +34,16 @@ All transfers, recall requests and customer messages are simulated. No real mone
 ```
 
 The HTTP rehearsal uses a temporary database, exercises the actual ADK runner and function tools, and forbids constructing a Gemini client. Its JSON report is written under `web/reports/`.
+
+The first and second cases consume 5 + 5 simulated generations under the default 10-call daily allowance. The rehearsal proves the next case stops before making a model call, then uses a separate temporary database for the benign comparison. It never clears the saved application's ledger.
+
+## Automatic execution and evidence
+
+`POST /api/fraud-agent/start` queues automatic execution by default and returns HTTP 202 while queued/running. Repeating it reuses the same run. `automatic: false` retains manual stepping for diagnostics. Replies to automatic cases resume the worker. The worker pauses for a customer, analyst review, a cost/call limit, or an error. One worker runs at a time; refreshes and closed browser tabs do not cancel it. Restarted queued/in-flight cases require analyst attention and retain reservations instead of silently retrying.
+
+Each investigation stores an immutable `fraud_evidence_snapshots` row: reported transfers, up to 60 prior payments within 30 days, up to 10 related transfers per recipient, and the latest 100 eligible reviewed memories. Retrieval returns at most 3 matching memories. Copies, capture time, simulator date, event watermark and a content hash preserve what was available, including when later transactions are backdated or history changes. Changes to the reported transfers still block automatic submission and analyst approval. A reply captures a new revision; old observations are reused only if the evidence hash is unchanged, and spending never resets.
+
+The case's decision trail spans revisions and shows the selected tool, public purpose, observed result, snapshot/source references, failure status and actual or simulated cost. It does not expose private model reasoning.
 
 ## Budget controls
 
@@ -58,3 +68,13 @@ Live model behavior, endpoint access and real token consumption still require an
 Local Vertex setup uses an ignored `web/.env.vertex` file and an isolated Cloud SDK/credential directory under ignored `output/google-cloud/`. From the repository root, load the local file with `set -a; source web/.env.vertex; set +a` before starting the server. Both live switches remain `0`; loading the file never enables inference. User ADC inherits the signed-in user's Cloud permissions; it is not an IAM boundary for just this project. Use a dedicated service identity with inference-only permissions for deployment.
 
 See [the investigation implementation](web/fraud_agent.py), [ADK adapter and fake model](web/fraud_adk.py), and [tests](web/test_fraud_agent.py).
+
+## Hosted team demo
+
+[deploy/plan.json](deploy/plan.json) specifies the proposed Cloud Run, Cloud Storage and BigQuery controls. The container serves the same UI and API. Hosted mode forces Gemini off regardless of environment flags, and its runtime service account should have no Vertex inference permission. Browser access uses IAP with explicitly granted Google accounts; this project has no organization, so its first IAP OAuth setup uses the Cloud Console.
+
+For this small, single-worker demo, committed SQLite state is checkpointed to one Cloud Storage object using generation preconditions. Cold starts restore reports, snapshots, memory and budget history. Conflicts and uncertain writes fence the instance instead of overwriting another writer; a liveness probe restarts it. The database is capped at 64 MiB. This checkpoint design has a single-writer ceiling; move operational state to a transactional managed database before scaling instances or enabling cloud inference.
+
+The hosted town has an explicit **Export simulator data** action. It loads one atomic BigQuery batch containing records from `customers`, `accounts`, `financial_events` and `ledger_entries`, with batch IDs and source-table names. Exports are limited to 3 per UTC day, 20,000 records and 16 MiB each. Failed/uncertain submissions retain their allowance and job IDs. The application issues no analytical query jobs. BigQuery partitions and staged exports retain 7 days of data; the live state object is retained and overwritten without object version history.
+
+Cloud Run uses one instance, one CPU, 1 GiB memory, no minimum instances, instance-based billing for the background worker, and a $1 monthly spend cap. Whole-project $5 alerts include other services but are not an overall hard cap. Google enforcement delays can cause overages. Cloud Build is bounded to a 600-second build. Credential/config/data/report directories are excluded by the explicit `.gcloudignore` and `.dockerignore` upload allowlists.

@@ -94,6 +94,8 @@ class FraudDesk:
             if self.agent:
                 result['budget'] = self.agent.budget(result['report_id'], result['provider'])
                 result['gemini_calls'] = result['budget']['case_calls'] if result['provider'] == 'gemini' else 0
+                snapshot = self.lab.db.execute('SELECT id,as_of,captured_at,event_watermark,evidence_hash FROM fraud_evidence_snapshots WHERE run_id=?', (run_id,)).fetchone()
+                result['snapshot'] = dict(snapshot) if snapshot else None
         return result
 
     def detail(self, report_id):
@@ -106,6 +108,7 @@ class FraudDesk:
             report.update(customer=dict(self.lab.db.execute('SELECT * FROM customers WHERE id=?', (report['customer_id'],)).fetchone()),
                           transactions=self.transactions(report), investigation=self.run(latest[0]) if latest else None,
                           reviews=reviews)
+            if self.agent: report['decision_trail'] = self.agent.timeline(report_id)
             return report
 
     def dashboard(self):

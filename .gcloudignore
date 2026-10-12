@@ -1,0 +1,11 @@
+**
+!.gcloudignore
+!Dockerfile
+!.dockerignore
+!web/
+!web/*.py
+!web/requirements-google.txt
+!web/dist/
+!web/dist/**
+!deploy/
+!deploy/cloudbuild.yaml

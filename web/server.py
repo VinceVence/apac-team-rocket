@@ -2,12 +2,15 @@
 import argparse
 import functools
 import json
+import os
 import secrets
+import signal
+import tempfile
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from agents import Agents
+from agents import Agents, Config
 from lab import Lab, LabError, encoded
 from world import World
 from science import Science
@@ -17,13 +20,20 @@ from mesh import Mesh,TABLES as MESH_TABLES
 from customer_data import CustomerData,TABLES as CUSTOMER_TABLES
 from fraud_desk import FraudDesk,TABLES as FRAUD_TABLES
 from fraud_agent import FraudAgent
+from fraud_runner import InvestigationRunner
 
 ROOT=Path(__file__).resolve().parent
 
 
-def make_server(port=3000, db_path=None, config=None):
+class MintTownServer(ThreadingHTTPServer):
+    def server_close(self):
+        super().server_close()
+        if hasattr(self, 'fraud_runner'): self.fraud_runner.close()
+
+
+def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=None):
     (ROOT/'data').mkdir(exist_ok=True)
-    lab=Lab(db_path or ROOT/'data'/'minttown.sqlite3'); agents=Agents(lab,config)
+    lab=Lab(db_path or ROOT/'data'/'minttown.sqlite3'); agents=Agents(lab,Config(live=False) if cloud else config)
     world=World(lab);science=Science(lab)
     macro=Macro(lab,world,agents);world.macro=macro
     science_team=ScienceTeam(lab,science,agents)
@@ -32,7 +42,10 @@ def make_server(port=3000, db_path=None, config=None):
     customer_data=CustomerData(lab);world.customer_data=customer_data
     mesh=Mesh(lab,world,macro,science_team,agents,customer_data)
     fraud_desk=FraudDesk(lab,world);world.fraud_desk=fraud_desk
-    fraud_agent=FraudAgent(fraud_desk,agents)
+    checkpoint=(lambda: cloud.save(lab)) if cloud else None
+    fraud_agent=FraudAgent(fraud_desk,agents,checkpoint=checkpoint)
+    fraud_runner=InvestigationRunner(fraud_agent)
+    if cloud: cloud.initialize(lab)
     csrf=secrets.token_urlsafe(32)
 
     class Handler(SimpleHTTPRequestHandler):
@@ -40,7 +53,7 @@ def make_server(port=3000, db_path=None, config=None):
             super().__init__(*args,directory=str(ROOT/'dist'),**kwargs)
 
         def allowed_host(self):
-            return self.headers.get('Host') in ('localhost:'+str(self.server.server_port),'127.0.0.1:'+str(self.server.server_port))
+            return self.headers.get('Host') in tuple(h for h in (public_host,'localhost:'+str(self.server.server_port),'127.0.0.1:'+str(self.server.server_port)) if h)
 
         def end_headers(self):
             self.send_header('X-Content-Type-Options','nosniff')
@@ -49,25 +62,30 @@ def make_server(port=3000, db_path=None, config=None):
             super().end_headers()
 
         def reply(self,status,value):
+            if cloud and self.command=='POST' and status<400: cloud.save(lab)
             body=encoded(value).encode()
             self.send_response(status);self.send_header('Content-Type','application/json; charset=utf-8')
             self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
 
         def do_GET(self):
+            if urlsplit(self.path).path=='/healthz': return self.reply(200 if not cloud or cloud.healthy else 503,{'healthy':not cloud or cloud.healthy})
             if not self.allowed_host(): return self.reply(403,{'error':'Use the loopback address.'})
             path=urlsplit(self.path).path
+            if cloud and not cloud.healthy and path.startswith('/api/'):
+                return self.reply(503,{'error':'Cloud state is unavailable. Retry after this instance restarts.'})
             try:
                 if path=='/api/state':
                     with lab.lock:
                         result=lab.snapshot();result.update(budget=agents.budget(),csrf_token=csrf)
                         result['world']=world.status()
                         result['macro']={'policy':macro.policy(),'metrics':macro.metrics(world.state()['tick']),'goods':macro.goods(),'due':macro.due()}
-                        for table in ('simulation_state','service_actions','model_runs','fraud_agent_turns',*MACRO_TABLES,*SCIENCE_TABLES,*MESH_TABLES,*CUSTOMER_TABLES,*FRAUD_TABLES):
+                        for table in ('simulation_state','service_actions','model_runs','fraud_agent_turns','fraud_evidence_snapshots',*MACRO_TABLES,*SCIENCE_TABLES,*MESH_TABLES,*CUSTOMER_TABLES,*FRAUD_TABLES):
                             result['tables'][table]=lab.db.execute('SELECT count(*) FROM '+table).fetchone()[0]
                     return self.reply(200,result)
                 if path=='/api/science':return self.reply(200,science_team.dashboard())
                 if path=='/api/customer-data':return self.reply(200,customer_data.dashboard())
                 if path=='/api/fraud-desk':return self.reply(200,fraud_desk.dashboard())
+                if path=='/api/cloud':return self.reply(200,cloud.status(lab) if cloud else {'enabled':False})
                 if path.startswith('/api/fraud-desk/reports/'):
                     return self.reply(200,fraud_desk.detail(path.rsplit('/',1)[-1]))
                 if path=='/api/mesh':
@@ -91,18 +109,28 @@ def make_server(port=3000, db_path=None, config=None):
 
         def do_POST(self):
             origins=('http://localhost:'+str(self.server.server_port),'http://127.0.0.1:'+str(self.server.server_port))
+            if public_host:origins+=('https://'+public_host,)
             if (not self.allowed_host() or self.headers.get('Origin') not in (None,*origins) or
                 not secrets.compare_digest(self.headers.get('X-MintTown-Token',''),csrf)):
                 return self.reply(403,{'error':'Request origin or session token was rejected.'})
             try:
+                if cloud and not cloud.healthy:raise LabError('Cloud state is unavailable. Retry after this instance restarts.',503)
                 size=int(self.headers.get('Content-Length','0'))
                 if not 0<size<=12288: raise LabError('Invalid request size.',413)
                 body=json.loads(self.rfile.read(size))
                 if not isinstance(body,dict): raise LabError('Expected a JSON object.')
                 path=urlsplit(self.path).path
+                if path=='/api/cloud/export':
+                    if not cloud:raise LabError('BigQuery export is available on the hosted demo.',409)
+                    if body:raise LabError('Exports use only the approved simulator tables.')
+                    return self.reply(200,cloud.export(lab))
                 if path=='/api/fraud-agent/start':
-                    if set(body) not in ({'report_id'},{'report_id','mode'}):raise LabError('Invalid ADK start command.')
-                    return self.reply(200,fraud_agent.start(**body))
+                    if 'report_id' not in body or set(body)-{'report_id','mode','automatic'}:raise LabError('Invalid ADK start command.')
+                    automatic=body.pop('automatic',True)
+                    if type(automatic) is not bool:raise LabError('Automatic must be true or false.')
+                    run=(fraud_runner.start if automatic else fraud_agent.start)(**body)
+                    queued=run['context'].get('execution',{}).get('status') in ('queued','running')
+                    return self.reply(202 if queued else 200,run)
                 if path=='/api/fraud-agent/step':
                     if set(body)!={'run_id','expected_step'}:raise LabError('Invalid ADK generation command.')
                     return self.reply(200,fraud_agent.step(**body))
@@ -116,7 +144,7 @@ def make_server(port=3000, db_path=None, config=None):
                         '/api/fraud-desk/investigate': (fraud_desk.start, {'report_id'}),
                         '/api/fraud-desk/step': (fraud_desk.step, {'run_id','expected_step'}),
                         '/api/fraud-desk/review': (fraud_desk.review, {'report_id','investigation_id','disposition','action','note','publish_memory','lesson','next_question'}),
-                        '/api/fraud-desk/reply': (fraud_desk.answer, {'report_id','answer','expected_revision'})}
+                        '/api/fraud-desk/reply': (fraud_runner.reply, {'report_id','answer','expected_revision'})}
                     if path not in commands:raise LabError('Endpoint not found.',404)
                     handler,fields=commands[path]
                     if set(body)!=fields:raise LabError('Invalid fraud-desk command fields.')
@@ -201,7 +229,7 @@ def make_server(port=3000, db_path=None, config=None):
             # Request bodies, headers and provider credentials never enter access logs.
             pass
 
-    server=ThreadingHTTPServer(('127.0.0.1',port),Handler)
+    server=MintTownServer(('0.0.0.0' if cloud else '127.0.0.1',port),Handler)
     server.lab=lab;server.agents=agents
     server.world=world;server.science=science
     server.macro=macro
@@ -210,12 +238,20 @@ def make_server(port=3000, db_path=None, config=None):
     server.customer_data=customer_data
     server.fraud_desk=fraud_desk
     server.fraud_agent=fraud_agent
+    server.fraud_runner=fraud_runner
     return server
 
 
 if __name__=='__main__':
-    parser=argparse.ArgumentParser();parser.add_argument('--port',type=int,default=3000)
-    args=parser.parse_args(); server=make_server(args.port)
+    parser=argparse.ArgumentParser();parser.add_argument('--port',type=int,default=int(os.getenv('PORT','3000')))
+    args=parser.parse_args(); cloud=None; db_path=None
+    if os.getenv('K_SERVICE'):
+        from cloud_data import CloudData
+        cloud=CloudData.environment()
+        db_path=Path(tempfile.mkdtemp(prefix='minttown-'))/'minttown.sqlite3'; cloud.restore(db_path)
+    server=make_server(args.port,db_path,cloud=cloud,public_host=os.getenv('MINTTOWN_PUBLIC_HOST'))
+    def terminate(signum, frame): raise KeyboardInterrupt
+    signal.signal(signal.SIGTERM,terminate)
     print('MintTown: http://127.0.0.1:%d · %s' % (server.server_port,server.agents.budget()['mode']),flush=True)
     try: server.serve_forever()
     except KeyboardInterrupt: pass

@@ -1,0 +1,41 @@
+{
+  "project": "minttown-apac-2026",
+  "region": "us-central1",
+  "service": "minttown",
+  "runtime_service_account": "minttown-runtime",
+  "build_service_account": "minttown-builder",
+  "artifact_repository": "minttown",
+  "state_bucket": "minttown-apac-2026-demo-state",
+  "bigquery_dataset": "minttown_demo",
+  "cloud_run": {
+    "cpu": "1",
+    "memory": "1Gi",
+    "min_instances": 0,
+    "max_instances": 1,
+    "concurrency": 1,
+    "request_timeout_seconds": 120,
+    "instance_based_billing": true,
+    "require_authentication": true,
+    "browser_access": "IAP; explicitly granted Google accounts only",
+    "monthly_spend_cap_usd": 1
+  },
+  "project_monthly_alert_usd": 5,
+  "bigquery": {
+    "batch_loads_only": true,
+    "exports_per_utc_day": 3,
+    "max_records_per_export": 20000,
+    "max_bytes_per_export": 16777216,
+    "partition_retention_days": 7,
+    "target_query_quota_gib_per_day": 1
+  },
+  "storage": {
+    "max_database_bytes": 67108864,
+    "versioning": false,
+    "soft_delete_retention_seconds": 0,
+    "build_source_retention_days": 1,
+    "export_retention_days": 7
+  },
+  "build_timeout_seconds": 600,
+  "gemini_live": false,
+  "runtime_vertex_permissions": []
+}

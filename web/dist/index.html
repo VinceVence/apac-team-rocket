@@ -12,7 +12,7 @@
 <div class="lab-sidebar-scroll"><nav class="lab-nav" aria-label="Channels"><button data-view="world" aria-pressed="true"><span>#</span> town</button><button data-view="resolution" aria-pressed="false"><span>#</span> scam-desk</button></nav>
 <section id="town-settings" class="controls-group"><h2 class="sidebar-label">Simulation</h2><label class="field-label">Speed <span id="speed-label">1×</span></label><div class="speed-options" role="group" aria-label="Simulation speed"><button data-speed="1" aria-pressed="true">1×</button><button data-speed="2" aria-pressed="false">2×</button><button data-speed="4" aria-pressed="false">4×</button></div><label class="field-label" for="activity">Payments per hour <output id="activity-value">2</output></label><input id="activity" type="range" min="1" max="4" value="2"></section>
 <details class="sidebar-disclosure"><summary>About this demo</summary><p class="field-help">Synthetic payments. Real ADK tools. Fake model. Analyst-approved memory. Gemini off.</p></details>
-</div><footer class="sidebar-footer"><span class="local-avatar">MT<i></i></span><div><strong>Local demo</strong><small id="provider-label">Gemini off · $0</small></div></footer>
+</div><footer class="sidebar-footer"><span class="local-avatar">MT<i></i></span><div><strong id="deployment-label">Local demo</strong><small id="provider-label">Gemini off · $0</small></div></footer>
 </aside>
 <main id="workspace" class="lab-main"><header class="lab-toolbar"><button id="open-menu" class="icon-button mobile-only" aria-label="Open navigation" aria-expanded="false" aria-controls="parameters">☰</button><span class="hash">#</span><h1 id="view-title">town</h1><span id="world-time" class="toolbar-time"></span><div id="world-controls" class="playback"><button id="step-world" class="text-button" title="Advance one hour">Step</button><button id="play-world" class="primary-button">Run world</button></div></header>
 <div class="lab-content"><p id="app-error" class="app-error" role="alert" hidden></p><div id="loading-state" class="loading-state" role="status">Loading MintTown…</div>
@@ -21,6 +21,7 @@
 <div class="map-shell"><div class="map-toolbar"><span><i class="map-dot"></i> Market neighborhood</span><span id="map-date"></span></div><canvas id="town-map" width="768" height="480" role="img" aria-label="A pixel town with residents walking between shops and making simulated payments."></canvas><div class="map-footer"><span>24 residents on the map</span><span id="ledger-health">Ledger balanced</span></div></div>
 <div class="town-next"><div><h3>A suspicious transfer?</h3><p>Follow a report through investigation and review.</p></div><button id="world-report" class="primary-button">Start scam demo →</button></div>
 <details class="world-details"><summary>Recent payments</summary><div id="world-events" class="world-events"></div></details>
+<details id="cloud-data-panel" class="world-details" hidden><summary>BigQuery data</summary><p id="cloud-data-status" class="surface-note"></p><button id="cloud-export" class="text-button">Export simulator data</button><p id="cloud-export-result" class="surface-note" role="status"></p></details>
 </section>
 <section id="fraud-view" hidden>
   <div class="science-heading"><div><h2>Scam desk</h2><p>Report. Investigate. Review. Remember.</p></div></div>
@@ -33,6 +34,7 @@
     <section class="fraud-report"><h3 id="fraud-case-title"></h3><p id="fraud-case-meta" class="fraud-meta"></p><p id="fraud-early-warning" class="fraud-callout" hidden></p><span class="eyebrow">CUSTOMER REPORT</span><blockquote id="fraud-story"></blockquote><details class="world-details"><summary>Messages & details</summary><p id="fraud-message"></p><div id="fraud-replies"></div><p class="surface-note">Demo evidence uses text transcripts.</p></details></section>
     <div class="section-heading"><h3>Investigation</h3><span id="fraud-tool-count"></span></div>
     <p id="fraud-agent-budget" class="fraud-meta" hidden></p>
+    <p id="fraud-snapshot" class="fraud-meta" hidden></p>
     <p id="fraud-agent-stop" class="fraud-callout" role="status" hidden></p>
     <button id="fraud-agent-handoff" class="text-button" hidden>Review available evidence</button>
     <p id="fraud-agent-question" class="fraud-callout" hidden></p>
