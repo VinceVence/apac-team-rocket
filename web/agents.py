@@ -101,13 +101,15 @@ class Agents:
         query=' UNION ALL '.join(sources)
         today=db.execute('SELECT count(*),coalesce(sum(amount),0) FROM ('+query+') WHERE substr(created_at,1,10)=?',(day,)).fetchone()
         total=db.execute('SELECT coalesce(sum(amount),0) FROM ('+query+')').fetchone()[0]
+        vertex=bool(self.config.live and os.getenv('MINTTOWN_FRAUD_LIVE')=='1' and os.getenv('GOOGLE_CLOUD_PROJECT'))
+        live=bool(self.config.live and (self.config.api_key or vertex))
         return {'day_utc':day,'calls_today':today[0],'committed_usd_today':round(today[1],6),'committed_usd_total':round(total,6),
                 'daily_call_limit':self.config.daily_calls,'daily_usd_limit':self.config.daily_usd,'total_usd_limit':self.config.total_usd,
                 'committed_microusd_today':int((Decimal(str(today[1]))*1000000).to_integral_value(rounding=ROUND_CEILING)),
                 'committed_microusd_total':int((Decimal(str(total))*1000000).to_integral_value(rounding=ROUND_CEILING)),
                 'reservation_per_call_usd':RESERVATION_USD,'model':self.config.model,
-                'live_enabled':bool(self.config.live and self.config.api_key),
-                'mode':'Gemini available' if self.config.live and self.config.api_key else 'Local baseline · no API calls'}
+                'live_enabled':live,
+                'mode':'Vertex AI available · bounded pilot' if vertex else 'Gemini available' if live else 'Local baseline · no API calls'}
 
     def check_budget(self):
         if not self.config.live or not self.config.api_key:raise LabError('Live Gemini is off. Configure the server key and enable live mode first.',409)

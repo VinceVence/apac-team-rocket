@@ -210,6 +210,9 @@ class CloudChecks(unittest.TestCase):
             server=make_server(0,self.root/'canary.db',cloud=cloud)
             try:
                 self.assertTrue(server.fraud_agent.live_enabled())
+                self.assertTrue(server.agents.budget()['live_enabled'])
+                self.assertIn('Vertex AI',server.agents.budget()['mode'])
+                self.assertEqual(server.agents.config.api_key,'')
                 self.assertEqual(server.fraud_agent.live_case_limit,1)
                 self.assertEqual(server.agents.config.daily_usd,.1)
                 self.assertEqual(server.agents.config.total_usd,1)
