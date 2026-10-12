@@ -54,6 +54,19 @@ class WorldDemoChecks(unittest.TestCase):
         self.assertEqual(case['investigation']['status'],'awaiting_review')
         self.assertTrue(self.lab.integrity())
 
+    def test_existing_approved_cases_protect_the_new_world_without_model_calls(self):
+        desk=self.server.fraud_desk;report=desk.demo('first','legacy-known-scam')
+        self.server.fraud_runner.start(report['id'])
+        case=self.wait(report['id'])
+        desk.review(report['id'],case['investigation']['id'],'confirmed_scam','request_recall',
+            'Verified the synthetic report and exact recipient.',True,LESSON,QUESTION)
+        calls=self.lab.db.execute('SELECT count(*) FROM fraud_agent_turns').fetchone()[0]
+        before=self.lab.rows('SELECT id,balance_minor FROM accounts ORDER BY id')
+        state=self.demo.start(0,background=False);self.demo.incident(state['run_id'],'phishing',repeat=True)
+        self.assertEqual(self.demo.status()['incidents'][0]['status'],'blocked')
+        self.assertEqual(before,self.lab.rows('SELECT id,balance_minor FROM accounts ORDER BY id'))
+        self.assertEqual(calls,self.lab.db.execute('SELECT count(*) FROM fraud_agent_turns').fetchone()[0])
+
     def test_episode_is_idempotent_bounded_and_does_not_resume_after_restart(self):
         self.server.fraud_agent.agents.config=Config(daily_calls=1)
         state=self.demo.start(0,background=False)

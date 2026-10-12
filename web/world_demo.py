@@ -71,11 +71,18 @@ class WorldDemo:
 
     def incident(self, run_id, kind, repeat=False):
         """A scoped simulator event; observed payments are the investigator's evidence."""
-        spec=SCAMS[kind];identifier='world-scam-%s-%s-%s'%(run_id,kind,'repeat' if repeat else 'first')
+        spec=dict(SCAMS[kind]);identifier='world-scam-%s-%s-%s'%(run_id,kind,'repeat' if repeat else 'first')
         with self.lab.lock:
             if self.lab.db.execute('SELECT 1 FROM world_incidents WHERE id=?',(identifier,)).fetchone():return None
             cid='C002' if repeat and kind=='phishing' else 'C005' if repeat else spec['customer']
             flags=self.desk.screen(cid,spec['payee'])
+            if repeat and not flags:
+                for memory in self.desk.memories():
+                    pattern=memory['pattern']
+                    matching_shape=(len(pattern['evidence_ids'])==1 if kind=='phishing' else len(pattern['evidence_ids'])>1)
+                    if memory['validation']['passed'] and matching_shape and pattern['recipient_accounts']:
+                        spec['payee']=pattern['recipient_accounts'][0]
+                        flags=self.desk.screen(cid,spec['payee']);break
             if repeat and not flags:return None  # Wait for analyst approval; do not manufacture another loss.
             status='blocked' if flags else 'investigating';report_id=None;events=[];total=0
             provider='gemini' if self.runner.agent.live_enabled() else 'fake'
