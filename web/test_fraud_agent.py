@@ -404,14 +404,24 @@ class AgentChecks(unittest.TestCase):
         self.agent=FraudAgent(self.desk,self.agents)
         self.assertTrue(self.agent.runtime()['live_circuit_open'])
 
-    def test_private_pilot_cannot_admit_a_second_live_case(self):
-        self.agent.live_case_limit=1
-        with patch.object(self.agent,'live_enabled',return_value=True):
-            report=self.desk.demo('benign','pilot-one');first=self.agent.start(report['id'],'gemini')
-            self.agent.reserve(first['id'],SimpleNamespace(model_dump=lambda **kwargs:{'test':'no network'}))
-            with self.assertRaisesRegex(LabError,'limited to one case'):
-                self.agent.start(self.desk.demo('benign','pilot-two')['id'],'gemini')
-        self.assertEqual(self.lab.db.execute("SELECT count(*) FROM fraud_agent_turns WHERE provider='gemini'").fetchone()[0],1)
+    def test_multiple_live_cases_share_the_ten_cent_daily_budget(self):
+        request=SimpleNamespace(model_dump=lambda **kwargs:{'test':'no network'})
+        with patch.object(self.agent,'live_enabled',return_value=True),patch('google.genai.Client.__init__',side_effect=AssertionError('No live client')) as client:
+            for n in range(11):
+                self.agent.clock=lambda n=n:'2026-10-12T00:%02d:00+00:00'%n
+                report=self.desk.demo('benign','shared-live-budget-'+str(n))
+                run=self.agent.start(report['id'],'gemini')
+                if n==10:
+                    with self.assertRaisesRegex(LabError,'Daily cost limit'):self.agent.reserve(run['id'],request)
+                else:
+                    turn=self.agent.reserve(run['id'],request)
+                    # Keep the full reservation as conservative synthetic usage.
+                    with self.lab.db:self.lab.db.execute("UPDATE fraud_agent_turns SET status='completed' WHERE id=?",(turn,))
+            client.assert_not_called()
+        budget=self.agent.budget(report['id'],'gemini')
+        self.assertEqual(budget['daily_committed_microusd'],100000)
+        self.assertEqual(budget['daily_calls'],10)
+        self.assertEqual(budget['case_calls'],0)
 
     def test_memory_search_accepts_recipient_alias_without_account_prefix(self):
         first,run=self.start();run=self.finish(run);self.approve(first,run)

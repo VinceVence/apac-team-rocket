@@ -19,7 +19,7 @@ function renderWorld(){
   $('running-label').textContent=state.playing?'● Running':'Paused';$('play-world').textContent=state.playing?'Ⅱ Pause world':'▶ Run world';
   $('world-time').textContent=w.day+' · '+String(w.hour).padStart(2,'0')+':00';$('map-date').textContent=String(w.hour).padStart(2,'0')+':00';
   $('ledger-health').textContent=d.ledger_balanced?'Ledger balanced':'Ledger needs review';
-  $('provider-label').textContent=d.budget.live_enabled?'Gemini · bounded pilot':'Gemini off';
+  $('provider-label').textContent=d.budget.live_enabled?'Gemini · live':'Gemini off';
   $('protected-count').textContent=demo.blocked_payments;$('knowledge-total').textContent=demo.knowledge_count;
   const pending=demo.incidents.filter(i=>i.report_id&&i.report_status!=='resolved').length;
   $('agent-badge').textContent=pending;$('agent-badge').hidden=!pending;

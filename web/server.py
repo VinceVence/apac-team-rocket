@@ -36,9 +36,9 @@ class MintTownServer(ThreadingHTTPServer):
 
 def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=None):
     (ROOT/'data').mkdir(exist_ok=True)
-    canary=bool(cloud and os.getenv('MINTTOWN_CLOUD_LIVE_CANARY')=='1' and os.getenv('MINTTOWN_LIVE')=='1' and os.getenv('MINTTOWN_FRAUD_LIVE')=='1')
-    if canary and os.getenv('GOOGLE_CLOUD_PROJECT')!='minttown-apac-2026':raise ValueError('The live pilot is scoped to the MintTown project.')
-    lab=Lab(db_path or ROOT/'data'/'minttown.sqlite3'); agents=Agents(lab,Config(live=canary,model='gemini-3.5-flash-lite') if cloud else config)
+    cloud_live=bool(cloud and os.getenv('MINTTOWN_CLOUD_LIVE')=='1' and os.getenv('MINTTOWN_LIVE')=='1' and os.getenv('MINTTOWN_FRAUD_LIVE')=='1')
+    if cloud_live and os.getenv('GOOGLE_CLOUD_PROJECT')!='minttown-apac-2026':raise ValueError('Hosted live investigations are scoped to the MintTown project.')
+    lab=Lab(db_path or ROOT/'data'/'minttown.sqlite3'); agents=Agents(lab,Config(live=cloud_live,model='gemini-3.5-flash-lite') if cloud else config)
     world=World(lab);science=Science(lab)
     macro=Macro(lab,world,agents);world.macro=macro
     science_team=ScienceTeam(lab,science,agents)
@@ -49,9 +49,9 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
     mesh=Mesh(lab,world,macro,science_team,agents,customer_data)
     fraud_desk=FraudDesk(lab,world);world.fraud_desk=fraud_desk
     checkpoint=(lambda: cloud.save(lab)) if cloud else None
-    fraud_agent=FraudAgent(fraud_desk,agents,checkpoint=checkpoint,live_case_limit=1 if canary else None)
+    fraud_agent=FraudAgent(fraud_desk,agents,checkpoint=checkpoint)
     fraud_runner=InvestigationRunner(fraud_agent)
-    guard=DemoGuard(lab,checkpoint,live_canary=canary) if cloud else None
+    guard=DemoGuard(lab,checkpoint,live_enabled=cloud_live) if cloud else None
     world_demo=WorldDemo(world,fraud_desk,fraud_runner,checkpoint,guard)
     if cloud: cloud.initialize(lab)
     csrf=secrets.token_urlsafe(32)
@@ -95,7 +95,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                 if path=='/api/science':return self.reply(200,science_team.dashboard())
                 if path=='/api/customer-data':return self.reply(200,customer_data.dashboard())
                 if path=='/api/fraud-desk':return self.reply(200,fraud_desk.dashboard())
-                if path=='/api/cloud':return self.reply(200,{**cloud.status(lab),'guardrails':guard.status(),'gemini':'one-case private pilot' if canary else 'disabled'} if cloud else {'enabled':False})
+                if path=='/api/cloud':return self.reply(200,{**cloud.status(lab),'guardrails':guard.status(),'gemini':'bounded private investigations' if cloud_live else 'disabled'} if cloud else {'enabled':False})
                 if path.startswith('/api/fraud-desk/reports/'):
                     return self.reply(200,fraud_desk.detail(path.rsplit('/',1)[-1]))
                 if path=='/api/mesh':

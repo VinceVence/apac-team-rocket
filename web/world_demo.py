@@ -89,9 +89,6 @@ class WorldDemo:
             if not flags:
                 if self.runner.agent.budget('',provider)['daily_calls']>=self.runner.agent.agents.config.daily_calls:
                     status='budget_limited'
-                elif provider=='gemini':
-                    try:self.runner.agent.check_live_case('new-world-case')
-                    except LabError:status='budget_limited'
                 if status!='budget_limited' and self.guard:
                     try:self.guard.allow('POST','/api/fraud-desk/report',{'request_id':identifier})
                     except LabError:status='budget_limited'

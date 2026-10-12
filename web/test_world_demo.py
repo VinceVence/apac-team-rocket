@@ -1,11 +1,13 @@
 """Headless world -> ADK -> analyst -> KB -> pre-settlement hold."""
+import os
 import tempfile
 import time
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from agents import Config
+from fraud_adk import FakeInvestigator
 from fraud_desk import LESSON, QUESTION
 from server import make_server
 from world_demo import RUN_STEPS, SCAMS, WorldDemo
@@ -16,8 +18,8 @@ class WorldDemoChecks(unittest.TestCase):
         self.temp=tempfile.TemporaryDirectory();self.server=make_server(0,Path(self.temp.name)/'world.db',Config(live=False))
         self.demo=self.server.world_demo;self.lab=self.server.lab
     def tearDown(self):self.server.server_close();self.lab.db.close();self.temp.cleanup()
-    def wait(self,report_id):
-        deadline=time.monotonic()+10
+    def wait(self,report_id,timeout=10):
+        deadline=time.monotonic()+timeout
         while time.monotonic()<deadline:
             detail=self.server.fraud_desk.detail(report_id);run=detail['investigation']
             if run and run['context'].get('execution',{}).get('status') not in ('queued','running'):return detail
@@ -53,6 +55,45 @@ class WorldDemoChecks(unittest.TestCase):
         self.assertEqual([t['occurred_at'][-3:-1] for t in case['transactions']],['00','04','08'])
         self.assertEqual(case['investigation']['status'],'awaiting_review')
         self.assertTrue(self.lab.integrity())
+
+    def test_hosted_world_investigates_two_live_cases_with_mocked_vertex(self):
+        from cloud_data import CloudData
+        from test_cloud_data import FakeCloud
+        self.server.server_close();self.lab.db.close()
+        model_options=[]
+        class FakeVertex(FakeInvestigator):
+            def __init__(self,**kwargs):
+                model_options.append(kwargs)
+                super().__init__()
+        with patch.dict(os.environ,{'MINTTOWN_LIVE':'1','MINTTOWN_FRAUD_LIVE':'1','MINTTOWN_CLOUD_LIVE':'1',
+             'GOOGLE_CLOUD_PROJECT':'minttown-apac-2026'}),patch('fraud_agent.LIVE_INTERVAL_SECONDS',0),\
+             patch('google.genai.Client') as client,patch('google.adk.models.google_llm.Gemini',FakeVertex):
+            client.return_value.aio.aclose=AsyncMock()
+            cloud=CloudData('minttown-apac-2026','test-state','simulation',session=FakeCloud())
+            self.server=make_server(0,Path(self.temp.name)/'hosted.db',cloud=cloud)
+            self.demo=self.server.world_demo;self.lab=self.server.lab
+            with self.server:
+                state=self.demo.start(0,background=False)
+                for kind in ('phishing','payment_burst'):
+                    self.demo.incident(state['run_id'],kind)
+                    incident=self.demo.status()['incidents'][0]
+                    self.assertEqual(incident['status'],'investigating')
+                    case=self.wait(incident['report_id'],timeout=40);run=case['investigation']
+                    self.assertEqual(run['context']['provider'],'gemini')
+                    self.assertEqual(run['status'],'awaiting_review',run['context'].get('stop_reason'))
+                    self.assertEqual(run['budget']['case_calls'],5)
+                self.assertEqual(self.server.agents.budget()['calls_today'],10)
+                self.assertLess(self.server.agents.budget()['committed_usd_today'],.1)
+                self.assertEqual(self.server.demo_guard.status()['used']['reports'],2)
+                self.demo.stop(state['run_id']);state=self.demo.start(state['run_id'],background=False)
+                self.demo.incident(state['run_id'],'phishing')
+                self.assertEqual(self.demo.status()['incidents'][0]['status'],'budget_limited')
+                self.assertEqual(client.call_count,10);self.assertEqual(len(model_options),10)
+                for call in client.call_args_list:
+                    self.assertTrue(call.kwargs['vertexai'])
+                    self.assertEqual(call.kwargs['http_options'].retry_options.attempts,1)
+                for options in model_options:self.assertEqual(options['retry_options'].attempts,1)
+                self.assertTrue(self.lab.integrity())
 
     def test_existing_approved_cases_protect_the_new_world_without_model_calls(self):
         desk=self.server.fraud_desk;report=desk.demo('first','legacy-known-scam')

@@ -109,7 +109,7 @@ class Agents:
                 'committed_microusd_total':int((Decimal(str(total))*1000000).to_integral_value(rounding=ROUND_CEILING)),
                 'reservation_per_call_usd':RESERVATION_USD,'model':self.config.model,
                 'live_enabled':live,
-                'mode':'Vertex AI available · bounded pilot' if vertex else 'Gemini available' if live else 'Local baseline · no API calls'}
+                'mode':'Vertex AI available · bounded investigations' if vertex else 'Gemini available' if live else 'Local baseline · no API calls'}
 
     def check_budget(self):
         if not self.config.live or not self.config.api_key:raise LabError('Live Gemini is off. Configure the server key and enable live mode first.',409)

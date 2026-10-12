@@ -192,7 +192,8 @@ class CloudChecks(unittest.TestCase):
     def test_hosted_server_ignores_live_flags_and_paid_configuration(self):
         from server import make_server
         cloud=CloudData('test-project','other-bucket','simulation',session=FakeCloud())
-        with patch.dict(os.environ,{'MINTTOWN_LIVE':'1','MINTTOWN_FRAUD_LIVE':'1','GOOGLE_CLOUD_PROJECT':'test-project'}),patch('google.genai.Client.__init__',side_effect=AssertionError('Hosted Gemini is forbidden')) as client:
+        with patch.dict(os.environ,{'MINTTOWN_LIVE':'1','MINTTOWN_FRAUD_LIVE':'1','MINTTOWN_CLOUD_LIVE':'0',
+             'MINTTOWN_CLOUD_LIVE_CANARY':'1','GOOGLE_CLOUD_PROJECT':'test-project'}),patch('google.genai.Client.__init__',side_effect=AssertionError('Hosted Gemini is forbidden')) as client:
             server=make_server(0,self.root/'hosted.db',config=Config(live=True,api_key='never-use'),cloud=cloud,public_host='demo.run.app')
             try:
                 self.assertFalse(server.agents.config.live)
@@ -202,23 +203,23 @@ class CloudChecks(unittest.TestCase):
                 client.assert_not_called()
             finally:server.server_close();server.lab.db.close()
 
-    def test_private_canary_needs_explicit_gate_and_keeps_fixed_caps(self):
+    def test_private_live_mode_needs_explicit_gate_and_keeps_fixed_caps(self):
         from server import make_server
-        cloud=CloudData('minttown-apac-2026','canary-bucket','simulation',session=FakeCloud())
-        with patch.dict(os.environ,{'MINTTOWN_LIVE':'1','MINTTOWN_FRAUD_LIVE':'1','MINTTOWN_CLOUD_LIVE_CANARY':'1',
+        cloud=CloudData('minttown-apac-2026','live-bucket','simulation',session=FakeCloud())
+        with patch.dict(os.environ,{'MINTTOWN_LIVE':'1','MINTTOWN_FRAUD_LIVE':'1','MINTTOWN_CLOUD_LIVE':'1',
              'GOOGLE_CLOUD_PROJECT':'minttown-apac-2026','MINTTOWN_DAILY_USD':'999'}),patch('google.genai.Client.__init__',side_effect=AssertionError('Startup must not call Gemini')) as client:
-            server=make_server(0,self.root/'canary.db',cloud=cloud)
+            server=make_server(0,self.root/'hosted-live.db',cloud=cloud)
             try:
                 self.assertTrue(server.fraud_agent.live_enabled())
                 self.assertTrue(server.agents.budget()['live_enabled'])
                 self.assertIn('Vertex AI',server.agents.budget()['mode'])
                 self.assertEqual(server.agents.config.api_key,'')
-                self.assertEqual(server.fraud_agent.live_case_limit,1)
+                self.assertEqual(server.fraud_agent.max_case_calls,6)
                 self.assertEqual(server.agents.config.daily_usd,.1)
                 self.assertEqual(server.agents.config.total_usd,1)
                 self.assertEqual(server.agents.config.daily_calls,10)
                 self.assertEqual(server.fraud_agent.case_limit,20000)
-                self.assertTrue(server.demo_guard.live_canary);client.assert_not_called()
+                self.assertTrue(server.demo_guard.live_enabled);client.assert_not_called()
             finally:server.server_close();server.lab.db.close()
 
 
