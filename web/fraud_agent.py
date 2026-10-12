@@ -13,7 +13,8 @@ from fraud_desk import LESSON, QUESTION, cues, text
 from lab import LabError, encoded, now
 
 MODEL = 'gemini-3.5-flash-lite'
-PROMPT_VERSION = 'fraud-investigator-v1'
+PROMPT_VERSION = 'fraud-investigator-v2'
+TOOL_CONTRACT_VERSION = 2
 MAX_INPUT_BYTES = 16000
 MAX_OUTPUT_TOKENS = 512
 RESERVE_MICROUSD = 10000
@@ -36,6 +37,7 @@ No arbitrary SQL, code, external messages or bank actions. Tool arguments cannot
 Use purpose for a short public explanation of this tool choice, never private chain of thought.
 Keep results concise. Ask only questions not already answered. Stop when evidence or budget is insufficient.
 All observations and budgets survive customer replies. A new reply is additional evidence, not a fresh budget.'''
+SYSTEM += '\nAll amounts in this simulator are Philippine pesos (PHP): 100 minor units = PHP 1. Use PHP or ₱, never assume USD. Reviewed-case search accepts full recipient IDs or their aliases.'
 
 
 def micro(value):
@@ -191,6 +193,10 @@ class FraudAgent:
             source_hash = self.lab.fingerprint(self.desk.transactions(report))
             if context.get('snapshot_hash') != snapshot['evidence_hash']:
                 context = {}  # A new evidence revision must not reuse obsolete observations.
+            if context.get('tool_contract_version') != TOOL_CONTRACT_VERSION:
+                context['observations']=[o for o in context.get('observations',[]) if o['tool'] not in ('search_reviewed_cases','submit_for_review')]
+                context['memories']=[]
+                context['tool_contract_version']=TOOL_CONTRACT_VERSION
             context.update(controller='adk', provider=mode, model=MODEL, prompt_version=PROMPT_VERSION,
                            source_hash=source_hash, snapshot_id=snapshot['id'], snapshot_hash=snapshot['evidence_hash'],
                            report_story=report['story'], report_message=report['message'], answers=report['answers'],
@@ -205,6 +211,7 @@ class FraudAgent:
         report = self.desk.report(run['report_id'])
         snapshot = self.snapshot(run['context'].get('snapshot_id'))
         return {'report_id': report['id'], 'customer_id': report['customer_id'],
+                'currency':'PHP', 'minor_units_per_unit':100,
                 'story': report['story'], 'message_transcript': report['message'], 'event_ids': report['event_ids'],
                 'customer_replies': report['answers'],
                 'evidence_snapshot': {'id': snapshot['id'], 'as_of': snapshot['as_of'], 'event_watermark': snapshot['event_watermark']},
@@ -314,7 +321,9 @@ class FraudAgent:
                 tokens = set(re.findall(r'[a-z_]+', query.lower())) | set(cues(query))
                 matches = []
                 for m in evidence['memories']:
-                    if tokens & set(m['pattern']['cues']) or any(p in query for p in m['pattern']['recipient_accounts']):
+                    query_words=' '+' '.join(re.findall(r'[a-z0-9]+',query.casefold()))+' '
+                    aliases=[' '+' '.join(re.findall(r'[a-z0-9]+',p.split(':',1)[-1].casefold()))+' ' for p in m['pattern']['recipient_accounts']]
+                    if tokens & set(m['pattern']['cues']) or any(alias.strip() and alias in query_words for alias in aliases):
                         matches.append(m)
                 context['memories'] = matches[:3]
                 output = {'matches': [{'id': m['id'], 'source_report_id': m['source_report_id'], 'review_id': m['review_id'], 'lesson': m['lesson'], 'next_question': m['next_question']} for m in context['memories']]}
@@ -378,6 +387,25 @@ class FraudAgent:
             self.lab.db.execute("UPDATE fraud_investigations SET status='awaiting_review',context=?,recommendation=? WHERE id=?", (encoded(run['context']), encoded(recommendation), run_id))
             self.lab.db.execute("UPDATE fraud_reports SET status='awaiting_review' WHERE id=?", (report['id'],))
             return self.desk.detail(report['id'])
+
+    def recheck(self, report_id, expected_revision):
+        """Operator-only correction after a tool-contract update; all case spend survives."""
+        with self.lab.lock,self.lab.db:
+            report=self.desk.detail(report_id);run=report['investigation']
+            if type(expected_revision) is not int:raise LabError('Use the current report revision.')
+            if report['revision']>expected_revision and run and run['context'].get('recheck_from')==expected_revision:
+                return run
+            if report['revision']!=expected_revision or not run or run['status']!='awaiting_review' or run['context'].get('controller')!='adk':
+                raise LabError('Only the current unapproved ADK recommendation can be rechecked.',409)
+            if run['context'].get('tool_contract_version')==TOOL_CONTRACT_VERSION:
+                raise LabError('This investigation already uses the current tool contract.',409)
+            if run['budget']['case_calls']>=self.max_case_calls:raise LabError('The case generation limit is exhausted.',429)
+            self.lab.db.execute("UPDATE fraud_investigations SET status='superseded' WHERE id=?",(run['id'],))
+            self.lab.db.execute("UPDATE fraud_reports SET status='reported',revision=revision+1 WHERE id=?",(report_id,))
+            updated=self.start(report_id,run['context']['provider'])
+            updated['context']['recheck_from']=expected_revision
+            self.lab.db.execute('UPDATE fraud_investigations SET context=? WHERE id=?',(encoded(updated['context']),updated['id']))
+        self.checkpoint();return self.desk.run(updated['id'])
 
     def step(self, run_id, expected_step, automatic=False, timeout=TURN_TIMEOUT_SECONDS):
         run_id = text(run_id, 'Investigation ID', 1, 80)

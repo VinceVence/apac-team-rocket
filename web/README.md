@@ -28,6 +28,7 @@ Each worker iteration invokes one model generation and executes its single selec
 | `POST /api/fraud-agent/start` | Queue/reuse a case revision; defaults to fake + automatic; `automatic: false` enables manual stepping |
 | `POST /api/fraud-agent/step` | Local diagnostics only; disabled in the hosted app |
 | `POST /api/fraud-agent/handoff` | Operator-only handoff after a stopped investigation |
+| `POST /api/fraud-agent/recheck` | Operator-only recheck of an unapproved case after a tool-contract update; preserves the same case budget and old trace |
 | `POST /api/fraud-desk/reply` | Append a customer reply using the report revision and resume automatic cases |
 | `POST /api/fraud-desk/review` | Operator review, simulated receipt and optional approved memory |
 

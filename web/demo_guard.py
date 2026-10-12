@@ -6,7 +6,7 @@ from lab import LabError, now
 
 POST_PATHS = frozenset(('/api/world/step','/api/world/start','/api/world/stop','/api/cloud/export','/api/fraud-desk/demo',
     '/api/fraud-desk/report','/api/fraud-desk/reply','/api/fraud-desk/review',
-    '/api/fraud-agent/start','/api/fraud-agent/handoff'))
+    '/api/fraud-agent/start','/api/fraud-agent/recheck','/api/fraud-agent/handoff'))
 GET_PATHS = frozenset(('/api/state','/api/cloud','/api/fraud-desk'))
 DAILY_WRITES = 600
 DAILY_WORLD_STEPS = 240

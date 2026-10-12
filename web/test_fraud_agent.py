@@ -413,5 +413,28 @@ class AgentChecks(unittest.TestCase):
                 self.agent.start(self.desk.demo('benign','pilot-two')['id'],'gemini')
         self.assertEqual(self.lab.db.execute("SELECT count(*) FROM fraud_agent_turns WHERE provider='gemini'").fetchone()[0],1)
 
+    def test_memory_search_accepts_recipient_alias_without_account_prefix(self):
+        first,run=self.start();run=self.finish(run);self.approve(first,run)
+        self.agent.model_factory=lambda:FakeInvestigator(chooser=lambda packet:('search_reviewed_cases',
+            {'query':'Check recipient demo-safety','purpose':'Find prior reviewed reports for this recipient.'}))
+        second,run=self.start('repeat');run=self.agent.step(run['id'],0)
+        self.assertEqual(run['context']['memories'][0]['source_report_id'],first['id'])
+        packet=self.agent.packet(run)
+        self.assertEqual(packet['currency'],'PHP');self.assertEqual(packet['minor_units_per_unit'],100)
+
+    def test_contract_recheck_preserves_old_trace_and_case_budget(self):
+        report,run=self.start('benign');run=self.finish(run)
+        old_trace=run['trace'];old_calls=run['budget']['case_calls']
+        context=run['context'];context['tool_contract_version']=1
+        from lab import encoded
+        with self.lab.db:self.lab.db.execute('UPDATE fraud_investigations SET context=? WHERE id=?',(encoded(context),run['id']))
+        new=self.agent.recheck(report['id'],report['revision'])
+        self.assertEqual(new['budget']['case_calls'],old_calls)
+        self.assertEqual(self.desk.run(run['id'])['trace'],old_trace)
+        self.assertNotIn('submit_for_review',[o['tool'] for o in new['context']['observations']])
+        self.assertEqual(self.agent.recheck(report['id'],report['revision'])['id'],new['id'])
+        new=self.finish(new)
+        self.assertEqual(new['status'],'awaiting_review');self.assertEqual(new['budget']['case_calls'],old_calls+1)
+
 
 if __name__ == '__main__': unittest.main(verbosity=2)

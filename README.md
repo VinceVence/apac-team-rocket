@@ -28,6 +28,8 @@ Each Run request is idempotent against its run number. Episodes pause at 24 step
 
 All transfers, recall requests and customer messages are simulated. No real money is moved. Only the operator can approve a case or publish memory.
 
+The monetary contract is **PHP**, with 100 minor units per peso. The agent receives it explicitly. Reviewed-case lookup normalizes recipient aliases (for example, `demo-safety` matches `external:demo-safety`). A tool-contract correction can recheck the same unapproved case without creating a new customer report, changing the old trace, or resetting cost/call history.
+
 ## Programmatic verification
 
 ```sh
@@ -135,7 +137,9 @@ flowchart LR
     API -->|Bounded explicit export| BQ[BigQuery]
 ```
 
-## Vertex rollout plan — paid calls remain off
+## Private Vertex pilot and rollout
+
+The user authorized a one-case live pilot on October 12, 2026. The first real Gemini pass on pending report `SC-bf5bfe0543` selected `get_transactions → compare_behavior → search_reviewed_cases → submit_for_review` and used four generations, with $0.002134 in metered token cost. It proposed analyst review and a recall. This run exposed a missing currency instruction and an overly literal recipient search; both contracts were corrected before analyst approval. The original response remains in the audit trail. The private pilot allows at most six generations across that case's revisions, and cannot admit a second live case.
 
 1. Keep the public replay separate from the private investigation service. Preserve the current hosted fake-only gate until an explicitly approved pilot. At activation, deliberately replace that gate with an operator-configured private-pilot gate; a browser request must never enable it. Reuse the dedicated MintTown runtime identity and add only the required Vertex prediction permission, scoped to this project. Keep its existing bucket/dataset grants scoped to the demo resources; add no service-account keys, broad Vertex job-management permissions, project-editor role or public invocation. Keep one instance and the existing durable admission ledger.
 2. Use the existing `google-genai` Vertex adapter inside the metered ADK loop. Gemini receives a bounded case packet, chooses one of six allowlisted tools, reads its actual result on the next turn, and either asks for missing evidence or submits for analyst review. Approval and memory publication remain outside the model's tool set. No open-ended agent-to-agent loops, automatic escalation to a larger model, web grounding or model-training jobs.

@@ -148,6 +148,10 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                     run=(fraud_runner.start if automatic else fraud_agent.start)(**body)
                     queued=run['context'].get('execution',{}).get('status') in ('queued','running')
                     return self.reply(202 if queued else 200,run)
+                if path=='/api/fraud-agent/recheck':
+                    if set(body)!={'report_id','expected_revision'}:raise LabError('Invalid correction request.')
+                    run=fraud_agent.recheck(**body)
+                    return self.reply(202,fraud_runner.start(run['report_id'],run['context']['provider']))
                 if path=='/api/fraud-agent/step':
                     if set(body)!={'run_id','expected_step'}:raise LabError('Invalid ADK generation command.')
                     return self.reply(200,fraud_agent.step(**body))
