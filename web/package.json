@@ -2,9 +2,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "python3 server.py",
-    "test": "python3 -B -m unittest discover -s . -p 'test_*.py'",
-    "simulate": "python3 -B simulate.py",
+    "start": "../.venv/bin/python server.py",
+    "test": "../.venv/bin/python -B -m unittest discover -s . -p 'test_*.py'",
+    "simulate": "../.venv/bin/python -B simulate.py",
     "simulate:mesh": "../.venv/bin/python -B simulate_mesh.py",
     "simulate:customers": "../.venv/bin/python -B simulate_customers.py",
     "simulate:fraud": "../.venv/bin/python -B simulate_fraud.py",
