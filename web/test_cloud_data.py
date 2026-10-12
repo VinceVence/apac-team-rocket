@@ -1,6 +1,7 @@
 """Exercise cloud persistence/export contracts without Google credentials or network."""
 import gzip
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -128,6 +129,19 @@ class CloudChecks(unittest.TestCase):
         self.assertFalse(self.cloud.healthy)
         restored=CloudData('test-project','test-bucket','simulation',session=self.remote)
         with patch('cloud_data.MAX_STATE_BYTES',16),self.assertRaisesRegex(ValueError,'size cap'):restored.restore(self.root/'oversized.db')
+
+    def test_hosted_server_ignores_live_flags_and_paid_configuration(self):
+        from server import make_server
+        cloud=CloudData('test-project','other-bucket','simulation',session=FakeCloud())
+        with patch.dict(os.environ,{'MINTTOWN_LIVE':'1','MINTTOWN_FRAUD_LIVE':'1','GOOGLE_CLOUD_PROJECT':'test-project'}),patch('google.genai.Client.__init__',side_effect=AssertionError('Hosted Gemini is forbidden')) as client:
+            server=make_server(0,self.root/'hosted.db',config=Config(live=True,api_key='never-use'),cloud=cloud,public_host='demo.run.app')
+            try:
+                self.assertFalse(server.agents.config.live)
+                self.assertFalse(server.fraud_agent.live_enabled())
+                report=server.fraud_desk.demo('benign','hosted-gate')
+                with self.assertRaisesRegex(LabError,'Live Gemini is off'):server.fraud_runner.start(report['id'],'gemini')
+                client.assert_not_called()
+            finally:server.server_close();server.lab.db.close()
 
 
 if __name__=='__main__':unittest.main(verbosity=2)
