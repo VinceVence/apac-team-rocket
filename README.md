@@ -1,8 +1,8 @@
 # MintTown
 
-A local fintech simulation and fraud-resolution workbench. Residents transact in a pixel town; a customer report opens an investigation, an analyst reviews the findings, and approved cases become retrievable memory.
+A fintech world and investigation workbench. Run the town: residents transact, simulated phishing and payment bursts create cases automatically, and a background ADK agent investigates. An analyst approves the resolution; reviewed knowledge then holds related payments before settlement.
 
-The investigation uses **Google ADK 2.11.0** with native function calls. **Live Gemini is off.** The default model is an explicitly labeled fake used to demonstrate and test branching, follow-up questions and budget enforcement. These tests establish the execution contract, not live AI accuracy.
+The investigation uses **Google ADK 2.11.0** with native function calls. Local runs default to an explicitly labeled fake model. Hosted live mode requires all three operator switches (`MINTTOWN_CLOUD_LIVE_CANARY`, `MINTTOWN_LIVE`, `MINTTOWN_FRAUD_LIVE`) and is restricted to **one Gemini case**, including its follow-ups, under the existing spend limits. Startup never invokes the model. Fake-model tests establish the execution contract, not live AI accuracy.
 
 ## Run locally
 
@@ -14,15 +14,17 @@ python3.12 -m venv .venv
 MINTTOWN_LIVE=0 MINTTOWN_FRAUD_LIVE=0 .venv/bin/python -B web/server.py
 ```
 
-Open http://localhost:3000. The UI has two channels: **Town** and **Scam desk**. DM Sans, the mint palette and original canvas pixel art are self-hosted.
+Open http://localhost:3000. **World** shows the town and its activity; **Agent** shows model identity, selected tools, evidence, proposed resolution and approved knowledge. The original light-and-mint visual system, DM Sans and canvas pixel art are self-hosted.
 
 ## Demo
 
-1. Start a scam demo from the town, then choose **Investigate**. A server worker runs the investigation; the browser only reads its progress.
-2. Inspect the ADK tool trail and submit an analyst review with a saved lesson.
-3. Create a **Similar report**. The fake model chooses memory retrieval first, verifies the transfer and asks a targeted question.
-4. Answer the question. The worker resumes automatically, the same case budget survives, and the investigation proposes a resolution for review.
-5. Use **More scenarios** for a benign payment. It takes a shorter tool path when daily allowance remains.
+1. Press **Run world**. A bounded backend worker advances at most 24 simulated hours. Changing tabs or hiding the browser does not drive or restart it.
+2. A phishing attempt or three transfers four seconds apart opens a case automatically. The investigator chooses tools and produces a proposed resolution in **Agent**.
+3. Review the evidence, then **Approve & remember**. The approved case enters the knowledge base.
+4. A later transfer to that reviewed recipient is held by `payments.hold_transfer` before ledger posting. The receipt cites the memory; it creates neither a new investigation nor another model call. Other recipients remain unaffected.
+5. Manual reports and the earlier memory-follow-up rehearsal remain under **Manual test cases**. Only simulator-owned cases receive synthetic customer replies; real submitted stories are never answered automatically.
+
+Each Run request is idempotent against its run number. Episodes pause at 24 steps, at the durable world-work cap, on error or on server restart. New unknown scams stop creating reports when the investigation allowance is unavailable. World events do not enable extra model workers, retries or training jobs. The prevention rule is an exact match to an approved recipient, not a claim to recognize every phishing campaign or payment burst.
 
 All transfers, recall requests and customer messages are simulated. No real money is moved. Only the operator can approve a case or publish memory.
 
@@ -73,7 +75,7 @@ See [the investigation implementation](web/fraud_agent.py), [ADK adapter and fak
 
 ## Hosted team demo
 
-[The hosted MintTown demo](https://minttown-1040017899050.us-central1.run.app/) runs the same UI and API on Cloud Run in `minttown-apac-2026`. [deploy/plan.json](deploy/plan.json) records its Cloud Run, Cloud Storage and BigQuery controls, provisioned by [deploy/provision.py](deploy/provision.py). Hosted mode forces Gemini off regardless of environment flags, and its runtime service account has no Vertex inference permission. Browser access requires IAP with explicitly granted Google accounts; this project has no organization, so its first OAuth brand/client setup uses the Cloud Console. Teammate access must be granted separately.
+[The hosted MintTown demo](https://minttown-1040017899050.us-central1.run.app/) runs the same UI and API on Cloud Run in `minttown-apac-2026`. [deploy/plan.json](deploy/plan.json) records the default fake-only Cloud Run, Cloud Storage and BigQuery controls, provisioned by [deploy/provision.py](deploy/provision.py). A separately approved private pilot requires the three live switches and a temporary, project-scoped `aiplatform.endpoints.predict` grant. It cannot admit a second live case, and flags or client payloads cannot raise the fixed hosted cost limits. Browser access still requires IAP. Public access remains disabled. Teammate access must be granted separately.
 
 For this small, single-worker demo, committed SQLite state is checkpointed to one Cloud Storage object using generation preconditions. Cold starts restore reports, snapshots, memory and budget history. Conflicts and uncertain writes fence the instance instead of overwriting another writer; a liveness probe restarts it. The database is capped at 64 MiB. This checkpoint design has a single-writer ceiling; move operational state to a transactional managed database before scaling instances or enabling cloud inference.
 

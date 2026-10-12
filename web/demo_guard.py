@@ -4,7 +4,7 @@ from collections import deque
 
 from lab import LabError, now
 
-POST_PATHS = frozenset(('/api/world/step','/api/cloud/export','/api/fraud-desk/demo',
+POST_PATHS = frozenset(('/api/world/step','/api/world/start','/api/world/stop','/api/cloud/export','/api/fraud-desk/demo',
     '/api/fraud-desk/report','/api/fraud-desk/reply','/api/fraud-desk/review',
     '/api/fraud-agent/start','/api/fraud-agent/handoff'))
 GET_PATHS = frozenset(('/api/state','/api/cloud','/api/fraud-desk'))
@@ -14,9 +14,10 @@ DAILY_REPORTS = 4
 
 
 class DemoGuard:
-    def __init__(self, lab, checkpoint, clock=now, monotonic=time.monotonic):
+    def __init__(self, lab, checkpoint, clock=now, monotonic=time.monotonic, live_canary=False):
         self.lab,self.checkpoint,self.clock,self.monotonic=lab,checkpoint,clock,monotonic
         self.recent={'GET':deque(),'POST':deque()}
+        self.live_canary=live_canary
         with lab.lock,lab.db:
             lab.db.execute('''CREATE TABLE IF NOT EXISTS demo_daily_usage(
                 day TEXT PRIMARY KEY, writes INTEGER NOT NULL DEFAULT 0,
@@ -39,8 +40,8 @@ class DemoGuard:
                 raise LabError('Hosted request rate limit reached. Wait one minute; no work was queued.',429)
             recent.append(stamp)
             if method=='GET':return
-            if path=='/api/fraud-agent/start' and (body.get('mode','fake')!='fake' or body.get('automatic',True) is not True):
-                raise LabError('Hosted investigations use the automatic fake-model runner only.',409)
+            if path=='/api/fraud-agent/start' and (body.get('mode','fake') not in (('fake','gemini') if self.live_canary else ('fake',)) or body.get('automatic',True) is not True):
+                raise LabError('Use the approved automatic investigation mode.',409)
             day=self.clock()[:10]
             is_report=path in ('/api/fraud-desk/demo','/api/fraud-desk/report')
             if is_report and isinstance(body.get('request_id'),str):

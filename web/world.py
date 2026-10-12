@@ -40,11 +40,15 @@ class World:
         if self.fraud_desk:
             flags=self.fraud_desk.screen(cid,merchant)
             if flags:meta['review_flags']=flags
+        if meta.get('review_flags'):
+            blocked=True
+            meta['prevention_tool']='payments.hold_transfer'
+            meta['prevention_reason']='Exact recipient matched an analyst-approved scam. Simulated transfer held for review.'
         if blocked:
             self.lab.event(eid,cid,'payment_blocked',amount,self.lab.clock_day,'blocked',cid+':wallet',merchant,meta)
             return 'blocked'
         try:
-            if self.macro:self.macro.purchase(eid,cid,merchant,amount,meta)
+            if self.macro and merchant in ('m1','m2','m3'):self.macro.purchase(eid,cid,merchant,amount,meta)
             else:self.lab.post(eid,cid,'payment',amount,self.lab.clock_day,cid+':wallet',merchant,meta)
             return 'settled'
         except LabError:

@@ -404,5 +404,14 @@ class AgentChecks(unittest.TestCase):
         self.agent=FraudAgent(self.desk,self.agents)
         self.assertTrue(self.agent.runtime()['live_circuit_open'])
 
+    def test_private_pilot_cannot_admit_a_second_live_case(self):
+        self.agent.live_case_limit=1
+        with patch.object(self.agent,'live_enabled',return_value=True):
+            report=self.desk.demo('benign','pilot-one');first=self.agent.start(report['id'],'gemini')
+            self.agent.reserve(first['id'],SimpleNamespace(model_dump=lambda **kwargs:{'test':'no network'}))
+            with self.assertRaisesRegex(LabError,'limited to one case'):
+                self.agent.start(self.desk.demo('benign','pilot-two')['id'],'gemini')
+        self.assertEqual(self.lab.db.execute("SELECT count(*) FROM fraud_agent_turns WHERE provider='gemini'").fetchone()[0],1)
+
 
 if __name__ == '__main__': unittest.main(verbosity=2)

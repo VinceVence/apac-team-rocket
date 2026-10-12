@@ -9,6 +9,7 @@ Use the [root README](../README.md) for setup, the current demo and cost limits.
 - `fraud_adk.py`: a real ADK `LlmAgent` and native function tools, with an injected fake model by default and a separately gated Vertex AI adapter.
 - `fraud_runner.py`: one background worker, one queued slot, deadline/spacing controls, duplicate-start protection and automatic reply continuation.
 - `demo_guard.py`: hosted endpoint allowlist, request throttles and durable daily write/world/report limits.
+- `world_demo.py`: a bounded backend world loop, synthetic scam reports, simulator-owned customer replies, and receipts for knowledge-based payment holds.
 - `simulate_hosted.py`: actual IAP-protected Cloud Run rehearsal with bounded read polling, stable request IDs and no automatic mutation retries.
 - `cloud_data.py`: generation-checked state checkpoints and bounded, idempotent BigQuery batches for the fake-only hosted demo.
 - `server.py`: loopback HTTP API, Host/origin checks and session token validation.
@@ -20,6 +21,8 @@ Each worker iteration invokes one model generation and executes its single selec
 
 | Endpoint | Purpose |
 |---|---|
+| `POST /api/world/start` | Start/reuse a 24-step episode using `expected_run`, `activity`, and `speed` |
+| `POST /api/world/stop` | Pause the matching `expected_run`; stale requests cannot stop a newer episode |
 | `GET /api/fraud-desk` | Reports, approved memories, local runtime availability |
 | `GET /api/fraud-desk/reports/{id}` | Case, tool trail, current question and budget |
 | `POST /api/fraud-agent/start` | Queue/reuse a case revision; defaults to fake + automatic; `automatic: false` enables manual stepping |

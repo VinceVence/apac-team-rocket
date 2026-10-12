@@ -22,6 +22,7 @@ from fraud_desk import FraudDesk,TABLES as FRAUD_TABLES
 from fraud_agent import FraudAgent
 from fraud_runner import InvestigationRunner
 from demo_guard import DemoGuard
+from world_demo import WorldDemo
 
 ROOT=Path(__file__).resolve().parent
 
@@ -29,12 +30,15 @@ ROOT=Path(__file__).resolve().parent
 class MintTownServer(ThreadingHTTPServer):
     def server_close(self):
         super().server_close()
+        if hasattr(self,'world_demo'):self.world_demo.close()
         if hasattr(self, 'fraud_runner'): self.fraud_runner.close()
 
 
 def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=None):
     (ROOT/'data').mkdir(exist_ok=True)
-    lab=Lab(db_path or ROOT/'data'/'minttown.sqlite3'); agents=Agents(lab,Config(live=False) if cloud else config)
+    canary=bool(cloud and os.getenv('MINTTOWN_CLOUD_LIVE_CANARY')=='1' and os.getenv('MINTTOWN_LIVE')=='1' and os.getenv('MINTTOWN_FRAUD_LIVE')=='1')
+    if canary and os.getenv('GOOGLE_CLOUD_PROJECT')!='minttown-apac-2026':raise ValueError('The live pilot is scoped to the MintTown project.')
+    lab=Lab(db_path or ROOT/'data'/'minttown.sqlite3'); agents=Agents(lab,Config(live=canary,model='gemini-3.5-flash-lite') if cloud else config)
     world=World(lab);science=Science(lab)
     macro=Macro(lab,world,agents);world.macro=macro
     science_team=ScienceTeam(lab,science,agents)
@@ -45,9 +49,10 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
     mesh=Mesh(lab,world,macro,science_team,agents,customer_data)
     fraud_desk=FraudDesk(lab,world);world.fraud_desk=fraud_desk
     checkpoint=(lambda: cloud.save(lab)) if cloud else None
-    fraud_agent=FraudAgent(fraud_desk,agents,checkpoint=checkpoint)
+    fraud_agent=FraudAgent(fraud_desk,agents,checkpoint=checkpoint,live_case_limit=1 if canary else None)
     fraud_runner=InvestigationRunner(fraud_agent)
-    guard=DemoGuard(lab,checkpoint) if cloud else None
+    guard=DemoGuard(lab,checkpoint,live_canary=canary) if cloud else None
+    world_demo=WorldDemo(world,fraud_desk,fraud_runner,checkpoint,guard)
     if cloud: cloud.initialize(lab)
     csrf=secrets.token_urlsafe(32)
 
@@ -82,6 +87,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                     with lab.lock:
                         result=lab.snapshot();result.update(budget=agents.budget(),csrf_token=csrf)
                         result['world']=world.status()
+                        result['demo']=world_demo.status()
                         result['macro']={'policy':macro.policy(),'metrics':macro.metrics(world.state()['tick']),'goods':macro.goods(),'due':macro.due()}
                         for table in ('simulation_state','service_actions','model_runs','fraud_agent_turns','fraud_evidence_snapshots',*MACRO_TABLES,*SCIENCE_TABLES,*MESH_TABLES,*CUSTOMER_TABLES,*FRAUD_TABLES):
                             result['tables'][table]=lab.db.execute('SELECT count(*) FROM '+table).fetchone()[0]
@@ -89,7 +95,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                 if path=='/api/science':return self.reply(200,science_team.dashboard())
                 if path=='/api/customer-data':return self.reply(200,customer_data.dashboard())
                 if path=='/api/fraud-desk':return self.reply(200,fraud_desk.dashboard())
-                if path=='/api/cloud':return self.reply(200,{**cloud.status(lab),'guardrails':guard.status()} if cloud else {'enabled':False})
+                if path=='/api/cloud':return self.reply(200,{**cloud.status(lab),'guardrails':guard.status(),'gemini':'one-case private pilot' if canary else 'disabled'} if cloud else {'enabled':False})
                 if path.startswith('/api/fraud-desk/reports/'):
                     return self.reply(200,fraud_desk.detail(path.rsplit('/',1)[-1]))
                 if path=='/api/mesh':
@@ -125,6 +131,12 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                 if not isinstance(body,dict): raise LabError('Expected a JSON object.')
                 path=urlsplit(self.path).path
                 if guard:guard.allow('POST',path,body)
+                if path=='/api/world/start':
+                    if set(body)!={'expected_run','activity','speed'}:raise LabError('Invalid world start.')
+                    return self.reply(200,world_demo.start(**body))
+                if path=='/api/world/stop':
+                    if set(body)!={'expected_run'}:raise LabError('Invalid world stop.')
+                    return self.reply(200,world_demo.stop(**body))
                 if path=='/api/cloud/export':
                     if not cloud:raise LabError('BigQuery export is available on the hosted demo.',409)
                     if set(body)!={'request_id'}:raise LabError('Exports require a request ID and use only the approved simulator tables.')
@@ -245,6 +257,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
     server.fraud_agent=fraud_agent
     server.fraud_runner=fraud_runner
     server.demo_guard=guard
+    server.world_demo=world_demo
     return server
 
 

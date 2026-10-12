@@ -43,10 +43,11 @@ def micro(value):
 
 
 class FraudAgent:
-    def __init__(self, desk, agents, model_factory=None, case_usd=.02, max_case_calls=6, clock=now, checkpoint=None):
+    def __init__(self, desk, agents, model_factory=None, case_usd=.02, max_case_calls=6, clock=now, checkpoint=None, live_case_limit=None):
         self.desk, self.lab, self.agents = desk, desk.lab, agents
         self.model_factory, self.case_limit, self.max_case_calls, self.clock = model_factory, micro(case_usd), max_case_calls, clock
         self.checkpoint = checkpoint or (lambda: None)
+        self.live_case_limit=live_case_limit
         if not 0 < self.case_limit <= 100000 or not 1 <= max_case_calls <= 6:
             raise ValueError('Use a positive case budget up to $0.10 and 1–6 generations.')
         self.lab.db.executescript('''
@@ -135,10 +136,17 @@ class FraudAgent:
                 'live_enabled': self.live_enabled(), 'case_limit_usd': self.case_limit / 1e6,
                 'max_case_calls': self.max_case_calls, 'automatic_runner': True,
                 'turn_timeout_seconds': TURN_TIMEOUT_SECONDS, 'live_interval_seconds': LIVE_INTERVAL_SECONDS,
+                'live_case_limit':self.live_case_limit,
                 'live_circuit_open': bool(self.lab.db.execute('SELECT blocked_reason FROM fraud_live_control WHERE id=1').fetchone()[0])}
 
     def live_enabled(self):
         return bool(self.agents.config.live and os.getenv('MINTTOWN_FRAUD_LIVE') == '1' and os.getenv('GOOGLE_CLOUD_PROJECT'))
+
+    def check_live_case(self, report_id):
+        if self.live_case_limit is None:return
+        cases={r[0] for r in self.lab.db.execute("SELECT DISTINCT report_id FROM fraud_agent_turns WHERE provider='gemini'")}
+        if report_id not in cases and len(cases)>=self.live_case_limit:
+            raise LabError('The private Gemini pilot is limited to one case. No model request was made.',429)
 
     def live_delay(self, run):
         if run['context']['provider']!='gemini':return 0
@@ -169,6 +177,7 @@ class FraudAgent:
         if mode == 'gemini' and not self.live_enabled(): raise LabError('Live Gemini is off. No model request was made.', 409)
         if not self.runtime()['version']: raise LabError('Install web/requirements-google.txt and start with the project virtual environment.', 409)
         with self.lab.lock, self.lab.db:
+            if mode=='gemini':self.check_live_case(report_id)
             prior = self.lab.db.execute('SELECT id FROM fraud_investigations WHERE report_id=? ORDER BY rowid DESC LIMIT 1', (report_id,)).fetchone()
             old = self.desk.run(prior[0]) if prior else None
             if old and old['context'].get('controller') == 'adk' and old['context']['provider'] != mode:
@@ -211,6 +220,7 @@ class FraudAgent:
             run = self.desk.run(run_id); mode = run['context']['provider']
             if mode == 'gemini' and not self.live_enabled(): raise LabError('Live Gemini is off.', 409)
             if mode=='gemini':
+                self.check_live_case(run['report_id'])
                 gate=self.lab.db.execute('SELECT * FROM fraud_live_control WHERE id=1').fetchone()
                 if gate['blocked_reason']:raise LabError('Live circuit is open: '+gate['blocked_reason'],409)
                 if self.live_delay(run)>0:raise LabError('Live request spacing limit reached. No model request was made.',409)
