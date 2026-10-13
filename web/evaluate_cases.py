@@ -90,6 +90,7 @@ def fake_evaluation():
 
 def live_evaluation(base, run_id, save, run_world=False, prior=None):
     import requests
+    from settings import DAILY_MODEL_USD, TOTAL_MODEL_USD, MAX_CASE_CALLS
     url=urlsplit(base)
     if url.scheme!='http' or url.hostname not in ('localhost','127.0.0.1') or url.username or url.password or url.path not in ('','/'):
         raise ValueError('Live evaluation requires the loopback local Vertex app.')
@@ -103,7 +104,7 @@ def live_evaluation(base, run_id, save, run_world=False, prior=None):
         initial=call('/api/state');cloud=call('/api/cloud');runtime=call('/api/fraud-desk')['agent_runtime']
         if cloud.get('execution')!='local' or not initial['budget']['live_enabled'] or not runtime['live_enabled']:
             raise ValueError('Start local_vertex.py --live with the shared ledger first.')
-        if initial['budget']['daily_usd_limit']>.10 or initial['budget']['total_usd_limit']>1 or runtime['max_case_calls']>6:
+        if initial['budget']['daily_usd_limit']>DAILY_MODEL_USD or initial['budget']['total_usd_limit']>TOTAL_MODEL_USD or runtime['max_case_calls']>MAX_CASE_CALLS:
             raise ValueError('The evaluation requires the approved dollar and case limits.')
         results.setdefault('initial_budget',initial['budget']);save(results)
         prepared={k:call('/api/fraud-desk/reports/'+rid) for k,rid in results.get('prepared_report_ids',{}).items()};world_kinds=[]

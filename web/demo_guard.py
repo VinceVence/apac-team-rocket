@@ -3,14 +3,12 @@ import time
 from collections import deque
 
 from lab import LabError, now
-from settings import DAILY_REPORTS
+from settings import DAILY_REPORTS, DAILY_WRITES, DAILY_WORLD_STEPS, READS_PER_MINUTE, WRITES_PER_MINUTE
 
 POST_PATHS = frozenset(('/api/world/step','/api/world/start','/api/world/stop','/api/cloud/export','/api/fraud-desk/demo',
     '/api/fraud-desk/report','/api/fraud-desk/reply','/api/fraud-desk/review',
     '/api/fraud-agent/start','/api/fraud-agent/recheck','/api/fraud-agent/handoff'))
 GET_PATHS = frozenset(('/api/state','/api/cloud','/api/fraud-desk'))
-DAILY_WRITES = 600
-DAILY_WORLD_STEPS = 240
 
 
 class DemoGuard:
@@ -36,7 +34,7 @@ class DemoGuard:
         with self.lab.lock:
             stamp=self.monotonic();recent=self.recent[method]
             while recent and stamp-recent[0]>=60:recent.popleft()
-            if len(recent)>=(120 if method=='GET' else 60):
+            if len(recent)>=(READS_PER_MINUTE if method=='GET' else WRITES_PER_MINUTE):
                 raise LabError('Hosted request rate limit reached. Wait one minute; no work was queued.',429)
             recent.append(stamp)
             if method=='GET':return
@@ -63,4 +61,4 @@ class DemoGuard:
             row=self.lab.db.execute('SELECT * FROM demo_daily_usage WHERE day=?',(self.clock()[:10],)).fetchone()
         return {'day_utc':self.clock()[:10], 'used':dict(row) if row else {'writes':0,'world_steps':0,'reports':0},
                 'limits':{'writes_per_day':DAILY_WRITES,'world_steps_per_day':DAILY_WORLD_STEPS,
-                          'new_reports_per_day':DAILY_REPORTS,'reads_per_minute':120,'writes_per_minute':60}}
+                          'new_reports_per_day':DAILY_REPORTS,'reads_per_minute':READS_PER_MINUTE,'writes_per_minute':WRITES_PER_MINUTE}}

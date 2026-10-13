@@ -165,6 +165,7 @@ class AgentChecks(unittest.TestCase):
         return FakeInvestigator(chooser=choose, input_tokens=16000, output_tokens=512)
 
     def test_per_case_cost_limit_stops_before_next_model_call_and_allows_human_handoff(self):
+        self.agent.case_limit=20000  # Exercise a tighter two-cent test budget.
         self.agent.model_factory = self.expensive_model
         report, run = self.start(); run = self.finish(run)
         self.assertEqual(run['status'], 'budget_exhausted'); self.assertEqual(run['step'], 2)
@@ -177,6 +178,7 @@ class AgentChecks(unittest.TestCase):
         self.assertFalse(self.desk.memories()); self.assertTrue(self.lab.integrity())
 
     def test_daily_limit_is_shared_across_cases_and_resets_on_utc_day(self):
+        self.agent.case_limit=20000  # A daily reset must not reset this tighter case budget.
         self.agents.config = Config(daily_calls=100, daily_usd=.015)
         date = ['2026-10-12T23:59:00+00:00']; self.agent.clock = lambda: date[0]
         self.agent.model_factory = self.expensive_model
@@ -342,6 +344,7 @@ class AgentChecks(unittest.TestCase):
         self.assertEqual(self.desk.report(run['report_id'])['status'],'needs_review')
 
     def test_automatic_cost_and_generation_limits_stop_the_worker(self):
+        self.agent.case_limit=20000  # Keep the focused boundary fixture small.
         for limit in ('case','daily','lifetime','generations'):
             with self.subTest(limit=limit):
                 self.agents.config=Config(live=False,daily_calls=100,daily_usd=.01 if limit=='daily' else .1,total_usd=.01 if limit=='lifetime' else 1)
@@ -405,6 +408,7 @@ class AgentChecks(unittest.TestCase):
         self.assertTrue(self.agent.runtime()['live_circuit_open'])
 
     def test_multiple_live_cases_share_the_ten_cent_daily_budget(self):
+        self.agents.config=Config(live=False,daily_usd=.1)
         request=SimpleNamespace(model_dump=lambda **kwargs:{'test':'no network'})
         with patch.object(self.agent,'live_enabled',return_value=True),patch('google.genai.Client.__init__',side_effect=AssertionError('No live client')) as client:
             for n in range(11):

@@ -15,32 +15,38 @@
     "concurrency": 1,
     "request_timeout_seconds": 120,
     "instance_based_billing": true,
-    "require_authentication": true,
-    "browser_access": "IAP; explicitly granted Google accounts only",
-    "monthly_spend_cap_usd": 1
+    "require_authentication": false,
+    "browser_access": "Public synthetic demo; bounded live investigations",
+    "monthly_spend_cap_usd": 5
   },
   "project_monthly_alert_usd": 5,
   "application": {
-    "public_access": false,
+    "public_access": true,
     "max_pending_investigations_including_active": 2,
     "investigation_timeout_seconds": 180,
     "model_turn_timeout_seconds": 30,
     "live_call_minimum_interval_seconds": 6,
     "sdk_attempts": 1,
-    "daily_mutating_requests": 600,
-    "daily_world_steps": 240,
-    "daily_new_report_attempts": 4,
-    "api_reads_per_minute_per_process": 120,
+    "daily_mutating_requests": 1500,
+    "daily_world_steps": 600,
+    "daily_new_report_attempts": 25,
+    "api_reads_per_minute_per_process": 600,
     "api_writes_per_minute_per_process": 60,
-    "legacy_training_endpoints": false
+    "legacy_training_endpoints": false,
+    "model_usd_per_day": 2,
+    "model_usd_lifetime": 8,
+    "model_usd_per_case": 0.05,
+    "model_calls_per_day": 100,
+    "model_calls_per_case": 6
   },
   "bigquery": {
     "batch_loads_only": true,
-    "exports_per_utc_day": 3,
+    "exports_per_utc_day": 25,
     "max_records_per_export": 20000,
     "max_bytes_per_export": 16777216,
     "partition_retention_days": 7,
-    "target_query_quota_gib_per_day": 1
+    "target_query_quota_gib_per_day": 1,
+    "queries_per_utc_day": 100
   },
   "storage": {
     "max_database_bytes": 67108864,
@@ -50,6 +56,11 @@
     "export_retention_days": 7
   },
   "build_timeout_seconds": 600,
-  "gemini_live": false,
-  "runtime_vertex_permissions": []
+  "gemini_live": true,
+  "runtime_vertex_permissions": [
+    "aiplatform.endpoints.predict"
+  ],
+  "vertex_monthly_spend_cap_usd": 8,
+  "project_cumulative_budget_usd": 20,
+  "project_shutdown_threshold_usd": 16
 }

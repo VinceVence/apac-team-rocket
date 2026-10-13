@@ -2,23 +2,27 @@
 
 Public URL: https://minttown-1040017899050.us-central1.run.app/
 
-This release serves the saved Pallet Town investigations. New Gemini calls are disabled by all three live flags, and the public runtime service account has no Vertex prediction permission. The environment, saved evidence, analyst review and simulated prevention remain available. Any newly generated offline investigation is labelled as fake; saved Gemini traces retain their original provider and usage.
+The public release supports real Gemini investigations. **Run world** generates synthetic transactions and reports; Gemini chooses tools, reads BigQuery evidence and proposes a resolution for analyst review. All three live flags are enabled, Vertex is enabled, and the runtime has only `aiplatform.endpoints.predict` for model access. The five previously saved live investigations remain available.
 
-The Vertex API is also disabled following the shutdown test. Re-enabling it requires an owner to review the budget first.
+The October 13 limit increase preserves all existing usage and case histories. Availability is shared across visitors; a new browser session or server restart does not replenish budgets.
 
 The local shared-ledger process must remain stopped while Cloud Run serves this database. The cloud deployment keeps one maximum instance, zero minimum instances and the existing global request, report, warehouse and model limits. All data is synthetic. Public visitors share the same demo, including case approvals; do not enter real customer information.
 
 ## Cost controls
 
-- Existing native spend caps remain **$1/month for Vertex AI** and **$1/month for Cloud Run**, scoped to this project. These can stop the demo before the project-wide guard triggers.
-- The application retains **$0.10/UTC day, $0.02/case, $1 lifetime, six calls/case**, and no automatic model retries.
-- A separate **$10 cumulative project budget**, starting October 1, 2026 with no end date, sends budget messages to `pallet-cost-guard`. It does not reset each month and excludes credits from cost calculations.
-- Eventarc delivers those messages to the `pallet-cost-guard` workflow. At **$8 reported cost**, the workflow requests that Vertex AI be disabled and the `minttown` Cloud Run service be paused with manual scaling zero.
+- Native spend caps are **$8/month for Vertex AI** and **$5/month for Cloud Run**, scoped to this project. These can stop the demo before the project-wide guard triggers.
+- The application retains **$2/UTC day, $0.05/case, $8 lifetime model spend, six calls/case**, and no automatic model retries.
+- A separate **$20 cumulative project budget**, starting October 1, 2026 with no end date, sends budget messages to `pallet-cost-guard`. It does not reset each month and excludes credits from cost calculations.
+- Eventarc delivers those messages to the `pallet-cost-guard` workflow. At **$16 reported cost**, the workflow requests that Vertex AI be disabled and the `minttown` Cloud Run service be paused with manual scaling zero.
 - The workflow checks the exact budget ID, billing account, schema, USD currency and configured amount. Its service account has the required shutdown permissions, including permission to act as this demo's runtime account when pausing Cloud Run. It cannot enable services or modify billing. It has no model calls or repeated shutdown submissions; status polling is bounded to 15 reads of the same operation.
 
-The workflow source is [deploy/cost-guard.yaml](../deploy/cost-guard.yaml). It disables the Vertex API and pauses the demo; it does not delete datasets, model artifacts, or the project. Existing fixed resources and unrelated services can still incur charges. Budget notifications and native caps can be delayed, and in-flight usage can finish. **These controls cannot guarantee an absolute $10 final bill.** The $8 trigger provides headroom, not a prepaid balance.
+The workflow source is [deploy/cost-guard.yaml](../deploy/cost-guard.yaml). It disables the Vertex API and pauses the demo; it does not delete datasets, model artifacts, or the project. Existing fixed resources and unrelated services can still incur charges. Budget notifications and native caps can be delayed, and in-flight usage can finish. **These controls cannot guarantee an absolute $20 final bill.** The $16 trigger provides headroom, not a prepaid balance.
 
 Google references: [native spend caps](https://docs.cloud.google.com/billing/docs/how-to/budgets-spend-caps), [budget notification format](https://docs.cloud.google.com/billing/docs/how-to/budgets-programmatic-notifications), and [service disabling](https://docs.cloud.google.com/service-usage/docs/reference/rest/v1/services/disable).
+
+## Daily demo allowance
+
+Up to 100 model calls, 25 new reports, 25 BigQuery publications and 100 bounded queries per UTC day. World execution allows 600 steps and 1,500 mutating requests per day. Reads are limited to 600/minute and writes to 60/minute. Each publication remains capped at 20,000 rows/16 MiB; each query at 50 MiB, with the project-wide 1 GiB/day query quota retained. There is one active investigation, one queued, six seconds between model calls, one SDK attempt, and no automatic retries. Model failures open the persistent circuit.
 
 ## Team development
 
@@ -30,6 +34,6 @@ Detailed deployment, IAM and shutdown-test receipts remain in ignored `output/go
 
 ## Verified shutdown behavior
 
-On October 13, 2026, below-threshold and unrelated-budget messages were checked, followed by a synthetic $8 message sent through the real Pub/Sub → Eventarc → Workflows path. The completed test confirmed `aiplatform.googleapis.com` was `DISABLED` and the demo was at manual scaling zero. This was a control test, not a claim that spending had reached $8. The demo was then reopened with Vertex still disabled.
+On October 13, 2026, below-threshold and unrelated-budget messages were checked, followed by a synthetic $8 message sent through the real Pub/Sub → Eventarc → Workflows path. The completed test confirmed `aiplatform.googleapis.com` was `DISABLED` and the demo was at manual scaling zero. This was a control test, not a claim that spending had reached $8. The demo was then reopened with Vertex still disabled. The owner subsequently authorized live inference and a $20 project envelope; the same budget IDs and cumulative period were retained, with the shutdown threshold raised to $16.
 
 The test exposed an oversized Service Usage metadata response and missing shutdown-status permissions. The final workflow requests only the response fields it needs and confirms the shutdown operations before reporting success. Failed test receipts remain available alongside the successful receipt.

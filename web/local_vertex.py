@@ -11,6 +11,7 @@ from pathlib import Path
 
 from cloud_data import CloudData
 from server import make_server
+from settings import DAILY_MODEL_USD, CASE_USD, TOTAL_MODEL_USD, DAILY_MODEL_CALLS, MAX_CASE_CALLS
 
 PROJECT='minttown-apac-2026'
 
@@ -42,7 +43,7 @@ def main():
         def terminate(*_):raise KeyboardInterrupt
         signal.signal(signal.SIGTERM,terminate)
         print(f'Pallet Town: http://127.0.0.1:{args.port} · Vertex AI · shared ledger · Cloud Run paused',flush=True)
-        print('$0.10/UTC day · $0.02/case · $1 lifetime · 30 calls/day · 6/case · no retries',flush=True)
+        print(f'${DAILY_MODEL_USD:g}/UTC day · ${CASE_USD:g}/case · ${TOTAL_MODEL_USD:g} lifetime · {DAILY_MODEL_CALLS} calls/day · {MAX_CASE_CALLS}/case · no retries',flush=True)
         try:server.serve_forever()
         except KeyboardInterrupt:pass
         finally:server.server_close();server.lab.db.close()

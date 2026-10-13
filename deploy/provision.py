@@ -53,7 +53,8 @@ class Provisioner:
         if not billing.get('billingEnabled'): raise RuntimeError('Project billing is not enabled.')
         url = 'https://billingbudgets.googleapis.com/v1/' + billing['billingAccountName'] + '/budgets'
         existing = self.call('GET', url).get('budgets', [])
-        for title, amount, service in [('MintTown Cloud Run - USD 1 monthly cap', 1, '152E-C115-5142'),
+        for title, amount, service in [('Pallet Town Cloud Run - USD 5 monthly cap', self.plan['cloud_run']['monthly_spend_cap_usd'], '152E-C115-5142'),
+                                       ('Pallet Town Vertex - USD 8 monthly cap', self.plan['vertex_monthly_spend_cap_usd'], 'C7E2-9256-1C43'),
                                        ('MintTown whole project - USD 5 alert', 5, None)]:
             desired = {'displayName':title,'budgetFilter':{'projects':['projects/'+self.number],
                 'calendarPeriod':'MONTH','creditTypesTreatment':'EXCLUDE_ALL_CREDITS'},
@@ -68,8 +69,8 @@ class Provisioner:
             found=self.call('GET','https://billingbudgets.googleapis.com/v1/'+found['name'])
             if found['budgetFilter']['projects'] not in (['projects/'+self.number],['projects/'+self.project]): raise RuntimeError('Budget project mismatch.')
             if int(found['amount']['specifiedAmount'].get('units',0))!=amount:raise RuntimeError('Existing budget amount differs; not changing it silently.')
-            if service and (found.get('spendCap',{}).get('outputState')!='CONFIGURED' or found['budgetFilter'].get('services')!=['services/'+service]):raise RuntimeError('Cloud Run cap is not configured for the expected service.')
-            self.receipt['cloud_run_budget' if service else 'project_alert']={'name':found['name'],'usd':amount,'state':found.get('spendCap',{}).get('outputState','ALERT_ONLY')}
+            if service and (found.get('spendCap',{}).get('outputState')!='CONFIGURED' or found['budgetFilter'].get('services')!=['services/'+service]):raise RuntimeError('Spend cap is not configured for the expected service.')
+            self.receipt[('cloud_run_budget' if service=='152E-C115-5142' else 'vertex_budget') if service else 'project_alert']={'name':found['name'],'usd':amount,'state':found.get('spendCap',{}).get('outputState','ALERT_ONLY')}
             print(title + ': verified', flush=True)
         quota_base='https://serviceusage.googleapis.com/v1beta1/projects/'+self.number+'/services/bigquery.googleapis.com/consumerQuotaMetrics'
         metrics=self.call('GET',quota_base,params={'view':'FULL','pageSize':200})
@@ -141,7 +142,7 @@ class Provisioner:
         self.bind(repo+':getIamPolicy',repo+':setIamPolicy','roles/artifactregistry.writer','serviceAccount:'+builder,get_method='GET')
         policy=self.call('POST',project_url+':getIamPolicy',{})
         roles=[b['role'] for b in policy.get('bindings',[]) if 'serviceAccount:'+runtime in b.get('members',[])]
-        if roles!=['roles/bigquery.jobUser']:raise RuntimeError('Unexpected project-level runtime roles: '+str(roles))
+        if set(roles)-{'roles/bigquery.jobUser','projects/'+self.project+'/roles/minttownVertexPredictor'}:raise RuntimeError('Unexpected project-level runtime roles: '+str(roles))
         self.receipt.update(state_bucket=bucket,bigquery_dataset=dataset,artifact_repository=repo_id,runtime_project_roles=roles)
         print('Storage, BigQuery, repository and scoped service accounts: ready',flush=True)
 

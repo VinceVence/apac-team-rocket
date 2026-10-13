@@ -40,7 +40,7 @@ class GuardChecks(unittest.TestCase):
         self.assertEqual(broken.status()['used']['writes'],3)
 
     def test_read_throttle_does_not_checkpoint_and_recovers_after_window(self):
-        for _ in range(120):self.guard.allow('GET','/api/state')
+        for _ in range(600):self.guard.allow('GET','/api/state')
         with self.assertRaisesRegex(LabError,'rate limit'):self.guard.allow('GET','/api/state')
         self.assertFalse(self.saves)
         self.tick=60;self.guard.allow('GET','/api/state')
@@ -69,7 +69,7 @@ class GuardChecks(unittest.TestCase):
                 self.assertEqual(requests.post(base+path,json=body,headers=headers,timeout=10).status_code,code)
             self.assertEqual(requests.get(base+'/api/science',timeout=10).status_code,403)
             status=requests.get(base+'/api/cloud',timeout=10).json()
-            self.assertEqual(status['guardrails']['limits']['new_reports_per_day'],5)
+            self.assertEqual(status['guardrails']['limits']['new_reports_per_day'],25)
             self.assertEqual(status['guardrails']['used']['writes'],0)
             self.assertEqual(server.lab.db.execute('SELECT count(*) FROM fraud_agent_turns').fetchone()[0],0)
         finally:server.shutdown();server.server_close();thread.join();server.lab.db.close()

@@ -1,6 +1,6 @@
 # Local operation and cost controls
 
-The live development workflow is a local Python application calling Vertex AI and BigQuery in `minttown-apac-2026`. The current [public hosted release](hosting.md) serves saved cases with new Gemini calls disabled. Cloud Run must be paused with manual scaling zero before using the shared ledger locally. No GPU, model fine-tuning, streaming ingestion or scheduler is required.
+The live development workflow is a local Python application calling Vertex AI and BigQuery in `minttown-apac-2026`. The current [public hosted release](hosting.md) supports live Gemini investigations under the shared budget. Cloud Run must be paused with manual scaling zero before using the shared ledger locally. No GPU, model fine-tuning, streaming ingestion or scheduler is required.
 
 ## Credentials and startup
 
@@ -21,14 +21,14 @@ ADC inherits the account's access. Project pinning in this launcher is an applic
 
 | Resource | Limit |
 |---|---|
-| Gemini | $0.10/UTC day; $0.02/case; $1 lifetime |
-| Generations | 30/day; six/case including follow-ups |
+| Gemini | $2/UTC day; $0.05/case; $8 lifetime model spend |
+| Generations | 100/day; six/case including follow-ups |
 | Concurrency | One active investigation, one queued; one live request in flight |
 | Retry | One SDK attempt; no automatic provider retry or upgrade |
 | Pacing | At least six seconds between live requests |
-| Case admission | Five new reports/day; 600 writes/day; 240 world steps/day |
-| BigQuery publication | Three/day, shared with legacy export; 20,000 rows and 16 MiB each |
-| BigQuery queries | 20/day; maximum 50 MiB per query; project quota 1 GiB/day |
+| Case admission | 25 new reports/day; 1,500 writes/day; 600 world steps/day |
+| BigQuery publication | 25/day, shared with legacy export; 20,000 rows and 16 MiB each |
+| BigQuery queries | 100/day; maximum 50 MiB per query; project quota 1 GiB/day |
 | Local training | At most two new behavior models/day; bounded CPU iterations |
 | Storage | 64 MiB checkpoint; typed tables expire after seven days; staged exports expire after seven days |
 
@@ -36,7 +36,7 @@ The one-cent model reservation is persisted before a paid request. Token usage r
 
 BigQuery reads poll the same submitted job within a bound. They do not create retry jobs. Failed or uncertain publications retain their allowance. Partial warehouse publications are not exposed as a completed snapshot; they need operator reconciliation before reuse.
 
-The $1/month Vertex and Cloud Run spend-cap budgets remain configured, with the existing whole-project alerts. These and the app ledger are different controls; cloud billing delays and unrelated resource usage prevent an account-wide guarantee. Local execution avoids Cloud Run compute, not Vertex, BigQuery, or Storage charges.
+The $8/month Vertex and $5/month Cloud Run spend-cap budgets are configured alongside a $20 cumulative project budget and the $16 shutdown trigger. These and the app ledger are different controls; cloud billing delays and unrelated resource usage prevent an account-wide guarantee. Local execution avoids Cloud Run compute, not Vertex, BigQuery, or Storage charges.
 
 ## Hosted service
 
@@ -46,7 +46,7 @@ To pause the existing service:
 gcloud run services update minttown --project=minttown-apac-2026 --region=us-central1 --scaling=0
 ```
 
-Do not resume Cloud Run while the local process owns the shared ledger. Shut down the local server cleanly first. The hosted image includes the new warehouse workflow and is public with all live-inference flags off. See [hosting](hosting.md) for team permissions, the cumulative project budget and shutdown controls. The product rename does not rename cloud resources.
+Do not resume Cloud Run while the local process owns the shared ledger. Shut down the local server cleanly first. The hosted image includes the new warehouse workflow and is public with live inference enabled and scoped prediction permission. See [hosting](hosting.md) for team permissions, the cumulative project budget and shutdown controls. The product rename does not rename cloud resources.
 
 ## Evaluation
 

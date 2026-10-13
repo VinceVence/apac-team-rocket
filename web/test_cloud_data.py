@@ -176,12 +176,13 @@ class CloudChecks(unittest.TestCase):
         with patch('cloud_data.MAX_EXPORT_BYTES',32),self.assertRaisesRegex(LabError,'payload cap'):self.cloud.export(self.lab,'byte-limit')
         self.assertEqual(len(self.remote.jobs),0)
         self.remote.job_error=True
-        for n in range(3):
-            with self.lab.db:self.lab.event('batch-change-'+str(n),'C001','test',0,self.lab.clock_day)
-            result=self.cloud.export(self.lab,'failed-'+str(n));self.assertEqual(result['status'],'failed')
-            self.assertTrue(self.cloud.export(self.lab,'failed-'+str(n))['replayed'])
-        with self.lab.db:self.lab.event('over-budget','C001','test',0,self.lab.clock_day)
-        with self.assertRaisesRegex(LabError,'Daily BigQuery export'):self.cloud.export(self.lab,'over-budget')
+        with patch('cloud_data.DAILY_EXPORTS',3):
+            for n in range(3):
+                with self.lab.db:self.lab.event('batch-change-'+str(n),'C001','test',0,self.lab.clock_day)
+                result=self.cloud.export(self.lab,'failed-'+str(n));self.assertEqual(result['status'],'failed')
+                self.assertTrue(self.cloud.export(self.lab,'failed-'+str(n))['replayed'])
+            with self.lab.db:self.lab.event('over-budget','C001','test',0,self.lab.clock_day)
+            with self.assertRaisesRegex(LabError,'Daily BigQuery export'):self.cloud.export(self.lab,'over-budget')
         self.assertEqual(len(self.remote.jobs),3)
 
     def test_restore_and_save_have_a_database_size_cap(self):
@@ -216,10 +217,10 @@ class CloudChecks(unittest.TestCase):
                 self.assertIn('Vertex AI',server.agents.budget()['mode'])
                 self.assertEqual(server.agents.config.api_key,'')
                 self.assertEqual(server.fraud_agent.max_case_calls,6)
-                self.assertEqual(server.agents.config.daily_usd,.1)
-                self.assertEqual(server.agents.config.total_usd,1)
-                self.assertEqual(server.agents.config.daily_calls,30)
-                self.assertEqual(server.fraud_agent.case_limit,20000)
+                self.assertEqual(server.agents.config.daily_usd,2)
+                self.assertEqual(server.agents.config.total_usd,8)
+                self.assertEqual(server.agents.config.daily_calls,100)
+                self.assertEqual(server.fraud_agent.case_limit,50000)
                 self.assertTrue(server.demo_guard.live_enabled);client.assert_not_called()
             finally:server.server_close();server.lab.db.close()
 

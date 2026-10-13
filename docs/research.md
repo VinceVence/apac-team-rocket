@@ -1,5 +1,7 @@
 # Pallet Town: fraud resolution grounded in a living economy
 
+This report records the initial five-case evaluation. Current operating limits and public live access are documented in [hosting](hosting.md).
+
 ## Pallet Town and the current Gemini evidence
 
 Pallet Town should demonstrate a fraud analyst’s workbench: a customer reports a problem, an agent gathers relevant evidence, and a human reviews an actionable resolution. The simulator makes the evidence and consequences inspectable. It is useful because we control the transaction history and can test whether an intervention actually changes a later payment. A recommendation alone is not a resolved complaint, a recovered balance, or a validated fraud detector. [1, 2]

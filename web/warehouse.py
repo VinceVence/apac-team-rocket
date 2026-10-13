@@ -10,10 +10,10 @@ from collections import Counter, defaultdict
 
 from cloud_data import DAILY_EXPORTS, MAX_EXPORT_BYTES, MAX_EXPORT_ROWS
 from lab import LabError, encoded, now
-from settings import MAX_CUSTOMERS
+from settings import MAX_CUSTOMERS, DAILY_WAREHOUSE_QUERIES
 
 MAX_QUERY_BYTES=50*1024*1024
-DAILY_QUERIES=20
+DAILY_QUERIES=DAILY_WAREHOUSE_QUERIES
 SCHEMAS={
  'pallet_customers':'customer_id:STRING name:STRING age_band:STRING region:STRING occupation:STRING weekly_income_minor:INTEGER',
  'pallet_merchants':'merchant_id:STRING name:STRING kind:STRING',

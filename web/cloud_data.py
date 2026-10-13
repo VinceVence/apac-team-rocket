@@ -15,11 +15,12 @@ from pathlib import Path
 from urllib.parse import quote, urlencode
 
 from lab import LabError, encoded, now
+from settings import DAILY_PUBLICATIONS
 
 MAX_STATE_BYTES = 64 * 1024 * 1024
 MAX_EXPORT_BYTES = 16 * 1024 * 1024
 MAX_EXPORT_ROWS = 20000
-DAILY_EXPORTS = 3
+DAILY_EXPORTS = DAILY_PUBLICATIONS
 
 
 class CloudData:

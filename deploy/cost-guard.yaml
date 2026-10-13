@@ -13,11 +13,11 @@ main:
         switch:
           - condition: ${map.get(attributes, "budgetId") != sys.get_env("BUDGET_ID") or map.get(attributes, "billingAccountId") != sys.get_env("BILLING_ACCOUNT_ID") or map.get(attributes, "schemaVersion") != "1.0"}
             return: {status: ignored, reason: unrelated_budget}
-          - condition: ${map.get(notice, "currencyCode") != "USD" or map.get(notice, "budgetAmount") != 10}
+          - condition: ${map.get(notice, "currencyCode") != "USD" or map.get(notice, "budgetAmount") != 20}
             return: {status: ignored, reason: unexpected_currency_or_budget}
           - condition: ${map.get(notice, "costAmount") == null}
             return: {status: ignored, reason: missing_cost}
-          - condition: ${notice.costAmount < 8}
+          - condition: ${notice.costAmount < 16}
             return: {status: below_shutdown_threshold}
           - condition: ${map.get(event, "dry_run") == true}
             return:

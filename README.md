@@ -4,7 +4,7 @@ A synthetic Philippine fintech environment with a **real Gemini investigation lo
 
 The app has three tabs: **Environment**, **Agent activity**, and **Agents**. Active simulation and warehouse exports are capped at **100 customers**. Historical records from the earlier prototype remain in the ledger.
 
-[Open the public saved-case demo](https://minttown-1040017899050.us-central1.run.app/). New Gemini calls are disabled on this release. See [hosting and cost protection](docs/hosting.md) and the [three-minute demo script](docs/demo-script.md).
+[Open the public live demo](https://minttown-1040017899050.us-central1.run.app/). Gemini investigations are enabled within the shared budget. See [hosting and cost protection](docs/hosting.md) and the [three-minute demo script](docs/demo-script.md).
 
 ## Start locally
 
@@ -38,9 +38,9 @@ All identities, transactions, complaints, recalls and holds are synthetic. The o
 
 ## Limits
 
-**$0.10 per UTC day · $0.02 per case · $1 lifetime · 30 model calls/day · six/case · five new reports/day.** No automatic model retries, fallback upgrades, or unbounded agent loops. Local and hosted execution share the same durable ledger.
+**$2 per UTC day · $0.05 per case · $8 lifetime model spend · 100 model calls/day · six/case · 25 new reports/day.** No automatic model retries, fallback upgrades, or unbounded agent loops. Local and hosted execution share the same durable ledger.
 
-BigQuery is bounded to three publications/day, 20,000 rows and 16 MiB per publication, 20 queries/day, and 50 MiB per query. The project's 1 GiB/day query quota remains. Typed tables expire seven days after provisioning; historical event-date partitions are retained within that table lifetime. Cloud Run serves the public saved-case demo; the shared-ledger local process is stopped. Cloud infrastructure remains metered; the [$8 shutdown trigger](docs/hosting.md) is additional protection, not a guaranteed $10 final-bill ceiling.
+BigQuery is bounded to 25 publications/day, 20,000 rows and 16 MiB per publication, 100 queries/day, and 50 MiB per query. The project's 1 GiB/day query quota remains. Typed tables expire seven days after provisioning; historical event-date partitions are retained within that table lifetime. Cloud Run serves the public live demo; the shared-ledger local process is stopped. Cloud infrastructure remains metered; the [$16 shutdown trigger](docs/hosting.md) is additional protection, not a guaranteed $20 final-bill ceiling.
 
 ## Help and verification
 
