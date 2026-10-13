@@ -32,7 +32,7 @@ ADC inherits the account's access. Project pinning in this launcher is an applic
 | Local training | At most two new behavior models/day; bounded CPU iterations |
 | Storage | 64 MiB checkpoint; typed tables expire after seven days; staged exports expire after seven days |
 
-The one-cent model reservation is persisted before a paid request. Token usage reconciles it afterward; an uncertain response retains the reservation. A model failure opens a durable circuit. Restarting or replying to a case does not reset allowance. Do not delete the database, replace the cloud object, or clear counters to continue a demo.
+The one-cent model reservation is persisted before a paid request. Token usage reconciles it afterward; an uncertain response retains the reservation. A model failure opens a durable circuit. Canonical GCS checkpoints are spaced to avoid write bursts; failed or unconfirmed writes still fence the writer instead of retrying. Restarting or replying to a case does not reset allowance. Do not delete the database, replace the cloud object, or clear counters to continue a demo.
 
 BigQuery reads poll the same submitted job within a bound. They do not create retry jobs. Failed or uncertain publications retain their allowance. Partial warehouse publications are not exposed as a completed snapshot; they need operator reconciliation before reuse.
 
