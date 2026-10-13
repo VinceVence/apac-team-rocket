@@ -1,6 +1,6 @@
 # Local operation and cost controls
 
-The supported live workflow is a local Python application calling Vertex AI and BigQuery in `minttown-apac-2026`. Cloud Run is paused with manual scaling zero. No GPU, hosted agent runtime, model fine-tuning, streaming ingestion or scheduler is required.
+The live development workflow is a local Python application calling Vertex AI and BigQuery in `minttown-apac-2026`. The current [public hosted release](hosting.md) serves saved cases with new Gemini calls disabled. Cloud Run must be paused with manual scaling zero before using the shared ledger locally. No GPU, model fine-tuning, streaming ingestion or scheduler is required.
 
 ## Credentials and startup
 
@@ -46,7 +46,7 @@ To pause the existing service:
 gcloud run services update minttown --project=minttown-apac-2026 --region=us-central1 --scaling=0
 ```
 
-Do not resume Cloud Run while the local process owns the shared ledger. Shut down the local server cleanly first. The currently deployed cloud image predates the new warehouse workflow; build and deploy the current commit with the same private IAP, one-instance and cost controls before resuming it with `--scaling=auto`. The product rename does not rename cloud resources.
+Do not resume Cloud Run while the local process owns the shared ledger. Shut down the local server cleanly first. The hosted image includes the new warehouse workflow and is public with all live-inference flags off. See [hosting](hosting.md) for team permissions, the cumulative project budget and shutdown controls. The product rename does not rename cloud resources.
 
 ## Evaluation
 

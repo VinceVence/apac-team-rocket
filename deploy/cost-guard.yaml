@@ -1,0 +1,155 @@
+# Budget notifications only. No model calls, resource deletion, or retries.
+# The topic accepts Cloud Billing as publisher; only its Eventarc identity can
+# invoke this workflow. Budget/account IDs and targets are pinned at deployment.
+main:
+  params: [event]
+  steps:
+    - decode:
+        assign:
+          - attributes: ${event.data.message.attributes}
+          - notice: ${json.decode(base64.decode(event.data.message.data))}
+          - failures: []
+    - validate:
+        switch:
+          - condition: ${map.get(attributes, "budgetId") != sys.get_env("BUDGET_ID") or map.get(attributes, "billingAccountId") != sys.get_env("BILLING_ACCOUNT_ID") or map.get(attributes, "schemaVersion") != "1.0"}
+            return: {status: ignored, reason: unrelated_budget}
+          - condition: ${map.get(notice, "currencyCode") != "USD" or map.get(notice, "budgetAmount") != 10}
+            return: {status: ignored, reason: unexpected_currency_or_budget}
+          - condition: ${map.get(notice, "costAmount") == null}
+            return: {status: ignored, reason: missing_cost}
+          - condition: ${notice.costAmount < 8}
+            return: {status: below_shutdown_threshold}
+          - condition: ${map.get(event, "dry_run") == true}
+            return:
+              status: would_disable_vertex_and_pause_demo
+              cost_usd: ${notice.costAmount}
+    - disable_vertex:
+        try:
+          steps:
+            - read_vertex:
+                call: http.get
+                args:
+                  url: https://serviceusage.googleapis.com/v1/projects/1040017899050/services/aiplatform.googleapis.com
+                  query: {fields: state}
+                  auth: {type: OAuth2}
+                  timeout: 30
+                result: vertex
+            - if_enabled:
+                switch:
+                  - condition: ${vertex.body.state == "ENABLED"}
+                    steps:
+                      - disable:
+                          call: http.post
+                          args:
+                            url: https://serviceusage.googleapis.com/v1/projects/1040017899050/services/aiplatform.googleapis.com:disable
+                            query: {fields: "name,done,error"}
+                            auth: {type: OAuth2}
+                            timeout: 30
+                            body:
+                              disableDependentServices: false
+                              checkIfServiceHasUsage: SKIP
+                          result: vertex_operation
+                      - confirm_vertex:
+                          call: wait_operation
+                          args:
+                            base: https://serviceusage.googleapis.com/v1/
+                            operation: ${vertex_operation.body}
+        except:
+          as: error
+          steps:
+            - record_vertex_error:
+                assign:
+                  - failures: ${list.concat(failures, error)}
+    - pause_demo:
+        try:
+          steps:
+            - read_demo:
+                call: http.get
+                args:
+                  url: https://run.googleapis.com/v2/projects/minttown-apac-2026/locations/us-central1/services/minttown
+                  query: {fields: scaling}
+                  auth: {type: OAuth2}
+                  timeout: 30
+                result: demo
+            - if_serving:
+                switch:
+                  - condition: ${map.get(demo.body, ["scaling", "scalingMode"]) != "MANUAL" or default(map.get(demo.body, ["scaling", "manualInstanceCount"]), 0) != 0}
+                    steps:
+                      - pause:
+                          call: http.patch
+                          args:
+                            url: https://run.googleapis.com/v2/projects/minttown-apac-2026/locations/us-central1/services/minttown
+                            query: {updateMask: scaling, fields: "name,done,error"}
+                            auth: {type: OAuth2}
+                            timeout: 30
+                            body:
+                              scaling:
+                                scalingMode: MANUAL
+                                manualInstanceCount: 0
+                          result: run_operation
+                      - confirm_pause:
+                          call: wait_operation
+                          args:
+                            base: https://run.googleapis.com/v2/
+                            operation: ${run_operation.body}
+        except:
+          as: error
+          steps:
+            - record_run_error:
+                assign:
+                  - failures: ${list.concat(failures, error)}
+    - audit:
+        call: sys.log
+        args:
+          severity: WARNING
+          data:
+            action: pallet_cost_shutdown
+            cost_usd: ${notice.costAmount}
+            failures: ${failures}
+    - check_results:
+        switch:
+          - condition: ${len(failures) > 0}
+            raise:
+              message: Cost shutdown needs operator attention.
+              failures: ${failures}
+    - complete:
+        return:
+          status: vertex_disabled_demo_paused
+          cost_usd: ${notice.costAmount}
+          note: Shutdown operations completed; billing can still arrive late.
+
+# Poll the same operation at most 15 times. Never repeat a shutdown submission.
+wait_operation:
+  params: [base, operation]
+  steps:
+    - poll:
+        for:
+          value: attempt
+          range: [0, 14]
+          steps:
+            - inspect:
+                switch:
+                  - condition: ${map.get(operation, "done") == true}
+                    steps:
+                      - reject_error:
+                          switch:
+                            - condition: ${map.get(operation, "error") != null}
+                              raise: ${operation.error}
+                      - success:
+                          return: true
+            - wait:
+                call: sys.sleep
+                args: {seconds: 1}
+            - read:
+                call: http.get
+                args:
+                  url: ${base + operation.name}
+                  query: {fields: "name,done,error"}
+                  auth: {type: OAuth2}
+                  timeout: 15
+                result: response
+            - update:
+                assign:
+                  - operation: ${response.body}
+    - timed_out:
+        raise: Shutdown operation is still unconfirmed; operator attention required.

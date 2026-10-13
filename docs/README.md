@@ -3,6 +3,8 @@
 | Need | Read |
 |---|---|
 | Run the app and protect costs | [Operations](operations.md) |
+| Open the public demo and understand team access | [Hosting and shutdown guard](hosting.md) |
+| Present the saved cases in three minutes | [Demo script](demo-script.md) |
 | Follow environment → BigQuery → investigation | [Architecture](architecture.md) |
 | Add a tool or another agent | [Agent extension guide](agents.md) |
 | Understand the evidence and research proposals | [Research](research.md) |
