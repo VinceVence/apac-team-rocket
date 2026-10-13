@@ -252,6 +252,7 @@ class FraudAgent:
                 'customer_replies': report['answers'], 'jurisdiction':'Philippines', 'warehouse_available':bool(self.warehouse),
                 'available_detectors':DETECTORS,
                 'guided_demo':any(t['metadata'].get('guided_demo') for t in snapshot['data']['transactions']),
+                'reviewed_memory_count':len(snapshot['data']['memories']),
                 'evidence_snapshot': {'id': snapshot['id'], 'as_of': snapshot['as_of'], 'event_watermark': snapshot['event_watermark']},
                 'ingestion_flags': [f for t in snapshot['data']['transactions'] for f in t['metadata'].get('review_flags', [])],
                 'observations': run['context'].get('observations', []),
@@ -282,6 +283,9 @@ class FraudAgent:
     def reserve(self, run_id, request):
         with self.lab.lock:
             run=self.desk.run(run_id)
+            if any(t['metadata'].get('guided_demo') for t in self.snapshot(run['context']['snapshot_id'])['data']['transactions']):
+                if self.budget(run['report_id'],run['context']['provider'])['case_calls']>=self.max_case_calls-1:
+                    raise LabError('Resolution allowance reached. One shared case call is reserved for prevention; hand the evidence to an analyst.',429)
             return self._reserve_turn(run['report_id'],run_id,run['step'],run['context']['provider'],request)
 
     def reserve_prevention(self, job, request):

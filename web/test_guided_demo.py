@@ -13,6 +13,7 @@ from lab import LabError,now
 from server import make_server
 from test_warehouse import QueryCloud
 from fraud_detectors import predict_case
+from fraud_adk import available_tools
 
 
 class GuidedDemoChecks(unittest.TestCase):
@@ -44,6 +45,11 @@ class GuidedDemoChecks(unittest.TestCase):
             models=case['investigation']['context']['detector_results']['detectors']
             self.assertEqual(models[0]['signal_score'],0);self.assertEqual(models[1]['signal_score'],1)
             self.assertEqual(case['investigation']['budget']['case_calls'],5)
+            packet=self.server.fraud_agent.packet(case['investigation'])
+            self.assertNotIn('search_reviewed_cases',available_tools(packet))
+            with self.assertRaisesRegex(LabError,'reserved for prevention'):
+                self.server.fraud_agent.reserve(case['investigation']['id'],None)
+            self.assertEqual(self.server.fraud_agent.budget(case['id'],'fake')['case_calls'],5)
             desk=self.server.fraud_desk
             desk.review(case['id'],case['investigation']['id'],'confirmed_scam','request_recall',
                 'Verified the synthetic complaint and its prepayment message.',True,LESSON,QUESTION)

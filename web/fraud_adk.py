@@ -151,6 +151,7 @@ def available_tools(packet):
     if not packet['warehouse_available']:excluded.update(('get_customer_features','train_behavior_model'))
     elif 'get_customer_features' not in observed:excluded.update(('submit_for_review','train_behavior_model'))
     if packet.get('guided_demo') and 'run_fraud_detectors' not in observed:excluded.add('submit_for_review')
+    if packet.get('guided_demo') and packet.get('reviewed_memory_count')==0:excluded.add('search_reviewed_cases')
     return tuple(name for name in TOOLS if name not in excluded)
 
 
