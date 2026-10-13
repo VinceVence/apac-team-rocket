@@ -140,7 +140,24 @@ def tools_for(controller, run_id):
             get_customer_features,train_behavior_model,get_complaint_guidance,run_fraud_detectors]
 
 
+def available_tools(packet):
+    """Expose useful capabilities for this evidence state, without fixing their order."""
+    observed={o['tool']:o['result'] for o in packet['observations']}
+    verified={t['id'] for o in packet['observations'] if o['tool']=='get_transactions' for t in o['result']['transactions']}
+    complete=set(packet['event_ids'])<=verified
+    excluded={name for name in ('get_customer_features','get_complaint_guidance','train_behavior_model') if name in observed}
+    if complete:excluded.add('get_transactions')
+    else:excluded.update(('submit_for_review','run_fraud_detectors'))
+    if not packet['warehouse_available']:excluded.update(('get_customer_features','train_behavior_model'))
+    elif 'get_customer_features' not in observed:excluded.update(('submit_for_review','train_behavior_model'))
+    if packet.get('guided_demo') and 'run_fraud_detectors' not in observed:excluded.add('submit_for_review')
+    return tuple(name for name in TOOLS if name not in excluded)
+
+
 async def run_turn(controller, run, packet, *, instruction=SYSTEM, tools_factory=tools_for, allowed_tools=TOOLS, agent_name='fraud_investigator'):
+    if agent_name=='fraud_investigator':allowed_tools=available_tools(packet)
+    exposed=[tool for tool in tools_factory(controller,run['id']) if tool.__name__ in allowed_tools]
+    packet={**packet,'available_next_tools':list(allowed_tools)}
     mode = run['context']['provider']; client = None
     if mode == 'gemini':
         if not controller.live_enabled(): raise LabError('Live Gemini is off.', 409)
@@ -168,7 +185,7 @@ async def run_turn(controller, run, packet, *, instruction=SYSTEM, tools_factory
     sessions = InMemorySessionService()
     await sessions.create_session(app_name='minttown_fraud', user_id=packet['customer_id'], session_id=run['id'])
     agent = LlmAgent(name=agent_name, model=MeteredModel(), instruction=instruction,
-                     tools=tools_factory(controller, run['id']),
+                     tools=exposed,
                      generate_content_config=types.GenerateContentConfig(max_output_tokens=MAX_OUTPUT_TOKENS,
                          thinking_config=types.ThinkingConfig(thinking_level='MINIMAL', include_thoughts=False),
                          tool_config=types.ToolConfig(function_calling_config=types.FunctionCallingConfig(mode='ANY', allowed_function_names=list(allowed_tools)))))

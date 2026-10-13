@@ -4,7 +4,7 @@ The current contract suite passes **111 tests**, including fresh scenes, validat
 
 The guided fake flow with a fake BigQuery transport uses five resolution turns and one prevention turn from the same case budget. It compares a normal device signal with a suspicious payment-message signal, proposes a safeguard, passes one changed-recipient replay and 20 legitimate controls, and then holds the later simulated transfer before debit while a legitimate payment settles. It makes no additional model call during either payment. A local HTTP/UI walkthrough independently verified review → automatic learner → human activation → protection.
 
-This is contract and synthetic behavior coverage, not evidence of Gemini accuracy or production fraud performance. Live deployment validation of the new learner is recorded separately below when completed. Earlier five-case results remain historical; fresh guided scenes archive their original cases rather than exposing them in the active UI.
+This is contract and synthetic behavior coverage, not evidence of Gemini accuracy or production fraud performance. The first hosted attempt stopped after two calls ($0.001301) because Gemini repeated an already-completed transaction lookup. No retry occurred. This exposed a gap in the offered tool menu, now tightened to remove completed one-time checks and withhold tools with unmet evidence prerequisites. The original failed receipt and spend are retained. Live learner validation is recorded separately below when completed. Earlier five-case results remain historical; fresh guided scenes archive their original cases rather than exposing them in the active UI.
 
 ## Earlier five-case live evaluation
 

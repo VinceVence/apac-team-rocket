@@ -14,7 +14,7 @@ from unittest.mock import patch
 from types import SimpleNamespace
 
 from agents import Agents, Config
-from fraud_adk import FakeInvestigator, fixture_choice
+from fraud_adk import FakeInvestigator, fixture_choice, available_tools
 from fraud_agent import FraudAgent, RESERVE_MICROUSD
 from fraud_desk import FraudDesk, LESSON, QUESTION
 from fraud_runner import InvestigationRunner
@@ -86,6 +86,21 @@ class AgentChecks(unittest.TestCase):
         self.assertEqual(alternative_run['trace'][0]['tool'], 'compare_behavior')
         self.assertEqual(observed[1]['observations'][0]['result']['window_days'], 7)
         self.assertEqual(self.agents.budget()['calls_today'], 0); self.assertTrue(self.lab.integrity())
+
+    def test_tool_menu_removes_completed_checks_and_respects_evidence_prerequisites(self):
+        report,run=self.start();packet=self.agent.packet(run)
+        self.assertIn('ask_customer',available_tools(packet))
+        self.assertIn('compare_behavior',available_tools(packet))
+        self.assertNotIn('submit_for_review',available_tools(packet))
+        run=self.agent.step(run['id'],0);packet=self.agent.packet(run)
+        self.assertNotIn('get_transactions',available_tools(packet))
+        self.assertIn('submit_for_review',available_tools(packet))
+        packet.update(guided_demo=True,warehouse_available=True)
+        self.assertNotIn('submit_for_review',available_tools(packet))
+        self.assertIn('run_fraud_detectors',available_tools(packet))
+        packet['observations'] += [{'tool':'get_customer_features','result':{}},{'tool':'run_fraud_detectors','result':{}}]
+        self.assertNotIn('get_customer_features',available_tools(packet))
+        self.assertIn('submit_for_review',available_tools(packet))
 
     def test_approved_memory_question_pause_resume_and_case_budget_survive_restart(self):
         report, run = self.start(); run = self.finish(run)

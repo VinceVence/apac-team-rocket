@@ -17,7 +17,7 @@
 | `ask_customer` | Ask one useful question and pause |
 | `submit_for_review` | Propose a resolution and lesson; cannot approve or move funds |
 
-Reading disputed transactions is required before submission. When the warehouse is enabled, BigQuery customer features are required too. These are evidence prerequisites; the remaining path and whether a model is useful are Gemini's decisions. Valid tool order need not be identical across cases.
+Reading disputed transactions is required before submission. When the warehouse is enabled, BigQuery customer features are required too. These are evidence prerequisites; the remaining path and whether a model is useful are Gemini's decisions. Valid tool order need not be identical across cases. Completed one-time checks disappear from the model's next tool menu; tools with unmet evidence prerequisites are withheld. The server still validates every returned call.
 
 **Guided investigation:** disputed transactions, a pinned customer feature query when BigQuery is enabled, and detector evidence are prerequisites for submission. Gemini chooses the detector IDs, order of other tools, follow-up question and resolution. The guided example deliberately creates conflicting evidence: a known device and recorded authorization alongside a deceptive safe-account request. Authorization alone does not establish informed intent.
 

@@ -16,8 +16,8 @@ from complaint_guidance import GUIDANCE
 from fraud_detectors import REGISTRY as DETECTORS, predict_case
 
 MODEL = 'gemini-3.5-flash-lite'
-PROMPT_VERSION = 'fraud-investigator-v6'
-TOOL_CONTRACT_VERSION = 6
+PROMPT_VERSION = 'fraud-investigator-v7'
+TOOL_CONTRACT_VERSION = 7
 MAX_INPUT_BYTES = 16000
 MAX_OUTPUT_TOKENS = 512
 RESERVE_MICROUSD = 10000
@@ -61,6 +61,7 @@ a familiar authorized device can have a low device score while a deceptive payme
 has a high message score. For guided_demo cases, a detector check is required before submission.
 Aim to submit by the fifth call so the prevention learner can use the sixth after analyst approval.
 Keep purpose fields concise: state what evidence this action will test, not private reasoning.'''
+SYSTEM += '\nCompleted one-time checks are removed from available_next_tools. Read their saved observations instead of repeating them. Choose only currently available tools. Submit once the evidence supports a reviewable assessment; do not spend calls merely to fill the allowance.'
 
 
 def micro(value):
