@@ -37,7 +37,9 @@
     "model_usd_lifetime": 8,
     "model_usd_per_case": 0.05,
     "model_calls_per_day": 100,
-    "model_calls_per_case": 6
+    "model_calls_per_case": 6,
+    "daily_fresh_scenes": 25,
+    "case_calls_shared_between_roles": true
   },
   "bigquery": {
     "batch_loads_only": true,
@@ -53,7 +55,8 @@
     "versioning": false,
     "soft_delete_retention_seconds": 0,
     "build_source_retention_days": 1,
-    "export_retention_days": 7
+    "export_retention_days": 7,
+    "scene_archive_retention_days": 7
   },
   "build_timeout_seconds": 600,
   "gemini_live": true,

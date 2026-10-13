@@ -1,6 +1,7 @@
 export function createFraudUI({$,api,state,setPlaying,setBusy,refresh,error,focusCustomer}){
   let dashboard=null,report=null,working=false,pollTimer=null,pollKey='',pollDelay=1500,pollRun='',pollStarted=0;
-  const running=()=>['queued','running'].includes(report?.investigation?.context.execution?.status);
+  const learning=()=>['queued','running'].includes(report?.prevention?.status);
+  const running=()=>learning()||['queued','running'].includes(report?.investigation?.context.execution?.status);
   const el=(tag,text,cls)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node};
   const money=value=>'₱'+(value/100).toLocaleString('en-PH',{maximumFractionDigits:2});
   const names={reported:'Report received',investigating:'Investigation in progress',awaiting_review:'Analyst review',awaiting_customer:'Waiting for customer',needs_review:'Manual review needed',resolved:'Resolution recorded'};
@@ -24,6 +25,22 @@ export function createFraudUI({$,api,state,setPlaying,setBusy,refresh,error,focu
       const open=el('button','Open reviewed case','text-button');open.type='button';open.onclick=()=>perform(()=>select(m.source_report_id));row.append(open);$('fraud-memory-list').append(row);
     }
   }
+  function renderPrevention(){
+    const job=report?.prevention,eligible=report?.status==='resolved'&&dashboard.memories.some(m=>m.source_report_id===report.id);
+    $('prevention-panel').hidden=!eligible&&!job;if(!eligible&&!job)return;
+    const rule=job?.rule,active=rule?.status==='active';
+    $('prevention-title').textContent=rule?.name||'Learn from this resolution.';
+    $('prevention-status').textContent=job?`${job.model} · ${job.model_calls} model call · ${active?'safeguard active':job.status.replaceAll('_',' ')}${job.error?' — '+job.error:''}`:'The approved case is ready for the prevention learner.';
+    $('prevention-learn').hidden=!!job&&job.status!=='ready';
+    $('prevention-rule').hidden=!rule;
+    $('prevention-signals').replaceChildren();
+    for(const signal of rule?.signals||[])$('prevention-signals').append(el('li',signal.replaceAll('_',' ')));
+    $('prevention-test-summary').textContent=rule?`${rule.replay.changed_recipient_matches} changed-recipient match · ${rule.replay.false_flags} flags across ${rule.replay.legitimate_controls} legitimate controls. Synthetic checks, not measured fraud accuracy.`:'';
+    $('prevention-activate').hidden=!rule||!rule.replay.passed||active;
+    $('prevention-disable').hidden=!active;
+    $('prevention-prove').hidden=!active||!state.data?.demo.guided||state.data?.demo.focus_report_id!==report.id;
+    $('prevention-trace').textContent=job?JSON.stringify({actions:job.trace,review_id:job.review_id,source:job.source.feature_provenance,case_calls:job.budget.case_calls,case_limit:job.budget.max_case_calls,replay:rule?.replay,rule_id:rule?.id,expires_at:rule?.expires_at},null,2):'No model call has been made.';
+  }
   function render(){
     $('fraud-select').replaceChildren();for(const r of dashboard.reports)$('fraud-select').add(new Option(`${r.scenario_title||r.name} · ${names[r.status]}`,r.id));
     if(report)$('fraud-select').value=report.id;
@@ -41,14 +58,15 @@ export function createFraudUI({$,api,state,setPlaying,setBusy,refresh,error,focu
     if(selected)$('fraud-customer').value=selected;transactions();
     $('fraud-runtime-label').textContent='Resolution agent · ADK';
     $('fraud-provider-note').textContent=report?.investigation?.provider==='gemini'?'Gemini 3.5 Flash-Lite':'FakeInvestigator · no AI calls';
-    if(!report)return;
+    renderPrevention();if(!report)return;
     let run=report.investigation;if(run?.report_revision!==report.revision)run=null;
     const reviewed=report.status==='resolved';
     const warnings=report.validation_warnings||[];$('fraud-unit-warning').hidden=!warnings.length;$('fraud-unit-warning').textContent=warnings.join(' ');$('fraud-approve').disabled=!!warnings.length;
     const stopped=run&&['failed','budget_exhausted','interrupted'].includes(run.status);
     const adk=run?.context.controller==='adk';
     const automatic=running();
-    if(automatic)$('fraud-status').textContent=run.context.execution.status==='queued'?'Queued for investigation…':'Investigating in background…';
+    if(learning())$('fraud-status').textContent='Prevention agent is learning from the approved resolution…';
+    else if(automatic)$('fraud-status').textContent=run.context.execution.status==='queued'?'Queued for investigation…':'Investigating in background…';
     $('fraud-runtime-label').textContent='Resolution agent · ADK';
     $('fraud-provider-note').textContent=run?.provider==='gemini'?'Gemini 3.5 Flash-Lite':'FakeInvestigator · no AI calls';
     $('fraud-agent-budget').hidden=!run?.budget;
@@ -74,7 +92,13 @@ export function createFraudUI({$,api,state,setPlaying,setBusy,refresh,error,focu
       const li=el('li'),icon=el('span',String(t.number),'agent-avatar'),body=el('div');
       body.append(el('strong',t.tool?t.tool.replaceAll('_',' '):t.status==='reserved'?'Choosing a tool…':'Model request stopped'));
       const result=t.result||{},brief=t.tool==='get_transactions'?`Verified ${result.transactions?.length||0} reported payments.`:t.tool==='search_reviewed_cases'?`Found ${result.matches?.length||0} approved lessons.`:t.tool==='trace_recipient'?`Found ${result.related_transfers?.length||0} transfers to this recipient.`:t.tool==='ask_customer'?result.question:t.tool==='submit_for_review'?'Sent the proposed resolution for analyst review.':t.finding;
-      if(brief)body.append(el('p',brief));
+      if(t.purpose)body.append(el('p',t.purpose,'decision-purpose'));
+      if(t.status==='completed')body.append(el('span','Tool input validated','tool-validation'));
+      if(t.tool==='run_fraud_detectors'){
+        const models=el('div',undefined,'detector-results');
+        for(const d of result.detectors||[]){const card=el('section',undefined,'detector-result'),head=el('header');head.append(el('strong',d.name+' v'+d.version),el('span',d.result));card.append(head);if(d.signal_score!==null){const meter=el('meter');meter.min=0;meter.max=1;meter.value=d.signal_score;meter.setAttribute('aria-label',d.name+' signal score');card.append(meter)}card.append(el('small',d.kind+' · signal score, not fraud probability'));models.append(card)}
+        body.append(models);
+      }else if(brief)body.append(el('p',brief));
       if(t.error)body.append(el('p',t.error));
       const details=el('details',undefined,'world-details');details.append(el('summary','Evidence sources & result'));
       details.append(el('pre',JSON.stringify({purpose:t.purpose,finding:t.finding,model:t.provider==='fake'?'FakeInvestigator':'Gemini 3.5 Flash-Lite',status:t.status,cost_usd:t.committed_usd,simulated:t.provider==='fake',sources:t.provenance,result:t.result},null,2),'science-evidence'));body.append(details);li.append(icon,body);$('fraud-trace').append(li);
@@ -105,7 +129,7 @@ export function createFraudUI({$,api,state,setPlaying,setBusy,refresh,error,focu
   function schedulePoll(){
     clearTimeout(pollTimer);
     if(!running()||document.hidden||state.view!=='resolution')return;
-    const run=report.investigation,key=`${run.id}:${run.step}:${run.status}`;
+    const run=learning()?report.prevention:report.investigation,key=`${run.id}:${run.step??run.model_calls}:${run.status}`;
     if(pollRun!==run.id){pollRun=run.id;pollStarted=Date.now()}
     if(Date.now()-pollStarted>210000){$('fraud-status').textContent='Progress polling stopped. Reopen the case to check its saved status.';return}
     pollDelay=key===pollKey?Math.min(5000,pollDelay*1.5):1500;pollKey=key;
@@ -147,7 +171,11 @@ export function createFraudUI({$,api,state,setPlaying,setBusy,refresh,error,focu
   $('fraud-review-form').onsubmit=e=>{e.preventDefault();perform(async()=>{
     report=await api('/api/fraud-desk/review',{report_id:report.id,investigation_id:report.investigation.id,disposition:$('fraud-disposition').value,action:$('fraud-action').value,note:$('fraud-note').value,publish_memory:$('fraud-publish').checked,lesson:$('fraud-lesson').value,next_question:$('fraud-question').value});
   })};
+  $('prevention-learn').onclick=()=>perform(async()=>{await api('/api/prevention/learn',{report_id:report.id})});
+  $('prevention-activate').onclick=()=>perform(async()=>{await api('/api/prevention/activate',{rule_id:report.prevention.rule.id,enabled:true})});
+  $('prevention-disable').onclick=()=>perform(async()=>{await api('/api/prevention/activate',{rule_id:report.prevention.rule.id,enabled:false})});
+  $('prevention-prove').onclick=()=>perform(async()=>{await api('/api/world/prove',{expected_run:state.data.demo.run_id});location.hash='';});
   $('fraud-reply-form').onsubmit=e=>{e.preventDefault();perform(async()=>{report=await api('/api/fraud-desk/reply',{report_id:report.id,answer:$('fraud-reply').value,expected_revision:report.revision});$('fraud-reply').value='';if(report.auto_resume_error)error(report.auto_resume_error)})};
   $('fraud-report-form').onsubmit=e=>{e.preventDefault();perform(async()=>{report=await api('/api/fraud-desk/report',{customer_id:$('fraud-customer').value,story:$('fraud-report-story').value,message:$('fraud-report-message').value,event_ids:[$('fraud-event').value],request_id:crypto.randomUUID()});$('fraud-new-report').open=false;focusCustomer(report.customer_id)})};
-  return {load,demo,open:select};
+  return {load,demo,open:select,reset:()=>{clearTimeout(pollTimer);report=null;dashboard=null;pollRun='';pollKey=''}};
 }

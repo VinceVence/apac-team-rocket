@@ -27,7 +27,15 @@ def fixture_choice(packet):
         return 'search_reviewed_cases', {'query': 'safe_account impersonation pressure secrecy', 'purpose': 'Check the reviewed case behind the recipient flag.'}
     if 'get_transactions' not in by_tool:
         return 'get_transactions', {'event_ids': packet['event_ids'], 'purpose': 'Verify the specific transfer reported by this customer.'}
-    if suspicious and 'search_reviewed_cases' not in by_tool:
+    if packet.get('guided_demo'):
+        if packet.get('warehouse_available') and 'get_customer_features' not in by_tool:
+            return 'get_customer_features',{'purpose':'Read this customer’s pinned transaction history.'}
+        if 'run_fraud_detectors' not in by_tool:
+            return 'run_fraud_detectors',{'detector_ids':['device_integrity_v1','message_intent_v1'],'purpose':'Compare device evidence with the payment request’s warning signals.'}
+        if 'get_complaint_guidance' not in by_tool:
+            return 'get_complaint_guidance',{'purpose':'Check the institution-led complaint handling steps.'}
+        suspicious=True
+    if suspicious and not packet.get('guided_demo') and 'search_reviewed_cases' not in by_tool:
         return 'search_reviewed_cases', {'query': 'safe_account impersonation pressure secrecy', 'purpose': 'Look for reviewed examples of the reported pattern.'}
     memories = by_tool.get('search_reviewed_cases', {}).get('matches', [])
     if memories and not packet['customer_replies']:
@@ -35,9 +43,9 @@ def fixture_choice(packet):
     legitimate = any(word in combined.lower() for word in ('groceries', 'received my items', 'recognized the merchant'))
     if not suspicious and not legitimate and not packet['customer_replies']:
         return 'ask_customer', {'question': 'Who asked you to make this transfer, and what did they promise in return?', 'purpose': 'The report does not yet explain why the customer sent money.'}
-    if suspicious and not memories and 'compare_behavior' not in by_tool:
+    if suspicious and not packet.get('guided_demo') and not memories and 'compare_behavior' not in by_tool:
         return 'compare_behavior', {'window_days': 14, 'purpose': 'Compare the transfer with recent observed spending.'}
-    if suspicious and 'trace_recipient' not in by_tool:
+    if suspicious and not packet.get('guided_demo') and 'trace_recipient' not in by_tool:
         return 'trace_recipient', {'recipient_id': by_tool['get_transactions']['transactions'][0]['to_account'], 'purpose': 'Check related transfers without treating a shared recipient as proof.'}
     return 'submit_for_review', {
         'assessment': 'suspected_scam' if suspicious else 'likely_legitimate' if legitimate else 'needs_information',
@@ -113,6 +121,10 @@ def tools_for(controller, run_id):
         """Read the curated Philippine complaint checklist and BSP source links. Supports institution-led verification and escalation; no guaranteed recovery, invented deadlines or liability decision."""
         return invoke('get_complaint_guidance',{},purpose,tool_context)
 
+    def run_fraud_detectors(detector_ids:list[str],purpose:str,tool_context:ToolContext)->dict:
+        """Choose one to three registered detectors: device_integrity_v1, payment_velocity_v1, message_intent_v1. Uses only verified, frozen case transactions; rule signals are not fraud probabilities."""
+        return invoke('run_fraud_detectors',{'detector_ids':detector_ids},purpose,tool_context)
+
     def submit_for_review(assessment: str, summary: str, evidence_ids: list[str], memory_ids: list[str],
                           uncertainties: list[str], questions: list[str], action: str, customer_message: str,
                           lesson: str, followup_question: str, purpose: str, tool_context: ToolContext) -> dict:
@@ -125,10 +137,10 @@ def tools_for(controller, run_id):
                       customer_message=customer_message,lesson=lesson,followup_question=followup_question), purpose, tool_context)
 
     return [get_transactions, compare_behavior, trace_recipient, search_reviewed_cases, ask_customer, submit_for_review,
-            get_customer_features,train_behavior_model,get_complaint_guidance]
+            get_customer_features,train_behavior_model,get_complaint_guidance,run_fraud_detectors]
 
 
-async def run_turn(controller, run, packet):
+async def run_turn(controller, run, packet, *, instruction=SYSTEM, tools_factory=tools_for, allowed_tools=TOOLS, agent_name='fraud_investigator'):
     mode = run['context']['provider']; client = None
     if mode == 'gemini':
         if not controller.live_enabled(): raise LabError('Live Gemini is off.', 409)
@@ -155,11 +167,11 @@ async def run_turn(controller, run, packet):
 
     sessions = InMemorySessionService()
     await sessions.create_session(app_name='minttown_fraud', user_id=packet['customer_id'], session_id=run['id'])
-    agent = LlmAgent(name='fraud_investigator', model=MeteredModel(), instruction=SYSTEM,
-                     tools=tools_for(controller, run['id']),
+    agent = LlmAgent(name=agent_name, model=MeteredModel(), instruction=instruction,
+                     tools=tools_factory(controller, run['id']),
                      generate_content_config=types.GenerateContentConfig(max_output_tokens=MAX_OUTPUT_TOKENS,
                          thinking_config=types.ThinkingConfig(thinking_level='MINIMAL', include_thoughts=False),
-                         tool_config=types.ToolConfig(function_calling_config=types.FunctionCallingConfig(mode='ANY', allowed_function_names=list(TOOLS)))))
+                         tool_config=types.ToolConfig(function_calling_config=types.FunctionCallingConfig(mode='ANY', allowed_function_names=list(allowed_tools)))))
     runner = Runner(agent=agent, app_name='minttown_fraud', session_service=sessions)
     trace = []
     try:

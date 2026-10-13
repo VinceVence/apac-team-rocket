@@ -120,7 +120,7 @@ def live_evaluation(base, run_id, save, run_world=False, prior=None):
                 if key not in world_kinds and key not in prepared:
                     prepared[key]=call('/api/fraud-desk/demo',{'scenario':key,'request_id':run_id+'-'+key})
             results['prepared_report_ids']={k:r['id'] for k,r in prepared.items()};save(results)
-            if initial['demo']['run_id']<episode:call('/api/world/start',{'expected_run':initial['demo']['run_id'],'activity':3,'speed':4})
+            if initial['demo']['run_id']<episode:call('/api/world/start',{'expected_run':initial['demo']['run_id'],'activity':3,'speed':4,'fresh':False})
             deadline=time.monotonic()+600
             while time.monotonic()<deadline:
                 state=call('/api/state')

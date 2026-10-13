@@ -17,7 +17,7 @@ export function createTown(canvas) {
   ];
 
   let customers=[],population=[],recent=[],selected=null,kind='world',running=false,speed=1,raf=0,last=0,background=null,market=null;
-  const actors=new Map();const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const actors=new Map();let alerts=new Map();const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
   function makeBackground(){
     background=document.createElement('canvas');background.width=768;background.height=480;
     const live=ctx;ctx=background.getContext('2d');
@@ -42,7 +42,9 @@ export function createTown(canvas) {
       const a=actors.get(p.id);if(!a)continue;
       if(p.id===selected){ctx.strokeStyle=kind==='fraud'?'#ad6242':'#315d43';ctx.lineWidth=3;ctx.strokeRect(a.x-14,a.y-12,29,44)}
       sprite(a.x,a.y,['#b86a57','#688397','#bd9949','#7b688d','#548d83'][i%5],running&&a.path.length&&Math.floor(time/160+i)%2);
-      if(a.bubble&&a.until>time)label(a.bubble,a.x,a.y-35,Math.max(54,a.bubble.length*7));
+      const alert=alerts.get(p.id);
+      if(alert){ctx.beginPath();ctx.arc(a.x,a.y-23,14,0,Math.PI*2);ctx.fillStyle=alert==='!'?'#b65131':'#33684c';ctx.fill();ctx.strokeStyle='#fff9e9';ctx.lineWidth=2;ctx.stroke();ctx.fillStyle='white';ctx.textAlign='center';ctx.font='700 21px "DM Sans",sans-serif';ctx.fillText(alert,a.x,a.y-16)}
+      else if(a.bubble&&a.until>time)label(a.bubble,a.x,a.y-35,Math.max(54,a.bubble.length*7));
     }
   }
   function frame(time){
@@ -62,7 +64,7 @@ export function createTown(canvas) {
   }
   function draw(people,focus,role){
     population=people.slice(0,100);selected=focus;kind=role;
-    const ids=[...new Set([focus,...recent,...population.map(p=>p.id)].filter(Boolean))].slice(0,24);
+    const ids=[...new Set([...alerts.keys(),focus,...recent,...population.map(p=>p.id)].filter(Boolean))].slice(0,24);
     customers=ids.map(id=>population.find(p=>p.id===id)).filter(Boolean);
     customers.forEach((p,i)=>{if(!actors.has(p.id))actors.set(p.id,{x:i%3===0?274:i%3===1?494:45+(i*73)%650,y:i%3<2?40+(i*53)%365:236,path:[],bubble:null,until:0})});paint();
   }
@@ -70,6 +72,8 @@ export function createTown(canvas) {
   draw.setRunning=function(on){running=on;last=0;cancelAnimationFrame(raf);if(on)raf=requestAnimationFrame(frame);else{raf=0;paint()}};
   draw.setSpeed=value=>{speed=value};
   draw.setMarket=value=>{market=value};
+  draw.setAlerts=value=>{alerts=new Map(value.map(v=>[v.customer_id,v.mark]));draw(population,selected,kind)};
+  draw.reset=()=>{actors.clear();alerts.clear();recent=[];selected=null;last=0;paint()};
   document.fonts.ready.then(()=>{background=null;paint()});
   return draw;
 }

@@ -8,6 +8,7 @@
 |---|---|
 | `get_transactions` | Verify only disputed IDs belonging to this customer |
 | `get_customer_features` | Query this customer's pinned BigQuery feature snapshot |
+| `run_fraud_detectors` | Run selected registered detectors on frozen disputed payments; report availability and version |
 | `compare_behavior` | Compare bounded historical spending in frozen ledger evidence |
 | `trace_recipient` | Read bounded transfers to a recipient already in the case |
 | `search_reviewed_cases` | Retrieve at most three approved memories |
@@ -18,28 +19,35 @@
 
 Reading disputed transactions is required before submission. When the warehouse is enabled, BigQuery customer features are required too. These are evidence prerequisites; the remaining path and whether a model is useful are Gemini's decisions. Valid tool order need not be identical across cases.
 
-**Prevention service:** the current payment gateway checks exact recipients from approved memories. It is a deterministic serving rule, not a second LLM agent. Its holds cite the reviewed source. It does not infer that every transfer resembling a scam is fraudulent.
+**Guided investigation:** disputed transactions, a pinned customer feature query when BigQuery is enabled, and detector evidence are prerequisites for submission. Gemini chooses the detector IDs, order of other tools, follow-up question and resolution. The guided example deliberately creates conflicting evidence: a known device and recorded authorization alongside a deceptive safe-account request. Authorization alone does not establish informed intent.
 
-## Proposed prevention-learning agent
+## Prevention agent and payment gate
 
-Trigger it after an analyst-approved resolution. Give it a typed reviewed-case artifact, not authority to approve its own output. Its job is to propose a scoped reusable question, evidence checklist or prevention candidate. It should compare the confirmed case with legitimate lookalikes, explain exceptions, run shadow replay, and submit a candidate to an analyst.
+`prevention.py` receives an immutable artifact only after an analyst confirms the case and publishes knowledge. Through the same ADK adapter, Gemini chooses `propose_prevention_rule` or `decline_prevention_rule`. It has one remaining call from the **same six-call case allowance**, not a separate budget.
+
+A proposal selects 2–4 allowlisted prepayment signals that must all match. It cannot generate executable code, SQL, a new recipient watchlist or a permanent ban. The server replays the source with a changed recipient and 20 legitimate controls. A failed replay is rejected. A passed replay still requires **Enable safeguard** from the analyst. Each rule records the reviewed source, version, provenance, replay, activation state and seven-day expiry.
 
 ```mermaid
 flowchart LR
-    Resolution[Resolution proposal] --> Human[Analyst approval]
-    Human --> Artifact[Reviewed case artifact]
-    Artifact --> Curator[Proposed learning agent]
-    Curator --> Candidate[Candidate lesson or policy]
-    Candidate --> Replay[Scam and legitimate replay]
-    Replay --> Gate[Human activation gate]
-    Gate --> Serving[Versioned prevention policy]
-    Serving --> Outcome[Observed outcomes and rollback]
-    Outcome --> Curator
+    Resolution[Resolution agent proposal] --> Human[Human case approval]
+    Human --> Artifact[Frozen reviewed case + memory]
+    Artifact --> Learner[Gemini prevention learner: one call]
+    Learner --> Candidate[Typed signal rule or decline]
+    Candidate --> Replay[Changed recipient + legitimate controls]
+    Replay --> Gate[Human activation]
+    Gate --> Serving[Local payment check before debit]
+    Serving --> Hold[Request verification with rule receipt]
 ```
 
-A candidate artifact should include: source case and review IDs; applicable scenario; evidence required; counterexamples; proposed action; expiry/review date; test results; and version. Prefer a warning or a verification request for general patterns. An exact reviewed recipient can retain the existing simulated hold policy. New blocking logic should remain in shadow mode until evaluated and approved.
+The payment gate evaluates active rules locally alongside the existing exact-recipient watch. It makes no Gemini call per transaction. General matches hold the simulated transfer for verification before ledger posting. Real device-edge infrastructure is not deployed; the gate currently runs inside the Cloud Run payment simulator.
 
-Neither agent may publish unreviewed allegations into active prevention, decide legal fault, promise recovery, or treat sentiment/demographics as proof. A bank-authentication record and informed intent are different questions. Approved memories remain leads that must be checked against the current case.
+Neither agent may approve its own output, decide legal fault, promise recovery or treat demographics/sentiment as proof. Prior knowledge is a lead to verify. The public timeline shows concise decision purposes, evidence, tool validation and results—not private chain of thought.
+
+## Detector registry
+
+`fraud_detectors.py` exposes device integrity, payment velocity and payment-request intent. They are **versioned rule detectors**, not trained or calibrated fraud probabilities. Missing inputs are reported as unavailable. Scores describe matched signals only. Detectors read prepayment metadata, not later complaints, hidden scenario labels or future case outcomes.
+
+The optional `train_behavior_model` tool fits a small real k-means model from BigQuery features. Its distance is an anomaly score, not a fraud diagnosis. A bank's existing validated classifier can replace/add a registry adapter with a fixed input schema, model version, missing-data rules and evaluation evidence; no extra conversational agent is necessary.
 
 ## Add a tool
 
@@ -51,6 +59,4 @@ Neither agent may publish unreviewed allegations into active prevention, decide 
 
 ## Add another agent
 
-Start only when a distinct decision boundary and evaluation exist. The current metering table is tied to investigations; a separate prevention job needs an explicit migration and shared budget accounting, not a fresh unmetered Gemini client. Preserve one paid request at a time, cumulative six-call case limits unless the operator deliberately changes them, request spacing and the persistent failure circuit.
-
-Keep prompts, tools and success criteria distinct. A reviewed resolution is the handoff artifact; repeated agent-to-agent conversation is not the contract. Test an incorrect memory, a changed recipient, a legitimate lookalike, missing evidence, a timeout and an exhausted allowance before activating the new role. See [research](research.md) for the rationale and sources.
+Use the existing shared meter and worker. Prevention demonstrates a distinct role, a typed reviewed-case handoff and role-specific tools without an unbounded agent conversation. Extend only when a new decision boundary needs its own tool contract. Test changed recipients, legitimate lookalikes, missing evidence, stale approvals, exhausted allowance and provider failure. See [research](research.md) for the original design sources and [evaluation](evaluation.md) for measured coverage.

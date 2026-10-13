@@ -45,6 +45,7 @@ class FraudDesk:
     def __init__(self, lab, world):
         self.lab, self.world = lab, world
         self.agent = None
+        self.prevention = None
         lab.db.executescript('''
         CREATE TABLE IF NOT EXISTS fraud_reports(
           id TEXT PRIMARY KEY, request_id TEXT NOT NULL UNIQUE, request_json TEXT NOT NULL,
@@ -118,6 +119,7 @@ class FraudDesk:
                           transactions=self.transactions(report), investigation=self.run(latest[0]) if latest else None,
                           reviews=reviews)
             if self.agent: report['decision_trail'] = self.agent.timeline(report_id)
+            if self.prevention:report['prevention']=self.prevention.for_report(report_id)
             payload=json.loads(self.lab.db.execute('SELECT request_json FROM fraud_reports WHERE id=?',(report_id,)).fetchone()[0])
             report['scenario_title']=scenario_title(payload.get('scenario') or next((t['metadata'].get('scenario') for t in report['transactions'] if t['metadata'].get('scenario')),None))
             if self.agent and report['investigation'] and report['investigation']['recommendation']:

@@ -1,59 +1,45 @@
-# Pallet Town — 3-minute demo script
+# Pallet Town — 3-minute guided demo
 
-Use the **saved episode and investigations**. Leave **Run world**, **Recheck**, and **Start investigation** untouched. This walkthrough requires no new Gemini calls.
+Use the public app's **Environment**, **Agent activity**, and **Agents** tabs. Run the live case before presenting if latency is uncertain. Saved timelines and the payment proof can be shown without new model calls. Starting a new world or approving a case with a remaining learner call can consume the shared allowance.
 
-## 0:00–0:25 — Environment
+## 0:00–0:30 — Run world
 
-*Show the town and its completed activity feed.*
+Click **Run world** (4× speed is useful). A fresh scene begins with 100 synthetic customers and seeded transaction history. Point to purchases and transfers, then the orange **!** above the victim.
 
-> This is Pallet Town, a simulated fintech economy with 100 customers. People make purchases and transfers, producing transaction histories and daily customer features in BigQuery.
+> A customer has received a deceptive payment request, transferred money, and filed a complaint. The world pauses here so we can follow the investigation. Its evidence is captured and customer features are published to seven bounded BigQuery tables.
+
+Open **Follow the case** or **Agent activity**.
+
+## 0:30–1:25 — Watch the resolution agent
+
+Show the actual tool timeline and detector cards. Expand one evidence entry.
+
+> Gemini chooses the next tool through Google ADK. We record its purpose, validate the tool and arguments, and show the actual result. The device check can look normal while the payment message contains strong scam signals. A recorded authorization is not the same as informed intent.
 >
-> When a customer reports a suspected scam, those records become evidence for an investigation. Today we’re walking through saved results, so we won’t make new Gemini calls.
+> The agent combines the complaint, this customer's transaction evidence and BigQuery features. It can trace a recipient, compare behavior, request a bounded anomaly model, retrieve reviewed cases, or ask a follow-up question. We only claim the choices visible in this saved trace.
 
-## 0:25–1:10 — Gemini’s investigation
+The registered detector scores are rule signals, not calibrated fraud probabilities. A fake-model rehearsal is explicitly labelled and must not be presented as Gemini.
 
-*Open **Agent activity**, select **Invoice redirection**, and expand **Tools called**.*
+## 1:25–1:55 — Analyst review
 
-> Here, a customer reports paying a changed beneficiary. Gemini receives the complaint and chooses which tools to call through Google ADK.
+Read the expected resolution, evidence and uncertainty. Review the lesson and click **Approve & learn** only if supported.
+
+> The agent recommends; the risk analyst verifies. Approval publishes the reviewed case. This is a synthetic recall request, not a promise that money has been recovered.
+
+The prevention learner may consume one remaining model call from the same six-call allowance.
+
+## 1:55–2:25 — Learn a safeguard
+
+Show the **Prevention agent** panel, its selected signals and replay results. Click **Enable safeguard** after inspecting the source and controls.
+
+> A second role converts the approved resolution into a narrow, versioned safeguard. It can also decline. The proposal must catch the changed-recipient example and avoid the legitimate replay controls, then a human decides whether to activate it. These are synthetic checks, not production accuracy measurements.
+
+## 2:25–3:00 — Prove future prevention
+
+Click **Test a similar payment**. Show the green protection marker and the two outcomes.
+
+> The scam now uses a different recipient. The local payment gate requests verification before any debit, while the normal payment passes. Neither payment makes a Gemini call.
 >
-> In this investigation, it checked the disputed transactions, queried customer behavior from BigQuery, consulted Philippine complaint guidance, and searched approved case knowledge before submitting its recommendation.
->
-> Each tool entry exposes the returned evidence. We can inspect what the agent actually used instead of relying only on its final explanation.
+> The contribution is the complete feedback loop: evidence-driven investigation, human-reviewed knowledge, a tested prevention proposal, and an observable effect on the next transaction—all within one shared cost budget.
 
-*Expand the BigQuery tool’s evidence.*
-
-> The customer query is scoped to this case and a saved data snapshot. Gemini cannot freely query another customer or run arbitrary SQL.
-
-## 1:10–1:35 — Show a different tool choice
-
-*Switch to **Account takeover**.*
-
-> This case completed in four model calls and skipped the memory search. The investigation path can vary with the evidence.
->
-> Gemini also has tools for asking the customer a question or training a small behavior model. It didn’t choose those tools in these five live cases, so we don’t present them as observed decisions.
-
-## 1:35–2:10 — Analyst approval
-
-*Return to **Invoice redirection**. Show **Expected resolution**, then expand **Review notes**.*
-
-> Gemini proposes a resolution and a lesson. The analyst checks the evidence, uncertainty, disposition and next action.
->
-> Approval is the human decision. It doesn’t mean money has been recovered or that the system has determined legal fault.
-
-*Review the lesson, leave **Remember and protect future payments** checked, then click **Approve & remember**.*
-
-> This publishes reviewed knowledge that subsequent payments and investigations can use.
-
-## 2:10–2:45 — Prevention from approved knowledge
-
-*Return to **Environment**. Find **Held by approved knowledge**, then open **View knowledge**.*
-
-> Here is a saved later scam attempt that was held using knowledge from an earlier approved case.
->
-> This is separate from the approval we just performed. The receipt identifies the reviewed memories responsible for the hold.
->
-> Matching the approved recipient prevents settlement in the simulator without another Gemini call.
-
-## 2:45–3:00 — Close
-
-> Our demonstration connects three things: evidence from a working economy, Gemini choosing investigation tools, and analyst-approved knowledge affecting future payments. Today’s prevention uses recipient matching; broader scam-pattern learning is the next extension.
+Leave the completed scene visible. **Run new world** archives it and clears its active lessons, but never resets spend or daily counters. To replay without paid calls, inspect the saved trace and use the already-completed payment proof; do not start a new world or new learner.

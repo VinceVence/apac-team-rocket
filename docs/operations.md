@@ -22,11 +22,11 @@ ADC inherits the account's access. Project pinning in this launcher is an applic
 | Resource | Limit |
 |---|---|
 | Gemini | $2/UTC day; $0.05/case; $8 lifetime model spend |
-| Generations | 100/day; six/case including follow-ups |
-| Concurrency | One active investigation, one queued; one live request in flight |
+| Generations | 100/day; six/case shared by resolution, follow-ups and prevention learning |
+| Concurrency | One active agent job, one queued; one live request in flight |
 | Retry | One SDK attempt; no automatic provider retry or upgrade |
 | Pacing | At least six seconds between live requests |
-| Case admission | 25 new reports/day; 1,500 writes/day; 600 world steps/day |
+| Case admission | 25 new reports and 25 fresh scenes/day; 1,500 writes/day; 600 world steps/day |
 | BigQuery publication | 25/day, shared with legacy export; 20,000 rows and 16 MiB each |
 | BigQuery queries | 100/day; maximum 50 MiB per query; project quota 1 GiB/day |
 | Local training | At most two new behavior models/day; bounded CPU iterations |
@@ -57,3 +57,11 @@ Run offline contracts with `web/evaluate_cases.py --mode fake`. This uses an iso
 ```
 
 This stages three distinct synthetic complaints and lets Run world produce the other two. It does not approve cases, publish memories, refund funds or increase any limit. Inspect saved outcomes before another live run. Read [evaluation](evaluation.md) for the measured results and remaining coverage gaps.
+
+## Fresh scenes and prevention
+
+`Run world` archives the current synthetic database before replacing its scene. Hosted archives are private GCS objects under `archives/` with seven-day deletion rules; local archives live beside the database. Seeded historical transactions provide context for the new scene. Old cases, memories and active safeguards are cleared from the active scene, but model charges, call counts, daily admissions, warehouse usage, cooldown and the failure circuit remain in the canonical checkpoint. A reset is refused while an agent job is pending. An uncertain cloud checkpoint fences further writes.
+
+Both roles share the same worker, meter and six-call case allowance. The resolution prompt aims to submit by call five, leaving one call for the prevention learner. If no allowance remains, the learner stops; approval never creates a new budget. The learner cannot activate its own rule. Human activation requires a passed replay, the current feature schema, an unchanged approved source and an unexpired rule. Rules expire after seven days and can be disabled immediately.
+
+The payment gate is local code: it only uses signals available before debit, ignores future complaints and scenario labels, and makes no model call. A general match requests verification, rather than declaring legal fault. The fake suite verifies routing and accounting contracts; replay controls are synthetic checks, not measured production fraud accuracy.

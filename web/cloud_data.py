@@ -67,6 +67,11 @@ class CloudData:
         Path(path).write_bytes(data); self.last_hash = hashlib.sha256(data).hexdigest()
 
     def initialize(self, lab):
+        self.initialize_schema(lab)
+        self.save(lab)
+
+    @staticmethod
+    def initialize_schema(lab):
         with lab.lock, lab.db:
             lab.db.execute('''CREATE TABLE IF NOT EXISTS cloud_exports(
                 id TEXT PRIMARY KEY, created_at TEXT NOT NULL, status TEXT NOT NULL,
@@ -78,7 +83,6 @@ class CloudData:
                 if name not in columns: lab.db.execute('ALTER TABLE cloud_exports ADD COLUMN ' + name + ' ' + definition)
             lab.db.execute('CREATE UNIQUE INDEX IF NOT EXISTS cloud_export_request ON cloud_exports(request_id)')
             lab.db.execute('CREATE INDEX IF NOT EXISTS ledger_event ON ledger_entries(event_id)')
-        self.save(lab)
 
     def save(self, lab):
         with lab.lock:
@@ -111,6 +115,8 @@ class CloudData:
         count=lab.db.execute('SELECT count(*) FROM cloud_exports WHERE row_count>0 AND substr(created_at,1,10)=?', (now()[:10],)).fetchone()[0]
         if lab.db.execute("SELECT 1 FROM sqlite_master WHERE name='warehouse_snapshots'").fetchone():
             count+=lab.db.execute('SELECT count(*) FROM warehouse_snapshots WHERE substr(created_at,1,10)=?',(now()[:10],)).fetchone()[0]
+        if lab.db.execute("SELECT 1 FROM sqlite_master WHERE name='demo_usage_archive'").fetchone():
+            count+=lab.db.execute('SELECT coalesce(sum(publications),0) FROM demo_usage_archive WHERE day=?',(now()[:10],)).fetchone()[0]
         return count
 
     def cursor(self, lab):

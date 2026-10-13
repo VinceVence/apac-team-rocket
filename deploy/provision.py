@@ -109,7 +109,7 @@ class Provisioner:
                 'softDeletePolicy':{'retentionDurationSeconds':'0'},
                 'iamConfiguration':{'uniformBucketLevelAccess':{'enabled':True},'publicAccessPrevention':'enforced'},
                 'lifecycle':{'rule':[{'action':{'type':'Delete'},'condition':{'age':1,'matchesPrefix':['build/']}},
-                                     {'action':{'type':'Delete'},'condition':{'age':7,'matchesPrefix':['exports/']}}]}},params={'project':self.project})
+                                     {'action':{'type':'Delete'},'condition':{'age':7,'matchesPrefix':['exports/','archives/']}}]}},params={'project':self.project})
         saved=self.call('GET',bucket_url)
         if saved.get('versioning',{}).get('enabled') or int(saved.get('softDeletePolicy',{}).get('retentionDurationSeconds',0))!=0:raise RuntimeError('Bucket retention does not match the bounded-storage plan.')
         for email,role in ((runtime,'roles/storage.objectAdmin'),(builder,'roles/storage.objectViewer')):

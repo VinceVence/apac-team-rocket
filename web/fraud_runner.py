@@ -2,6 +2,7 @@
 from concurrent.futures import ThreadPoolExecutor
 import threading
 import time
+import logging
 
 from fraud_agent import TURN_TIMEOUT_SECONDS
 from lab import LabError, encoded, now
@@ -17,6 +18,34 @@ class InvestigationRunner:
         self.pending = set()
         self.closed = False
         self.stopping = threading.Event()
+        self.prevention = None
+
+    def learn(self, report_id, mode='fake'):
+        if not self.prevention:raise LabError('Prevention learning is unavailable.',409)
+        with self.lab.lock:
+            if self.closed:raise LabError('The agent worker is stopping.',503)
+            job=self.prevention.start(report_id,mode)
+            if job['status']!='ready' or job['id'] in self.pending:return job
+            if len(self.pending)>=MAX_PENDING:raise LabError('The shared agent queue is full. The approved case is saved.',429)
+            with self.lab.db:self.lab.db.execute("UPDATE prevention_jobs SET status='queued' WHERE id=?",(job['id'],))
+            self.agent.checkpoint();self.pending.add(job['id'])
+            self.pool.submit(self.learn_work,job['id'])
+            return self.prevention.job(job['id'])
+
+    def learn_work(self,job_id):
+        try:
+            job=self.prevention.job(job_id)
+            if self.stopping.wait(self.agent.live_delay({'context':{'provider':job['provider']}})):return
+            with self.lab.lock,self.lab.db:self.lab.db.execute("UPDATE prevention_jobs SET status='running' WHERE id=?",(job_id,))
+            self.agent.checkpoint();self.prevention.step(job_id)
+        except Exception:
+            logging.getLogger(__name__).exception('Prevention worker stopped for %s',job_id)
+            with self.lab.lock,self.lab.db:self.lab.db.execute("UPDATE prevention_jobs SET status='failed',error='Learning stopped; no automatic retry was made.' WHERE id=?",(job_id,))
+        finally:
+            with self.lab.lock,self.lab.db:
+                self.lab.db.execute("UPDATE prevention_jobs SET status='interrupted',error='Worker stopped; no retry was made.' WHERE id=? AND status IN ('queued','running')",(job_id,))
+                self.pending.discard(job_id)
+            self.agent.checkpoint()
 
     def execution(self, run_id, status):
         run = self.desk.run(run_id)
@@ -83,8 +112,11 @@ class InvestigationRunner:
         self.pool.shutdown(wait=True, cancel_futures=True)
         with self.lab.lock, self.lab.db:
             for run_id in self.pending:
-                self.agent.stop(run_id, 'interrupted', 'The queued investigation stopped with the server. No request was retried.')
-                self.execution(run_id, 'interrupted')
+                if run_id.startswith('PREV-'):
+                    self.lab.db.execute("UPDATE prevention_jobs SET status='interrupted',error='Worker stopped; no retry was made.' WHERE id=?",(run_id,))
+                else:
+                    self.agent.stop(run_id, 'interrupted', 'The queued investigation stopped with the server. No request was retried.')
+                    self.execution(run_id, 'interrupted')
             self.pending.clear()
         try: self.agent.checkpoint()
         except LabError: pass  # A failed cloud checkpoint already fenced this instance.

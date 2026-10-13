@@ -164,6 +164,8 @@ class Warehouse:
         params=[{'name':k,'parameterType':{'type':'DATE' if k in ('day','since') else 'STRING'},'parameterValue':{'value':v}} for k,v in parameters.items()]
         with self.lab.lock,self.lab.db:
             used=self.lab.db.execute('SELECT count(*) FROM warehouse_queries WHERE substr(created_at,1,10)=?',(now()[:10],)).fetchone()[0]
+            if self.lab.db.execute("SELECT 1 FROM sqlite_master WHERE name='demo_usage_archive'").fetchone():
+                used+=self.lab.db.execute('SELECT coalesce(sum(queries),0) FROM demo_usage_archive WHERE day=?',(now()[:10],)).fetchone()[0]
             if used>=DAILY_QUERIES:raise LabError('Daily BigQuery query allowance reached.',429)
             self.lab.db.execute('INSERT INTO warehouse_queries(id,created_at,status) VALUES(?,?,?)',(identifier,now(),'reserved'))
         self.cloud.save(self.lab)
@@ -220,7 +222,10 @@ class Warehouse:
             saved=self.lab.db.execute('SELECT * FROM behavior_models WHERE id=?',(identifier,)).fetchone()
             if saved:artifact=json.loads(saved['artifact']);report=json.loads(saved['report'])
             else:
-                if self.lab.db.execute('SELECT count(*) FROM behavior_models WHERE substr(created_at,1,10)=?',(now()[:10],)).fetchone()[0]>=2:
+                builds=self.lab.db.execute('SELECT count(*) FROM behavior_models WHERE substr(created_at,1,10)=?',(now()[:10],)).fetchone()[0]
+                if self.lab.db.execute("SELECT 1 FROM sqlite_master WHERE name='demo_usage_archive'").fetchone():
+                    builds+=self.lab.db.execute('SELECT coalesce(sum(model_builds),0) FROM demo_usage_archive WHERE day=?',(now()[:10],)).fetchone()[0]
+                if builds>=2:
                     return {'status':'not_trained','reason':'Two local model builds already used today.','source':source}
                 artifact,report=fit_behavior(rows)
                 with self.lab.db:self.lab.db.execute('INSERT INTO behavior_models VALUES(?,?,?,?)',(identifier,now(),encoded(artifact),encoded(report)))

@@ -13,7 +13,7 @@ class WorldDemo:
         self.world,self.lab,self.desk,self.runner=world,world.lab,desk,runner
         self.checkpoint=checkpoint or (lambda:None);self.guard=guard
         self.warehouse=warehouse
-        self.thread=None;self.stopping=threading.Event();self.closed=False
+        self.thread=None;self.stopping=threading.Event();self.closed=False;self.resetter=None
         self.lab.db.executescript('''
         CREATE TABLE IF NOT EXISTS world_demo_state(
           id INTEGER PRIMARY KEY CHECK(id=1), run_id INTEGER NOT NULL DEFAULT 0,
@@ -28,6 +28,9 @@ class WorldDemo:
           created_at TEXT NOT NULL);
         ''')
         with self.lab.db:
+            columns={r['name'] for r in self.lab.rows('PRAGMA table_info(world_demo_state)')}
+            for name,definition in {'guided':'INTEGER NOT NULL DEFAULT 0','focus_report_id':'TEXT','event_start':'INTEGER NOT NULL DEFAULT 0'}.items():
+                if name not in columns:self.lab.db.execute('ALTER TABLE world_demo_state ADD COLUMN '+name+' '+definition)
             self.lab.db.execute("UPDATE world_demo_state SET running=0,note='Paused after server restart' WHERE running=1")
 
     def status(self):
@@ -38,10 +41,19 @@ class WorldDemo:
             provider='gemini' if self.runner.agent.live_enabled() else 'fake'
             budget=self.runner.agent.budget('',provider)
             blocked=self.lab.db.execute("SELECT count(*) FROM financial_events WHERE kind='payment_blocked' AND json_extract(metadata,'$.prevention_tool')='payments.hold_transfer'").fetchone()[0]
+            phase='world';focus=None
+            if state['guided'] and state['focus_report_id']:
+                focus=self.desk.detail(state['focus_report_id']);job=focus.get('prevention');rule=job.get('rule') if job else None
+                phase='complaint' if focus['status']=='reported' else 'investigation' if focus['status']=='investigating' else 'review' if focus['status']=='awaiting_review' else 'followup' if focus['status']=='awaiting_customer' else 'attention'
+                if focus['status']=='resolved':
+                    phase='prevention' if not job or job['status'] in ('ready','queued','running') else 'activate' if rule and rule['status']=='proposed' else 'ready' if rule and rule['status']=='active' else 'attention'
+                if any(i['id']=='world-proof-'+str(state['run_id']) and i['status']=='passed' for i in incidents):phase='protected'
+            scene=self.lab.db.execute('SELECT scene_id FROM demo_scene WHERE id=1').fetchone()[0] if self.resetter else 'legacy'
             return {**state,'max_steps':RUN_STEPS,'provider':provider,'incidents':incidents,'blocked_payments':blocked,
-                    'knowledge_count':len(self.desk.memories()),'calls_remaining':max(0,budget['daily_call_limit']-budget['daily_calls'])}
+                    'knowledge_count':len(self.desk.memories()),'calls_remaining':max(0,budget['daily_call_limit']-budget['daily_calls']),
+                    'phase':phase,'scene_id':scene,'focus_customer_id':focus['customer_id'] if focus else None}
 
-    def start(self, expected_run, activity=2, speed=1, background=True):
+    def start(self, expected_run, activity=2, speed=1, background=True, fresh=False):
         if type(expected_run) is not int or type(activity) is not int or activity not in range(1,5) or type(speed) is not int or speed not in (1,2,4):
             raise LabError('Invalid world controls.')
         with self.lab.lock:
@@ -49,8 +61,12 @@ class WorldDemo:
             if self.closed:raise LabError('The world is stopping.',503)
             if current['running'] or expected_run!=current['run_id']:return current
             if self.thread and self.thread.is_alive():raise LabError('The previous world run is stopping.',409)
+            if type(fresh) is not bool:raise LabError('Fresh must be true or false.')
+            if fresh:
+                if not self.resetter:raise LabError('Fresh demo reset is unavailable.',409)
+                self.resetter.reset(current['run_id']+1)
             with self.lab.db:
-                self.lab.db.execute("UPDATE world_demo_state SET run_id=run_id+1,running=1,steps=0,activity=?,speed=?,note='Running' WHERE id=1",(activity,speed))
+                self.lab.db.execute("UPDATE world_demo_state SET run_id=?,running=1,steps=0,activity=?,speed=?,note='Running' WHERE id=1",(current['run_id']+1,activity,speed))
             self.checkpoint();self.stopping.clear();run_id=current['run_id']+1
             if background:
                 self.thread=threading.Thread(target=self.work,args=(run_id,),daemon=True,name='town-world');self.thread.start()
@@ -66,20 +82,30 @@ class WorldDemo:
 
     def incident(self, run_id, kind, repeat=False):
         """A scoped simulator event; observed payments are the investigator's evidence."""
-        spec=dict(SCAMS[kind]);identifier='world-scam-%s-%s-%s'%(run_id,kind,'repeat' if repeat else 'first')
+        spec=dict(SCAMS[kind])
+        learned=bool(repeat and self.world.prevention and any(r['family']==kind for r in self.world.prevention.active()))
+        if learned:spec['payee']='external:variant-'+str(run_id)+'-'+kind
+        identifier='world-scam-%s-%s-%s'%(run_id,kind,'variant' if learned else 'repeat' if repeat else 'first')
         with self.lab.lock:
             if self.lab.db.execute('SELECT 1 FROM world_incidents WHERE id=?',(identifier,)).fetchone():return None
             cid='C002' if repeat and kind=='phishing' else 'C005' if repeat else spec['customer']
-            flags=self.desk.screen(cid,spec['payee'])
-            if repeat and not flags and kind in ('phishing','payment_burst'):
+            metadata={'rail':'Wallet','device_known':spec['device_known'],'authorization_verified':spec['authorization_verified'],
+                'authorized_payee':spec['payee'],'scenario':kind,'source':'world_demo',
+                'guided_demo':bool(self.lab.db.execute('SELECT guided FROM world_demo_state WHERE id=1').fetchone()[0]),
+                'payment_context':{'before_payment':True,'kind':'payment_request','message':spec['message']}}
+            at=self.lab.clock_day+'T%02d:00:00Z'%self.world.status()['hour']
+            opening=self.lab.db.execute('SELECT balance_minor FROM accounts WHERE id=?',(cid+':wallet',)).fetchone()[0]
+            first_amount=min(spec.get('amounts',(spec['amount'],))[0],opening//spec['count'])
+            _,flags=self.world.payment_flags(cid,spec['payee'],first_amount,metadata,at)
+            if repeat and not flags and not learned and kind in ('phishing','payment_burst'):
                 for memory in self.desk.memories():
                     pattern=memory['pattern']
                     matching_shape=(len(pattern['evidence_ids'])==1 if kind=='phishing' else len(pattern['evidence_ids'])>1)
                     if memory['validation']['passed'] and matching_shape and pattern['recipient_accounts']:
                         spec['payee']=pattern['recipient_accounts'][0]
                         flags=self.desk.screen(cid,spec['payee']);break
-            if repeat and not flags:return None  # Wait for analyst approval; do not manufacture another loss.
-            status='blocked' if flags else 'investigating';report_id=None;events=[];total=0
+            if repeat and not flags:return None
+            status='blocked' if flags else 'investigating';report_id=None;events=[];settled=[];total=0;memory_ids={f['memory_id'] for f in flags}
             provider='gemini' if self.runner.agent.live_enabled() else 'fake'
             if not flags:
                 budget=self.runner.agent.budget('',provider)
@@ -100,20 +126,31 @@ class WorldDemo:
                         amount=min(spec.get('amounts',(spec['amount'],)*spec['count'])[n],balance//(spec['count']-n))
                         if amount<100:break
                         eid=identifier+'-'+str(n)
+                        at=self.lab.clock_day+'T%02d:00:%02dZ'%(self.world.status()['hour'],n*4)
                         outcome=self.world.payment(eid,cid,spec['payee'],amount,'device-'+cid,
-                            {'rail':'Wallet','device_known':spec['device_known'],'authorization_verified':spec['authorization_verified'],
-                             'authorized_payee':spec['payee'],'scenario':kind,'source':'world_demo'})
+                            {**metadata,'authorized_payee':spec['payee']},occurred_at=at)
                         if outcome=='declined':continue
-                        if kind=='payment_burst':
-                            self.lab.db.execute('UPDATE financial_events SET occurred_at=? WHERE id=?',
-                                (self.lab.clock_day+'T%02d:00:%02dZ'%(self.world.status()['hour'],n*4),eid))
                         events.append(eid);total+=amount
-                    if not flags and events:
-                        report=self.desk.create(cid,spec['story'],spec['message'],events,identifier);report_id=report['id']
+                        if outcome=='settled':settled.append(eid)
+                        else:
+                            import json
+                            receipt=json.loads(self.lab.db.execute('SELECT metadata FROM financial_events WHERE id=?',(eid,)).fetchone()[0])
+                            memory_ids.update(f['memory_id'] for f in receipt.get('review_flags',[]) if f.get('memory_id'))
+                            break  # A verification hold pauses the remaining payment batch.
+                    if settled and flags and self.guard:
+                        # A policy can expire between preview and execution. Still require
+                        # case admission if an actual transfer settled in that interval.
+                        try:self.guard.allow('POST','/api/fraud-desk/report',{'request_id':identifier})
+                        except LabError:status='needs_review';settled=[]
+                    if settled:
+                        report=self.desk.create(cid,spec['story'],spec['message'],settled,identifier);report_id=report['id']
+                        if metadata['guided_demo'] and not repeat:
+                            self.lab.db.execute("UPDATE world_demo_state SET focus_report_id=?,running=0,note='Customer filed a scam report. Follow the investigation.' WHERE id=1",(report_id,))
+                    elif events and status!='needs_review':status='blocked'
                     elif not events:status='no_funds'
             with self.lab.db:
                 self.lab.db.execute('INSERT INTO world_incidents VALUES(?,?,?,?,?,?,?,?,?,?,?)',
-                    (identifier,kind,spec['title'],status,cid,report_id,encoded([f['memory_id'] for f in flags]),
+                    (identifier,kind,spec['title']+(' · changed recipient' if learned else ''),status,cid,report_id,encoded(sorted(memory_ids)),
                      encoded(events),total,self.world.state()['tick'],now()))
             self.checkpoint()
         if report_id:
@@ -138,6 +175,9 @@ class WorldDemo:
             self.checkpoint()
         rng=random.Random(run_id)
         first_at=rng.randint(4,6);burst_at=rng.randint(12,14)
+        if state['guided']:
+            if step==first_at:self.incident(run_id,'phishing')
+            return self.status()
         kinds=tuple(SCAMS);first=kinds[((run_id-1)*2)%len(kinds)];second=kinds[((run_id-1)*2+1)%len(kinds)]
         if step==first_at:self.incident(run_id,first)
         if step==burst_at:self.incident(run_id,second)
@@ -156,6 +196,25 @@ class WorldDemo:
         with self.lab.lock,self.lab.db:
             if step>=RUN_STEPS:self.lab.db.execute("UPDATE world_demo_state SET running=0,note='24-hour episode complete' WHERE id=1")
         self.checkpoint();return self.status()
+
+    def prove(self,expected_run):
+        with self.lab.lock:
+            state=self.status()
+            if type(expected_run) is not int or state['run_id']!=expected_run:raise LabError('The demo changed. Refresh its state.',409)
+            if state['phase']=='protected':return state
+            if state['phase']!='ready':raise LabError('Activate the reviewed prevention safeguard before testing it.',409)
+            self.incident(expected_run,'phishing',repeat=True)
+            held=self.lab.db.execute("SELECT id FROM world_incidents WHERE id=? AND status='blocked'",('world-scam-'+str(expected_run)+'-phishing-variant',)).fetchone()
+            if not held:raise LabError('This safeguard did not match the changed-recipient request. Review its replay.',409)
+            with self.lab.db:
+                eid='world-proof-payment-'+str(expected_run)
+                result=self.world.payment(eid,'C002','m1',5000,'device-C002',{'device_known':True,'authorization_verified':True,
+                    'payment_context':{'before_payment':True,'kind':'payment_request','message':'I am paying for groceries I ordered.'}})
+                if result!='settled':raise LabError('The legitimate control did not settle. Review the safeguards.',409)
+                self.lab.db.execute('INSERT INTO world_incidents VALUES(?,?,?,?,?,?,?,?,?,?,?)',
+                    ('world-proof-'+str(expected_run),'control','Legitimate payment','passed','C002',None,'[]',encoded([eid]),5000,self.world.state()['tick'],now()))
+                self.lab.db.execute("UPDATE world_demo_state SET note='Similar scam held before debit. Legitimate payment passed.' WHERE id=1")
+            self.checkpoint();return self.status()
 
     def work(self, run_id):
         try:

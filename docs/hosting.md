@@ -30,10 +30,16 @@ Gab and Jansen use their supplied Google accounts. Their scoped access covers Cl
 
 Build containers locally and push them to the existing Artifact Registry repository. Use your own Google credentials. Never copy the owner's ADC file or put credentials in source control. Enabling live inference or restoring Vertex after a shutdown is an owner operation; it requires reviewing both the cumulative budget and the app's existing spend ledger.
 
-Detailed deployment, IAM and shutdown-test receipts remain in ignored `output/google-cloud/`. The saved-case walkthrough is [demo-script.md](demo-script.md).
+Detailed deployment, IAM and shutdown-test receipts remain in ignored `output/google-cloud/`. The guided and saved-result walkthrough is [demo-script.md](demo-script.md).
 
 ## Verified shutdown behavior
 
 On October 13, 2026, below-threshold and unrelated-budget messages were checked, followed by a synthetic $8 message sent through the real Pub/Sub → Eventarc → Workflows path. The completed test confirmed `aiplatform.googleapis.com` was `DISABLED` and the demo was at manual scaling zero. This was a control test, not a claim that spending had reached $8. The demo was then reopened with Vertex still disabled. The owner subsequently authorized live inference and a $20 project envelope; the same budget IDs and cumulative period were retained, with the shutdown threshold raised to $16.
 
 The test exposed an oversized Service Usage metadata response and missing shutdown-status permissions. The final workflow requests only the response fields it needs and confirms the shutdown operations before reporting success. Failed test receipts remain available alongside the successful receipt.
+
+## Guided public demo
+
+Every **Run new world** privately archives the previous synthetic scene and resets its visible cases and policies. Durable cost history and all daily counters remain. Private scene archives expire after seven days. The site shares one synthetic analyst workspace: visitors can approve demo cases and activate replay-passed rules, but cannot call real bank actions.
+
+The resolution and prevention agents share the existing six-call case ceiling and single-worker queue. Prevention gets at most one remaining call after an approved case. Later payment checks are local and consume no Gemini calls. Model choice, versions, validated tool arguments, public purposes and results are visible in **Agent activity**.

@@ -25,6 +25,8 @@ from demo_guard import DemoGuard
 from world_demo import WorldDemo
 from settings import MAX_CUSTOMERS
 from warehouse import Warehouse
+from prevention import PreventionAgent, TABLES as PREVENTION_TABLES
+from demo_reset import DemoReset
 
 ROOT=Path(__file__).resolve().parent
 
@@ -55,8 +57,20 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
     fraud_agent=FraudAgent(fraud_desk,agents,checkpoint=checkpoint)
     fraud_agent.warehouse=warehouse
     fraud_runner=InvestigationRunner(fraud_agent)
+    prevention=PreventionAgent(fraud_agent);fraud_runner.prevention=prevention;world.prevention=prevention
     guard=DemoGuard(lab,checkpoint,live_enabled=cloud_live) if cloud else None
     world_demo=WorldDemo(world,fraud_desk,fraud_runner,checkpoint,guard,warehouse)
+    def baseline():
+        from cloud_data import CloudData
+        with tempfile.TemporaryDirectory(prefix='pallet-baseline-') as folder:
+            fresh=make_server(0,Path(folder)/'baseline.db',config=Config(live=False))
+            try:
+                CloudData.initialize_schema(fresh.lab)
+                Warehouse(fresh.lab,cloud)
+                DemoGuard(fresh.lab,lambda:None)
+                return '\n'.join(line for line in fresh.lab.db.iterdump() if line not in ('BEGIN TRANSACTION;','COMMIT;'))
+            finally:fresh.server_close();fresh.lab.db.close()
+    resetter=DemoReset(lab,world,fraud_runner,cloud,baseline);world_demo.resetter=resetter
     if cloud: cloud.initialize(lab)
     csrf=secrets.token_urlsafe(32)
 
@@ -94,8 +108,11 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                         result['warehouse']=warehouse.status() if warehouse else {'enabled':False}
                         result['world']=world.status()
                         result['demo']=world_demo.status()
+                        if result['demo'].get('guided'):
+                            result['events']=lab.rows('SELECT id,customer_id,kind,amount_minor,status,occurred_at,to_account,metadata FROM financial_events WHERE rowid>? ORDER BY rowid DESC LIMIT 20',(result['demo']['event_start'],))
+                            for event in result['events']:event['metadata']=json.loads(event['metadata'])
                         result['macro']={'policy':macro.policy(),'metrics':macro.metrics(world.state()['tick']),'goods':macro.goods(),'due':macro.due()}
-                        for table in ('simulation_state','service_actions','model_runs','fraud_agent_turns','fraud_evidence_snapshots',*MACRO_TABLES,*SCIENCE_TABLES,*MESH_TABLES,*CUSTOMER_TABLES,*FRAUD_TABLES):
+                        for table in ('simulation_state','service_actions','model_runs','fraud_agent_turns','fraud_evidence_snapshots',*MACRO_TABLES,*SCIENCE_TABLES,*MESH_TABLES,*CUSTOMER_TABLES,*FRAUD_TABLES,*PREVENTION_TABLES):
                             result['tables'][table]=lab.db.execute('SELECT count(*) FROM '+table).fetchone()[0]
                     return self.reply(200,result)
                 if path=='/api/science':return self.reply(200,science_team.dashboard())
@@ -138,8 +155,11 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                 path=urlsplit(self.path).path
                 if guard:guard.allow('POST',path,body)
                 if path=='/api/world/start':
-                    if set(body)!={'expected_run','activity','speed'}:raise LabError('Invalid world start.')
-                    return self.reply(200,world_demo.start(**body))
+                    if set(body)-{'expected_run','activity','speed','fresh'} or not {'expected_run','activity','speed'}<=set(body):raise LabError('Invalid world start.')
+                    return self.reply(200,world_demo.start(**{**body,'fresh':body.get('fresh',True)}))
+                if path=='/api/world/prove':
+                    if set(body)!={'expected_run'}:raise LabError('Use the current demo run.')
+                    return self.reply(200,world_demo.prove(**body))
                 if path=='/api/world/stop':
                     if set(body)!={'expected_run'}:raise LabError('Invalid world stop.')
                     return self.reply(200,world_demo.stop(**body))
@@ -157,6 +177,12 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                     run=(fraud_runner.start if automatic else fraud_agent.start)(**body)
                     queued=run['context'].get('execution',{}).get('status') in ('queued','running')
                     return self.reply(202 if queued else 200,run)
+                if path=='/api/prevention/learn':
+                    if set(body)!={'report_id'}:raise LabError('Choose one reviewed case.')
+                    return self.reply(202,fraud_runner.learn(body['report_id'],'gemini' if fraud_agent.live_enabled() else 'fake'))
+                if path=='/api/prevention/activate':
+                    if set(body)!={'rule_id','enabled'}:raise LabError('Choose an existing prevention rule.')
+                    return self.reply(200,prevention.activate(body['rule_id'],body['enabled']))
                 if path=='/api/fraud-agent/recheck':
                     if set(body)!={'report_id','expected_revision'}:raise LabError('Invalid correction request.')
                     run=fraud_agent.recheck(**body)
@@ -178,7 +204,12 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                     if path not in commands:raise LabError('Endpoint not found.',404)
                     handler,fields=commands[path]
                     if set(body)!=fields:raise LabError('Invalid fraud-desk command fields.')
-                    return self.reply(200,handler(**body))
+                    result=handler(**body)
+                    if path=='/api/fraud-desk/review' and body['publish_memory'] and body['disposition']=='confirmed_scam':
+                        try:fraud_runner.learn(body['report_id'],'gemini' if fraud_agent.live_enabled() else 'fake')
+                        except LabError as exc:result['prevention_notice']=str(exc)
+                        result.update(prevention=prevention.for_report(body['report_id']))
+                    return self.reply(200,result)
                 if path=='/api/customer-data/advance':
                     if set(body)!={'expected_tick','days','activity'} or type(body['days']) is not int or not 1<=body['days']<=7 or type(body['expected_tick']) is not int or type(body['activity']) is not int or body['activity'] not in range(1,5):raise LabError('Use a current tick, 1–7 days and 1–4 payments per hour.')
                     with lab.lock:
@@ -272,6 +303,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
     server.demo_guard=guard
     server.world_demo=world_demo
     server.warehouse=warehouse
+    server.prevention=prevention
     return server
 
 

@@ -1,4 +1,12 @@
-# Live evaluation — 13 October 2026
+# Guided two-agent demo — 13 October 2026
+
+The current contract suite passes **111 tests**, including fresh scenes, validated detector routing, analyst approval, prevention learning, human activation and local payment protection. A follow-up three-test guided suite also confirms that a cloud-checkpoint restore retains spending, call counts, report admissions and warehouse usage after repeated scene resets. The ten scenario/control fake-model rehearsal still passes. These tests make no paid requests.
+
+The guided fake flow with a fake BigQuery transport uses five resolution turns and one prevention turn from the same case budget. It compares a normal device signal with a suspicious payment-message signal, proposes a safeguard, passes one changed-recipient replay and 20 legitimate controls, and then holds the later simulated transfer before debit while a legitimate payment settles. It makes no additional model call during either payment. A local HTTP/UI walkthrough independently verified review → automatic learner → human activation → protection.
+
+This is contract and synthetic behavior coverage, not evidence of Gemini accuracy or production fraud performance. Live deployment validation of the new learner is recorded separately below when completed. Earlier five-case results remain historical; fresh guided scenes archive their original cases rather than exposing them in the active UI.
+
+## Earlier five-case live evaluation
 
 **Five real Gemini investigations reached analyst review.** The run used **25 generations and $0.021283** in metered model usage at the pinned token prices. The prior $0.003470 ledger balance was preserved; cumulative committed usage is $0.024753. These figures exclude BigQuery, Storage and other infrastructure charges.
 
@@ -53,7 +61,7 @@ The recipe uses payment count, spend in pesos, average payment and merchant coun
 - Real customer outcomes, recovery rates, legal liability, reduced analyst handling time and performance outside these synthetic fixtures.
 - Live false-positive behavior on the five legitimate lookalikes.
 - Whether a particular memory improves a held-out investigation compared with no memory.
-- A supervised fraud classifier or a generalized prevention-learning agent. The optional model is a bounded, advisory unsupervised behavior model.
+- A supervised fraud classifier or real-world generalization. The new prevention learner proposes constrained signal rules; its replay is synthetic. The optional trained model remains a bounded, advisory unsupervised behavior model.
 - Complete Philippine legal-policy verification: some BSP PDFs blocked extraction. No statutory deadline or reimbursement entitlement was encoded.
 
 ## Reproduce and inspect

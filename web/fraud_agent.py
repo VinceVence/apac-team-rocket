@@ -13,21 +13,23 @@ from fraud_desk import LESSON, QUESTION, cues, text
 from lab import LabError, encoded, now
 from settings import CASE_USD, MAX_CASE_CALLS
 from complaint_guidance import GUIDANCE
+from fraud_detectors import REGISTRY as DETECTORS, predict_case
 
 MODEL = 'gemini-3.5-flash-lite'
-PROMPT_VERSION = 'fraud-investigator-v5'
-TOOL_CONTRACT_VERSION = 5
+PROMPT_VERSION = 'fraud-investigator-v6'
+TOOL_CONTRACT_VERSION = 6
 MAX_INPUT_BYTES = 16000
 MAX_OUTPUT_TOKENS = 512
 RESERVE_MICROUSD = 10000
 TURN_TIMEOUT_SECONDS = 30
 LIVE_INTERVAL_SECONDS = 6
 TOOLS = ('get_transactions', 'compare_behavior', 'trace_recipient', 'search_reviewed_cases', 'ask_customer', 'submit_for_review',
-         'get_customer_features','train_behavior_model','get_complaint_guidance')
+         'get_customer_features','train_behavior_model','get_complaint_guidance','run_fraud_detectors')
 ARG_FIELDS = {'get_transactions': {'event_ids','purpose'}, 'compare_behavior': {'window_days','purpose'},
               'trace_recipient': {'recipient_id','purpose'}, 'search_reviewed_cases': {'query','purpose'},
               'ask_customer': {'question','purpose'}, 'get_customer_features':{'purpose'},
               'train_behavior_model':{'purpose'}, 'get_complaint_guidance':{'purpose'},
+              'run_fraud_detectors':{'detector_ids','purpose'},
               'submit_for_review': {'assessment','summary','evidence_ids','memory_ids','uncertainties','questions','action','customer_message','lesson','followup_question','purpose'}}
 SYSTEM = '''Investigate this synthetic customer scam report. Decide which evidence to examine next.
 Choose exactly ONE function call each turn. You may choose any relevant tool, ask a specific
@@ -53,6 +55,12 @@ refund, recovery, statutory deadline, legal fault, or bank action already comple
 Use the remaining generations carefully. You may finish without using every tool.'''
 SYSTEM += '\nFor final submission, keep prose across all fields under 100 words. Propose a short case-specific lesson and a useful future follow-up question for analyst approval.'
 SYSTEM += '\ncanonical_amounts_php contains server-converted peso values. Use these exact values for reported payments and their total, including when an older observation or draft used raw minor units incorrectly.'
+SYSTEM += '''\nUse run_fraud_detectors to select relevant versioned detectors from available_detectors.
+Their outputs are rule signals, not calibrated fraud probabilities. Inspect disagreements:
+a familiar authorized device can have a low device score while a deceptive payment request
+has a high message score. For guided_demo cases, a detector check is required before submission.
+Aim to submit by the fifth call so the prevention learner can use the sixth after analyst approval.
+Keep purpose fields concise: state what evidence this action will test, not private reasoning.'''
 
 
 def micro(value):
@@ -91,6 +99,10 @@ class FraudAgent:
         ''')
         if 'request_json' not in {r['name'] for r in self.lab.rows('PRAGMA table_info(fraud_agent_turns)')}:
             self.lab.db.execute("ALTER TABLE fraud_agent_turns ADD COLUMN request_json TEXT NOT NULL DEFAULT '{}'")
+        columns={r['name'] for r in self.lab.rows('PRAGMA table_info(fraud_agent_turns)')}
+        if 'role' not in columns:self.lab.db.execute("ALTER TABLE fraud_agent_turns ADD COLUMN role TEXT NOT NULL DEFAULT 'resolution'")
+        if 'job_id' not in columns:self.lab.db.execute('ALTER TABLE fraud_agent_turns ADD COLUMN job_id TEXT')
+        self.lab.db.execute('CREATE UNIQUE INDEX IF NOT EXISTS prevention_paid_job ON fraud_agent_turns(job_id)')
         with self.lab.lock, self.lab.db:
             self.lab.db.execute("UPDATE fraud_agent_turns SET status='uncertain',error='Process stopped during this model turn; recorded cost or reservation retained.' WHERE status IN ('reserved','responded')")
             for row in self.lab.rows("SELECT id FROM fraud_investigations WHERE json_extract(context,'$.controller')='adk' AND (status='stepping' OR (status='running' AND json_extract(context,'$.execution.status') IN ('queued','running')))"):
@@ -140,7 +152,7 @@ class FraudAgent:
 
     def timeline(self, report_id):
         trail = []
-        for row in self.lab.rows('SELECT t.*,i.report_revision,i.context,i.trace FROM fraud_agent_turns t JOIN fraud_investigations i ON i.id=t.run_id WHERE t.report_id=? ORDER BY t.rowid', (report_id,)):
+        for row in self.lab.rows("SELECT t.*,i.report_revision,i.context,i.trace FROM fraud_agent_turns t JOIN fraud_investigations i ON i.id=t.run_id WHERE t.report_id=? AND t.role='resolution' ORDER BY t.rowid", (report_id,)):
             decision = json.loads(row['decision']) if row['decision'] else {}
             receipt = next((r for r in json.loads(row['trace']) if r['step'] == row['seq'] + 1), {})
             trail.append({'number': len(trail) + 1, 'turn_id': row['id'], 'run_id': row['run_id'],
@@ -180,7 +192,9 @@ class FraudAgent:
             shared = self.agents.budget(day)
             calls, daily, total = shared['calls_today'], shared['committed_microusd_today'], shared['committed_microusd_total']
         else:
-            row = self.lab.db.execute('SELECT count(CASE WHEN substr(created_at,1,10)=? THEN 1 END),coalesce(sum(CASE WHEN substr(created_at,1,10)=? THEN coalesce(cost_microusd,reserved_microusd) ELSE 0 END),0),coalesce(sum(coalesce(cost_microusd,reserved_microusd)),0) FROM fraud_agent_turns WHERE provider=?', (day, day, mode)).fetchone()
+            sources="SELECT created_at,coalesce(cost_microusd,reserved_microusd) AS amount FROM fraud_agent_turns WHERE provider='fake'"
+            if self.lab.db.execute("SELECT 1 FROM sqlite_master WHERE name='model_usage_archive'").fetchone():sources+=" UNION ALL SELECT created_at,amount_microusd AS amount FROM model_usage_archive WHERE provider='fake'"
+            row = self.lab.db.execute('SELECT count(CASE WHEN substr(created_at,1,10)=? THEN 1 END),coalesce(sum(CASE WHEN substr(created_at,1,10)=? THEN amount ELSE 0 END),0),coalesce(sum(amount),0) FROM ('+sources+')', (day, day)).fetchone()
             calls, daily, total = tuple(row)
         return {'case_calls': case[0], 'max_case_calls': self.max_case_calls,
                 'case_committed_microusd': case[1], 'case_limit_microusd': self.case_limit,
@@ -235,6 +249,8 @@ class FraudAgent:
                                          'total_php':sum(t['amount_minor'] for t in snapshot['data']['transactions'])/100},
                 'story': report['story'], 'message_transcript': report['message'], 'event_ids': report['event_ids'],
                 'customer_replies': report['answers'], 'jurisdiction':'Philippines', 'warehouse_available':bool(self.warehouse),
+                'available_detectors':DETECTORS,
+                'guided_demo':any(t['metadata'].get('guided_demo') for t in snapshot['data']['transactions']),
                 'evidence_snapshot': {'id': snapshot['id'], 'as_of': snapshot['as_of'], 'event_watermark': snapshot['event_watermark']},
                 'ingestion_flags': [f for t in snapshot['data']['transactions'] for f in t['metadata'].get('review_flags', [])],
                 'observations': run['context'].get('observations', []),
@@ -263,35 +279,48 @@ class FraudAgent:
         return warnings
 
     def reserve(self, run_id, request):
+        with self.lab.lock:
+            run=self.desk.run(run_id)
+            return self._reserve_turn(run['report_id'],run_id,run['step'],run['context']['provider'],request)
+
+    def reserve_prevention(self, job, request):
+        """The learner shares the source case's six calls, dollars and global lock."""
+        with self.lab.lock:
+            if self.lab.db.execute('SELECT 1 FROM fraud_agent_turns WHERE job_id=?',(job['id'],)).fetchone():
+                raise LabError('This reviewed case already used its prevention model call. No retry is permitted.',409)
+            seq=self.lab.db.execute('SELECT coalesce(max(seq),-1)+1 FROM fraud_agent_turns WHERE run_id=?',(job['investigation_id'],)).fetchone()[0]
+            return self._reserve_turn(job['report_id'],job['investigation_id'],seq,job['provider'],request,'prevention',job['id'])
+
+    def _reserve_turn(self, report_id, run_id, seq, mode, request, role='resolution', job_id=None):
         payload = request.model_dump(mode='json', exclude={'tools_dict'}, exclude_none=True)
         if len(encoded(payload).encode()) > MAX_INPUT_BYTES:
             raise LabError('Model context limit reached. No request was made; hand this case to an analyst.', 413)
         with self.lab.lock, self.lab.db:
-            run = self.desk.run(run_id); mode = run['context']['provider']
             if mode == 'gemini' and not self.live_enabled(): raise LabError('Live Gemini is off.', 409)
             if mode=='gemini':
                 gate=self.lab.db.execute('SELECT * FROM fraud_live_control WHERE id=1').fetchone()
                 if gate['blocked_reason']:raise LabError('Live circuit is open: '+gate['blocked_reason'],409)
-                if self.live_delay(run)>0:raise LabError('Live request spacing limit reached. No model request was made.',409)
+                if self.live_delay({'context':{'provider':mode}})>0:raise LabError('Live request spacing limit reached. No model request was made.',409)
                 if self.lab.db.execute("SELECT 1 FROM fraud_agent_turns WHERE provider='gemini' AND status IN ('reserved','responded')").fetchone():
                     raise LabError('Another live model request is in progress. No request was made.',409)
-            b = self.budget(run['report_id'], mode)
+            b = self.budget(report_id, mode)
             if b['case_calls'] >= b['max_case_calls']: raise LabError('Per-case generation limit reached.', 429)
             if b['daily_calls'] >= b['daily_call_limit']: raise LabError('Daily model-call limit reached.', 429)
             for label, used, limit in [('Per-case', b['case_committed_microusd'], b['case_limit_microusd']),
                                        ('Daily', b['daily_committed_microusd'], b['daily_limit_microusd']),
                                        ('Lifetime', b['total_committed_microusd'], b['total_limit_microusd'])]:
                 if used + RESERVE_MICROUSD > limit: raise LabError(label + ' cost limit reached before the next request.', 429)
-            identifier = run_id + ':' + str(run['step'])
+            identifier = run_id + ':' + str(seq)
             self.lab.db.execute('INSERT INTO fraud_agent_turns(id,report_id,run_id,seq,provider,model,status,reserved_microusd,created_at,request_json) VALUES(?,?,?,?,?,?,?,?,?,?)',
-                                (identifier, run['report_id'], run_id, run['step'], mode, MODEL, 'reserved', RESERVE_MICROUSD, self.clock(), encoded(payload)))
+                                (identifier, report_id, run_id, seq, mode, MODEL, 'reserved', RESERVE_MICROUSD, self.clock(), encoded(payload)))
+            if job_id:self.lab.db.execute('UPDATE fraud_agent_turns SET role=?,job_id=? WHERE id=?',(role,job_id,identifier))
             if mode=='gemini':
                 self.lab.db.execute('UPDATE fraud_live_control SET next_call_at=? WHERE id=1',
                                     (dt.datetime.fromisoformat(self.clock()).timestamp()+LIVE_INTERVAL_SECONDS,))
         self.checkpoint()
         return identifier
 
-    def record_response(self, turn_id, response):
+    def record_response(self, turn_id, response, allowed_tools=TOOLS, arg_fields=ARG_FIELDS):
         usage = response.usage_metadata
         inputs = getattr(usage, 'prompt_token_count', None)
         candidates = getattr(usage, 'candidates_token_count', None)
@@ -306,12 +335,12 @@ class FraudAgent:
             raise LabError('Provider usage exceeded the reserved token envelope. No tool was executed.', 502)
         calls = [p.function_call for p in (response.content.parts if response.content else []) if p.function_call]
         reason = getattr(response.finish_reason, 'value', response.finish_reason)
-        if response.partial or response.error_code or reason != 'STOP' or len(calls) != 1 or calls[0].name not in TOOLS:
+        if response.partial or response.error_code or reason != 'STOP' or len(calls) != 1 or calls[0].name not in allowed_tools:
             raise LabError('Expected one allowed function call. No tool was executed.', 422)
         decision = {'tool': calls[0].name, 'args': calls[0].args}
         with self.lab.lock, self.lab.db:
             self.lab.db.execute('UPDATE fraud_agent_turns SET decision=? WHERE id=?', (encoded(decision), turn_id))
-        if not isinstance(calls[0].args, dict) or set(calls[0].args) != ARG_FIELDS[calls[0].name]:
+        if not isinstance(calls[0].args, dict) or set(calls[0].args) != arg_fields[calls[0].name]:
             raise LabError('Function-call arguments do not match the allowed schema.', 422)
 
     def tool(self, run_id, name, args, purpose):
@@ -327,7 +356,13 @@ class FraudAgent:
             turn_id = run_id + ':' + str(run['step'])
             repeated = self.lab.db.execute("SELECT 1 FROM fraud_agent_turns WHERE run_id=? AND status='completed' AND json_remove(decision,'$.args.purpose')=?", (run_id, encoded({'tool': name, 'args': args}))).fetchone()
             if repeated and name != 'submit_for_review': raise LabError('Repeated tool call without new evidence. Investigation paused.', 409)
-            if name in ('get_customer_features','train_behavior_model'):
+            if name=='run_fraud_detectors':
+                if not context.get('transactions'):raise LabError('Verify the disputed transactions before running a detector.',422)
+                output=predict_case(args['detector_ids'],snapshot['data']['transactions'])
+                context['detector_results']=output
+                source_ids=[t['id'] for t in snapshot['data']['transactions']]
+                finding='Validated '+str(len(output['detectors']))+' registered detector(s) against frozen case evidence.'
+            elif name in ('get_customer_features','train_behavior_model'):
                 snapshot_id=evidence.get('warehouse_snapshot')
                 if not self.warehouse or not snapshot_id:
                     output={'available':False,'reason':'No BigQuery snapshot is attached to this run.'}
@@ -396,6 +431,8 @@ class FraudAgent:
                 self.lab.db.execute("UPDATE fraud_reports SET status='awaiting_customer' WHERE id=?", (report['id'],))
                 finding = 'Paused for the customer: ' + question
             else:
+                if any(t['metadata'].get('guided_demo') for t in snapshot['data']['transactions']) and not context.get('detector_results'):
+                    raise LabError('Run at least one registered detector before submitting this guided case.',422)
                 if self.warehouse and not context.get('warehouse_features'):
                     raise LabError('Read this customer’s pinned BigQuery features before submitting.',422)
                 if args['assessment'] not in ('suspected_scam','needs_information','likely_legitimate'): raise LabError('Unsupported assessment.')

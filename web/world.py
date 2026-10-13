@@ -9,7 +9,7 @@ from settings import MAX_CUSTOMERS
 
 class World:
     def __init__(self, lab):
-        self.lab=lab;self.macro=None;self.customer_data=None;self.fraud_desk=None
+        self.lab=lab;self.macro=None;self.customer_data=None;self.fraud_desk=None;self.prevention=None
         lab.db.executescript('''
         CREATE TABLE IF NOT EXISTS simulation_state(
           id INTEGER PRIMARY KEY CHECK(id=1), tick INTEGER NOT NULL DEFAULT 0,
@@ -36,17 +36,30 @@ class World:
         result['open_cases']=self.lab.db.execute("SELECT count(*) FROM cases WHERE status='open' AND id LIKE 'W%'").fetchone()[0]
         return result
 
-    def payment(self, eid, cid, merchant, amount, device, metadata=None):
-        stamp=self.lab.clock_day+'T%02d:00:%02dZ'%((self.state()['tick']+9)%24,int(hashlib.sha256(eid.encode()).hexdigest()[:8],16)%60)
+    def payment_flags(self,cid,merchant,amount,metadata,stamp):
+        flags=self.fraud_desk.screen(cid,merchant) if self.fraud_desk else []
+        values={}
+        if self.prevention:
+            values,learned=self.prevention.assess(cid,merchant,amount,metadata,stamp);flags+=learned
+        return values,flags
+
+    def payment(self, eid, cid, merchant, amount, device, metadata=None, occurred_at=None):
+        stamp=occurred_at or self.lab.clock_day+'T%02d:00:%02dZ'%((self.state()['tick']+9)%24,int(hashlib.sha256(eid.encode()).hexdigest()[:8],16)%60)
         blocked=self.lab.db.execute("SELECT 1 FROM service_actions WHERE customer_id=? AND device_id=? AND action='block_device'",(cid,device)).fetchone()
         meta={'device_id':device,'category':'discretionary',**(metadata or {})}
-        if self.fraud_desk:
-            flags=self.fraud_desk.screen(cid,merchant)
-            if flags:meta['review_flags']=flags
+        values,flags=self.payment_flags(cid,merchant,amount,meta,stamp)
+        meta.pop('review_flags',None)
+        if self.prevention:
+            from prevention import FEATURE_SCHEMA_VERSION
+            meta['prevention_features']=values;meta['prevention_schema_version']=FEATURE_SCHEMA_VERSION
+        if flags:meta['review_flags']=flags
         if meta.get('review_flags'):
             blocked=True
             meta['prevention_tool']='payments.hold_transfer'
-            meta['prevention_reason']='Exact recipient matched an analyst-approved scam. Simulated transfer held for review.'
+            learned=[f for f in flags if f.get('rule_id')]
+            meta['prevention_action']='verify' if learned else 'hold'
+            meta['prevention_rule_ids']=[f['rule_id'] for f in learned]
+            meta['prevention_reason']='Approved signals matched before debit. Verify the request independently.' if learned else 'Exact recipient matched an analyst-approved scam. Simulated transfer held for review.'
         if blocked:
             self.lab.event(eid,cid,'payment_blocked',amount,stamp,'blocked',cid+':wallet',merchant,meta)
             return 'blocked'

@@ -2,33 +2,37 @@
 
 ```mermaid
 flowchart TD
-    Run[Run world: local backend] --> World[Up to 100 active synthetic customers]
-    World --> Ledger[Transactional ledger: purchases, transfers, devices and merchants]
-    World --> Ticket[Customer complaint: story, messages and disputed IDs]
-    Ledger --> Batch[Bounded typed snapshot]
-    Ticket --> Batch
-    Batch --> BQ[BigQuery: seven date-partitioned tables]
-    Ticket --> Snapshot[Frozen case evidence and pinned warehouse snapshot]
-    Snapshot --> Agent[Resolution agent: Gemini on Vertex AI via ADK]
-    Agent --> Choice{Choose the next useful tool}
-    Choice --> BQTools[Parameterized customer-feature query]
-    BQTools --> BQ
-    Choice --> Analysis[Ledger comparisons and recipient tracing]
-    Choice --> Model[Optional local CPU behavior model]
-    Model --> BQ
-    Choice --> Policy[Curated Philippine complaint guidance]
-    Choice --> Memory[Retrieve approved case knowledge]
-    Choice --> Question[Ask customer, then pause]
-    Choice --> Review[Proposed resolution and lesson]
-    Review --> Analyst[Analyst review]
-    Analyst --> KB[Approved memory]
-    KB --> Memory
-    KB --> Hold[Exact-recipient payment hold in the simulator]
-    Hold --> Ledger
-    Budget[Shared durable reservations and case budgets] -. controls each generation .-> Agent
+    Run[Run world: fresh scene + persistent cost history] --> World[100 synthetic customers transact]
+    World --> Ledger[Ledger + prepayment device/message signals]
+    World --> Ticket[Victim ! marker + customer complaint]
+    Ledger --> BQ[Bounded snapshot: seven BigQuery tables]
+    Ticket --> Snapshot[Frozen case + pinned warehouse snapshot]
+    Snapshot --> Agent[Resolution agent: Gemini / Vertex AI / ADK]
+    Agent --> Choice{Choose validated next tool}
+    Choice --> Read[Customer features / transfers / recipient trace]
+    Read --> BQ
+    Choice --> Detector[Registered detector scores or optional anomaly model]
+    Choice --> Question[Customer question / guidance / approved knowledge]
+    Choice --> Proposal[Resolution + evidence + uncertainty]
+    Proposal --> Analyst[Human case review]
+    Analyst --> KB[Approved case knowledge]
+    KB --> Question
+    KB --> Learner[Prevention agent: one remaining model call]
+    Learner --> Replay[Typed rule: changed-recipient + legitimate replay]
+    Replay --> Enable[Human activation]
+    Enable --> Gate[Local pre-settlement payment gate]
+    World --> Gate
+    Gate --> Held[Similar scam: hold for verification]
+    Gate --> Pass[Legitimate payment: ledger settlement]
+    Budget[Shared six-call case meter + persistent daily/lifetime limits] -.-> Agent
+    Budget -.-> Learner
 ```
 
-The browser starts an episode and reads progress. It does not drive model turns. A single background worker runs investigations. Live Vertex mode runs locally while Cloud Run is disabled, using the same GCS checkpoint and accounting history as the hosted app. A conflicting or unconfirmed checkpoint fences the writer.
+The browser starts the backend world and reads progress. A single worker runs both agent roles, with one queued job. The guided world pauses at the first complaint, leaving a clear path through investigation, review, learning and a later payment test. Calls show public purpose, validated inputs, model identity and sourced results. No private reasoning trace is exposed.
+
+A fresh scene archives the current database, resets visible synthetic cases/policies and seeds customer history for analysis. It carries forward all model charges, call counts, cloud usage, public admission counts, cooldown and failure-circuit state. Archives are private and expire after seven days; accounting remains in the canonical checkpoint. The original multi-scenario evaluation can explicitly use `fresh:false`.
+
+Live local mode requires Cloud Run to be paused and restores the same GCS checkpoint and accounting. A conflicting or unconfirmed checkpoint fences the writer. The payment gate is local to this application, not a deployed mobile-edge fleet.
 
 ## Warehouse
 
@@ -57,3 +61,7 @@ Publication happens before a new investigation starts. Normal events that occur 
 The available behavior model is genuine, bounded k-means training on BigQuery-derived customer histories: three clusters, 25 iterations, at most 100 customers. Stable customer hashing separates 80 training customers from 20 holdout customers. Each contributes up to 28 individual daily observations, using the same units as the day being scored. Features are payment count, spend in pesos, average payment and merchant count; incompletely recorded historical device/minute signals are excluded. The output reports distance and an unusual-behavior flag, not a fraud probability. Demographic fields are excluded. The holdout unusual fraction is a distribution diagnostic, not classification accuracy.
 
 Models are reused by a fingerprint of their training rows, with at most two new local builds per day. There are no Vertex training jobs, GPUs or hyperparameter searches. A supervised fraud model needs suitably reviewed labels and separate validation; the current prototype does not claim to have one.
+
+## Why two agents
+
+The resolution agent reasons across conflicting evidence and decides how to investigate. The prevention agent distills a human-reviewed outcome into a constrained, testable future intervention. Human activation and local replay separate investigation from serving. Changing the recipient in the demo distinguishes the learned signal rule from exact-recipient matching; a legitimate control demonstrates that the gate does not hold every new payment. These synthetic replay checks do not establish production precision or recall.
