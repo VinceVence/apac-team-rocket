@@ -11,7 +11,6 @@ import json
 import logging
 import re
 import statistics
-import time
 import uuid
 
 from lab import LabError, encoded, now

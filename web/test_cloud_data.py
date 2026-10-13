@@ -60,6 +60,18 @@ class CloudChecks(unittest.TestCase):
         self.cloud.initialize(self.lab)
     def tearDown(self):self.lab.db.close();self.temp.cleanup()
 
+    def test_checkpoint_spaces_burst_writes_without_retry(self):
+        self.cloud.checkpoint_interval=1.1
+        self.cloud.next_checkpoint_at=0
+        with patch('cloud_data.time.monotonic',return_value=100),patch('cloud_data.time.sleep') as sleep:
+            with self.lab.db:self.lab.db.execute("UPDATE accounts SET label='first change' WHERE id='m1'")
+            self.cloud.save(self.lab)
+            with self.lab.db:self.lab.db.execute("UPDATE accounts SET label='second change' WHERE id='m1'")
+            self.cloud.save(self.lab)
+            self.assertEqual(sleep.call_count,1)
+            self.assertAlmostEqual(sleep.call_args.args[0],1.1)
+            self.assertEqual(self.cloud.generation,'3')
+
     def test_checkpoint_restores_cases_evidence_and_spending(self):
         report=self.desk.demo('benign','cloud-case'); run=self.agent.start(report['id'])
         with patch('google.genai.Client.__init__',side_effect=AssertionError('No model client')) as client:

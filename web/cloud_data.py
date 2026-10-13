@@ -1,4 +1,4 @@
-"""Bounded, fake-only team demo persistence and batch analytics on Google Cloud.
+"""Bounded demo persistence and batch analytics on Google Cloud.
 
 One writer checkpoints SQLite to a generation-checked GCS object. This is a small
 demo store, not a distributed SQL database. A conflict or ambiguous write fails
@@ -8,6 +8,7 @@ import gzip
 import hashlib
 import io
 import json
+import logging
 import os
 import re
 import time
@@ -27,6 +28,8 @@ class CloudData:
     def __init__(self, project, bucket, dataset, location='us-central1', session=None):
         self.project, self.bucket, self.dataset, self.location = project, bucket, dataset, location
         if not all((project, bucket, dataset)): raise ValueError('Cloud project, state bucket and BigQuery dataset are required.')
+        self.checkpoint_interval=1.1 if session is None else 0.0
+        self.next_checkpoint_at=0.0
         if session is None:
             import google.auth
             from google.auth.transport.requests import AuthorizedSession
@@ -95,9 +98,15 @@ class CloudData:
             digest = hashlib.sha256(data).hexdigest()
             if digest == self.last_hash: return
             try:
+                # Serialize bursts of writes to this single GCS object, without
+                # retrying uncertain writes or skipping durable reservations.
+                delay=self.next_checkpoint_at-time.monotonic()
+                if delay>0:time.sleep(delay)
                 self.generation = self.upload(self.state_object, gzip.compress(data, compresslevel=1, mtime=0), self.generation)
+                self.next_checkpoint_at=time.monotonic()+self.checkpoint_interval
             except Exception:
                 self.healthy = False
+                logging.getLogger(__name__).exception('Canonical cloud checkpoint failed; writer fenced')
                 raise LabError('Cloud checkpoint could not be confirmed. This instance stopped accepting changes; no overwrite or retry was attempted.', 503) from None
             self.last_hash = digest
 
