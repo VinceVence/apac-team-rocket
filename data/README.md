@@ -19,13 +19,13 @@ The simulated environment is structured into a star-schema fact ledger, forensic
 
 ### Step 1: Local Synthetic Data Generation
 
-- **Script:** `generate_minttown_data.py`
+- **Script:** `generator/generate_minttown_data.py`
 - **Action:** Run the script locally to produce the core CSV datasets.
 - **Parameters:** Generates 5,000 customer profiles, 5,000 primary wallets, 5,000 devices, and 100,000 risk-scored transactions spanning a 90-day window with injected scam archetypes (APP, ATO, Vishing, Task Scams, etc.).
 
 ### Step 2: BigQuery Schema Initialization & Seeding
 
-- **Script:** `setup_bigquery.sql`
+- **Script:** `schemas/etup_bigquery.sql`
 - **Action:** Execute the DDL statements in the BigQuery console.
 - **Tasks:**
   - Create the `minttown_simulated_env` dataset.
@@ -35,7 +35,7 @@ The simulated environment is structured into a star-schema fact ledger, forensic
 
 ### Step 3: Batch Data Ingestion & View Creation
 
-- **Script:** `load_to_bq.py`
+- **Script:** `ingestion/load_to_bq.py`
 - **Action:** Run the Python ingestion script.
 - **Tasks:**
   - Batch-upload local CSVs (`customers.csv`, `wallets.csv`, `devices.csv`, `wallet_transactions.csv`) into BigQuery.
