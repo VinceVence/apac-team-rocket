@@ -21,4 +21,4 @@ web/legacy/
 /.codex/
 /AGENTS.md
 /CLAUDE.md
-.csv
+*.csv
