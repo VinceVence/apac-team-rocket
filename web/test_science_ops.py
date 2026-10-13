@@ -16,6 +16,8 @@ from server import make_server
 
 class ScienceOperationsChecks(unittest.TestCase):
     def setUp(self):
+        # Freeze the old model-release fixture independently of the active demo population cap.
+        fixture=patch('science.MAX_CUSTOMERS',240);fixture.start();self.addCleanup(fixture.stop)
         self.temp=tempfile.TemporaryDirectory();self.path=Path(self.temp.name)/'science.db'
         self.lab=Lab(self.path);self.science=Science(self.lab);self.agents=Agents(self.lab,Config())
         self.team=ScienceTeam(self.lab,self.science,self.agents)

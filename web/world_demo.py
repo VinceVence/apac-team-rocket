@@ -3,21 +3,16 @@ import random
 import threading
 
 from lab import LabError, encoded, now
+from fraud_scenarios import SCENARIOS as SCAMS
 
 RUN_STEPS = 24
-SCAMS = {
-    'phishing': {'title':'Phishing attempt','payee':'external:phishing-link','customer':'C001','count':1,'amount':90000,
-        'story':'A bank support text linked to a verification page. The caller told me to move money to a safe account immediately. I entered my PIN and now the caller has disappeared.',
-        'message':'Bank security: urgently verify your wallet at bank-check.example.invalid and move funds to the safe account.'},
-    'payment_burst': {'title':'Payment burst','payee':'external:burst-network','customer':'C004','count':3,'amount':14000,
-        'story':'Three unrecognized payments left my wallet in a few seconds. A caller claiming to be bank support said these urgent transfers were needed to protect my money. I did not intend to pay this recipient.',
-        'message':'Bank support: approve these transfers immediately to protect your money.'}}
 
 
 class WorldDemo:
-    def __init__(self, world, desk, runner, checkpoint=None, guard=None):
+    def __init__(self, world, desk, runner, checkpoint=None, guard=None, warehouse=None):
         self.world,self.lab,self.desk,self.runner=world,world.lab,desk,runner
         self.checkpoint=checkpoint or (lambda:None);self.guard=guard
+        self.warehouse=warehouse
         self.thread=None;self.stopping=threading.Event();self.closed=False
         self.lab.db.executescript('''
         CREATE TABLE IF NOT EXISTS world_demo_state(
@@ -76,7 +71,7 @@ class WorldDemo:
             if self.lab.db.execute('SELECT 1 FROM world_incidents WHERE id=?',(identifier,)).fetchone():return None
             cid='C002' if repeat and kind=='phishing' else 'C005' if repeat else spec['customer']
             flags=self.desk.screen(cid,spec['payee'])
-            if repeat and not flags:
+            if repeat and not flags and kind in ('phishing','payment_burst'):
                 for memory in self.desk.memories():
                     pattern=memory['pattern']
                     matching_shape=(len(pattern['evidence_ids'])==1 if kind=='phishing' else len(pattern['evidence_ids'])>1)
@@ -87,7 +82,11 @@ class WorldDemo:
             status='blocked' if flags else 'investigating';report_id=None;events=[];total=0
             provider='gemini' if self.runner.agent.live_enabled() else 'fake'
             if not flags:
-                if self.runner.agent.budget('',provider)['daily_calls']>=self.runner.agent.agents.config.daily_calls:
+                budget=self.runner.agent.budget('',provider)
+                if (budget['daily_calls']>=budget['daily_call_limit'] or
+                    budget['daily_committed_microusd']+10000>budget['daily_limit_microusd'] or
+                    budget['total_committed_microusd']+10000>budget['total_limit_microusd'] or
+                    (provider=='gemini' and self.runner.agent.runtime()['live_circuit_open'])):
                     status='budget_limited'
                 if status!='budget_limited' and self.guard:
                     try:self.guard.allow('POST','/api/fraud-desk/report',{'request_id':identifier})
@@ -98,11 +97,11 @@ class WorldDemo:
                                         (spec['payee'],'Synthetic scam recipient','counterparty'))
                     for n in range(spec['count']):
                         balance=self.lab.db.execute('SELECT balance_minor FROM accounts WHERE id=?',(cid+':wallet',)).fetchone()[0]
-                        amount=min(spec['amount'],balance//(spec['count']-n))
+                        amount=min(spec.get('amounts',(spec['amount'],)*spec['count'])[n],balance//(spec['count']-n))
                         if amount<100:break
                         eid=identifier+'-'+str(n)
                         outcome=self.world.payment(eid,cid,spec['payee'],amount,'device-'+cid,
-                            {'rail':'Wallet','device_known':kind=='phishing','authorization_verified':kind=='phishing',
+                            {'rail':'Wallet','device_known':spec['device_known'],'authorization_verified':spec['authorization_verified'],
                              'authorized_payee':spec['payee'],'scenario':kind,'source':'world_demo'})
                         if outcome=='declined':continue
                         if kind=='payment_burst':
@@ -118,7 +117,9 @@ class WorldDemo:
                      encoded(events),total,self.world.state()['tick'],now()))
             self.checkpoint()
         if report_id:
-            try:self.runner.start(report_id,provider)
+            try:
+                if self.warehouse:self.warehouse.publish()
+                self.runner.start(report_id,provider)
             except LabError:
                 with self.lab.lock,self.lab.db:self.lab.db.execute("UPDATE world_incidents SET status='needs_review' WHERE id=?",(identifier,))
                 self.checkpoint()
@@ -128,24 +129,26 @@ class WorldDemo:
         with self.lab.lock:
             state=self.status()
             if not state['running'] or run_id!=state['run_id']:return state
-            if self.guard:self.guard.allow('POST','/api/world/step',{})
+            # This tick is local-only. Persist its allowance and resulting ledger together,
+            # before any publication or model call, instead of uploading the full DB twice.
+            if self.guard:self.guard.allow('POST','/api/world/step',{},checkpoint=False)
             self.world.advance(self.world.state()['tick'],state['activity'],'none')
             step=state['steps']+1
             with self.lab.db:self.lab.db.execute('UPDATE world_demo_state SET steps=? WHERE id=1',(step,))
             self.checkpoint()
         rng=random.Random(run_id)
         first_at=rng.randint(4,6);burst_at=rng.randint(12,14)
-        if step==first_at:self.incident(run_id,'phishing')
-        if step==burst_at:self.incident(run_id,'payment_burst')
-        if step>=first_at+4:self.incident(run_id,'phishing',repeat=True)
-        if step>=burst_at+4:self.incident(run_id,'payment_burst',repeat=True)
+        kinds=tuple(SCAMS);first=kinds[((run_id-1)*2)%len(kinds)];second=kinds[((run_id-1)*2+1)%len(kinds)]
+        if step==first_at:self.incident(run_id,first)
+        if step==burst_at:self.incident(run_id,second)
+        if step>=first_at+4:
+            for kind in SCAMS:self.incident(run_id,kind,repeat=True)
         # Only the simulator's own customers answer. Never invent answers for submitted user reports.
         with self.lab.lock:
             waiting=self.lab.rows("""SELECT r.id,r.revision,w.kind FROM world_incidents w JOIN fraud_reports r
                 ON r.id=w.report_id WHERE w.id LIKE ? AND r.status='awaiting_customer' AND r.answers='[]' LIMIT 2""",('world-scam-'+str(run_id)+'-%',))
         for report in waiting:
-            answer=('Yes. The caller said to use a safe account and keep it secret from bank staff.' if report['kind']=='phishing'
-                    else 'No. I did not intend to approve these payments. The caller claimed they would protect my wallet.')
+            answer=SCAMS[report['kind']]['reply']
             try:
                 if self.guard:self.guard.allow('POST','/api/fraud-desk/reply',{})
                 self.runner.reply(report_id=report['id'],answer=answer,expected_revision=report['revision'])

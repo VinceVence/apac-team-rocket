@@ -3,6 +3,7 @@ import time
 from collections import deque
 
 from lab import LabError, now
+from settings import DAILY_REPORTS
 
 POST_PATHS = frozenset(('/api/world/step','/api/world/start','/api/world/stop','/api/cloud/export','/api/fraud-desk/demo',
     '/api/fraud-desk/report','/api/fraud-desk/reply','/api/fraud-desk/review',
@@ -10,7 +11,6 @@ POST_PATHS = frozenset(('/api/world/step','/api/world/start','/api/world/stop','
 GET_PATHS = frozenset(('/api/state','/api/cloud','/api/fraud-desk'))
 DAILY_WRITES = 600
 DAILY_WORLD_STEPS = 240
-DAILY_REPORTS = 4
 
 
 class DemoGuard:
@@ -27,7 +27,7 @@ class DemoGuard:
             lab.db.execute('INSERT OR IGNORE INTO demo_daily_usage(day,reports) VALUES(?,?)',(day,reports))
             lab.db.execute('UPDATE demo_daily_usage SET reports=max(reports,?) WHERE day=?',(reports,day))
 
-    def allow(self, method, path, body=None):
+    def allow(self, method, path, body=None, checkpoint=True):
         # Global limits are intentional: rotating client IDs must not create new allowances.
         if method=='GET':
             allowed=path in GET_PATHS or path.startswith('/api/fraud-desk/reports/')
@@ -56,7 +56,7 @@ class DemoGuard:
                     if used+added>limit:raise LabError('Daily hosted '+label+' limit reached. No work was queued.',429)
                 self.lab.db.execute('UPDATE demo_daily_usage SET writes=writes+1,world_steps=world_steps+?,reports=reports+? WHERE day=?',
                                     (int(is_step),int(is_report),day))
-            self.checkpoint()  # Reserve before mutation; errors keep the allowance and restarts cannot reset it.
+            if checkpoint:self.checkpoint()  # External work is admitted durably before it begins.
 
     def status(self):
         with self.lab.lock:

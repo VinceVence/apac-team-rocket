@@ -72,6 +72,7 @@ class WorldDemoChecks(unittest.TestCase):
             cloud=CloudData('minttown-apac-2026','test-state','simulation',session=FakeCloud())
             self.server=make_server(0,Path(self.temp.name)/'hosted.db',cloud=cloud)
             self.demo=self.server.world_demo;self.lab=self.server.lab
+            self.server.agents.config.daily_calls=10  # Lower boundary for this two-case gate check.
             with self.server:
                 state=self.demo.start(0,background=False)
                 for kind in ('phishing','payment_burst'):

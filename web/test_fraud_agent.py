@@ -244,7 +244,7 @@ class AgentChecks(unittest.TestCase):
         self.assertEqual(run['budget']['case_calls'],0); self.assertIn('context limit',run['context']['stop_reason'])
 
     def test_automatic_review_memory_reply_and_cumulative_decision_trail(self):
-        self.agents.config = Config(live=False)  # The real 10-call daily allowance.
+        self.agents.config = Config(live=False,daily_calls=10)  # Exercise a deliberately smaller call allowance.
         with patch('google.genai.Client.__init__', side_effect=AssertionError('Live calls forbidden')) as client:
             first = self.desk.demo('first', 'auto-first')
             one = self.settled(self.automatic(first)); self.assertEqual(one['status'], 'awaiting_review')

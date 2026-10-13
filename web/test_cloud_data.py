@@ -121,20 +121,21 @@ class CloudChecks(unittest.TestCase):
         self.assertEqual(self.cloud.export(self.lab,'unchanged')['row_count'],0)
         self.assertEqual(self.cloud.status(self.lab)['daily_exports'],1)
 
+    @patch('cloud_data.MAX_EXPORT_ROWS',10000)
     def test_full_hosted_economy_exports_in_complete_bounded_batches(self):
         from server import make_server
         remote=FakeCloud(); cloud=CloudData('test-project','full-seed','simulation',session=remote)
         server=make_server(0,self.root/'full-seed.db',cloud=cloud)
         try:
             lab=server.lab
-            self.assertEqual(lab.db.execute('SELECT count(*) FROM customers').fetchone()[0],240)
+            self.assertEqual(lab.db.execute('SELECT count(*) FROM customers').fetchone()[0],100)
             expected={r['id'] for r in lab.rows('SELECT id FROM financial_events')}
-            self.assertGreater(sum(lab.db.execute('SELECT count(*) FROM '+table).fetchone()[0] for table in ('customers','accounts','financial_events','ledger_entries')),MAX_EXPORT_ROWS)
+            self.assertGreater(sum(lab.db.execute('SELECT count(*) FROM '+table).fetchone()[0] for table in ('customers','accounts','financial_events','ledger_entries')),10000)
             seen=set(); leg_ids=set()
             for n in range(2):
                 result=cloud.export(lab,'full-batch-'+str(n))
                 self.assertEqual(result['status'],'completed')
-                self.assertLessEqual(result['row_count'],MAX_EXPORT_ROWS)
+                self.assertLessEqual(result['row_count'],10000)
                 self.assertLessEqual(result['size_bytes'],MAX_EXPORT_BYTES)
                 self.assertEqual(cloud.export(lab,'full-batch-'+str(n))['id'],result['id'])
                 records=[json.loads(line) for line in gzip.decompress(remote.objects['exports/'+result['id']+'.jsonl.gz'][1]).splitlines()]
@@ -217,10 +218,28 @@ class CloudChecks(unittest.TestCase):
                 self.assertEqual(server.fraud_agent.max_case_calls,6)
                 self.assertEqual(server.agents.config.daily_usd,.1)
                 self.assertEqual(server.agents.config.total_usd,1)
-                self.assertEqual(server.agents.config.daily_calls,10)
+                self.assertEqual(server.agents.config.daily_calls,30)
                 self.assertEqual(server.fraud_agent.case_limit,20000)
                 self.assertTrue(server.demo_guard.live_enabled);client.assert_not_called()
             finally:server.server_close();server.lab.db.close()
+
+    def test_world_tick_checkpoints_its_allowance_with_the_ledger_once(self):
+        from server import make_server
+        remote=FakeCloud();cloud=CloudData('test-project','world-checkpoint','simulation',session=remote)
+        server=make_server(0,self.root/'tick.db',cloud=cloud)
+        try:
+            state=server.world_demo.start(0,background=False);before=int(cloud.generation)
+            server.world_demo.tick(state['run_id'])
+            self.assertEqual(int(cloud.generation)-before,1)
+            self.assertEqual(server.demo_guard.status()['used']['world_steps'],1)
+            restored=CloudData('test-project','world-checkpoint','simulation',session=remote)
+            restored.restore(self.root/'tick-restored.db');lab=Lab(self.root/'tick-restored.db')
+            try:
+                self.assertEqual(lab.db.execute('SELECT world_steps FROM demo_daily_usage').fetchone()[0],1)
+                self.assertEqual(lab.db.execute('SELECT tick FROM simulation_state').fetchone()[0],1)
+                self.assertTrue(lab.integrity())
+            finally:lab.db.close()
+        finally:server.server_close();server.lab.db.close()
 
 
 if __name__=='__main__':unittest.main(verbosity=2)

@@ -3,6 +3,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from adk_mesh import dispatch
 from agents import Config
@@ -14,6 +15,9 @@ from server import make_server
 
 class CustomerIntelligenceChecks(unittest.TestCase):
     def setUp(self):
+        # Retained marketing-model regression fixture; never exported by the active 100-customer app.
+        for module in ('science','customer_data'):
+            fixture=patch(module+'.MAX_CUSTOMERS',240);fixture.start();self.addCleanup(fixture.stop)
         self.temp=tempfile.TemporaryDirectory();self.server=make_server(0,Path(self.temp.name)/'customer.db',Config())
         self.lab=self.server.lab;self.data=self.server.customer_data;self.mesh=self.server.mesh
 

@@ -93,11 +93,11 @@ class Macro:
         return {'units':units,'sku':row['name'],'unit_price_minor':row['price_minor'],'subtotal_minor':subtotal,
                 'fee_minor':fee,'total_minor':subtotal+fee,'policy_version':policy['version'],'macro_tick':self.world.state()['tick']}
 
-    def purchase(self,eid,cid,merchant,amount,metadata):
+    def purchase(self,eid,cid,merchant,amount,metadata,occurred_at=None):
         quote=self.quote(merchant,amount);meta={**metadata,**quote}
         legs=[(cid+':wallet',merchant,quote['subtotal_minor'])]
         if quote['fee_minor']:legs.append((cid+':wallet','payment-fees',quote['fee_minor']))
-        self.lab.post_legs(eid,cid,'payment',quote['subtotal_minor'],self.lab.clock_day,legs,meta)
+        self.lab.post_legs(eid,cid,'payment',quote['subtotal_minor'],occurred_at or self.lab.clock_day,legs,meta)
         return quote
 
     def request_loan(self,cid,amount,operation_id):

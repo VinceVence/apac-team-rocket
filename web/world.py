@@ -2,7 +2,9 @@
 import datetime as dt
 import json
 import random
+import hashlib
 from lab import AS_OF, LabError, encoded, now
+from settings import MAX_CUSTOMERS
 
 
 class World:
@@ -35,6 +37,7 @@ class World:
         return result
 
     def payment(self, eid, cid, merchant, amount, device, metadata=None):
+        stamp=self.lab.clock_day+'T%02d:00:%02dZ'%((self.state()['tick']+9)%24,int(hashlib.sha256(eid.encode()).hexdigest()[:8],16)%60)
         blocked=self.lab.db.execute("SELECT 1 FROM service_actions WHERE customer_id=? AND device_id=? AND action='block_device'",(cid,device)).fetchone()
         meta={'device_id':device,'category':'discretionary',**(metadata or {})}
         if self.fraud_desk:
@@ -45,14 +48,14 @@ class World:
             meta['prevention_tool']='payments.hold_transfer'
             meta['prevention_reason']='Exact recipient matched an analyst-approved scam. Simulated transfer held for review.'
         if blocked:
-            self.lab.event(eid,cid,'payment_blocked',amount,self.lab.clock_day,'blocked',cid+':wallet',merchant,meta)
+            self.lab.event(eid,cid,'payment_blocked',amount,stamp,'blocked',cid+':wallet',merchant,meta)
             return 'blocked'
         try:
-            if self.macro and merchant in ('m1','m2','m3'):self.macro.purchase(eid,cid,merchant,amount,meta)
-            else:self.lab.post(eid,cid,'payment',amount,self.lab.clock_day,cid+':wallet',merchant,meta)
+            if self.macro and merchant in ('m1','m2','m3'):self.macro.purchase(eid,cid,merchant,amount,meta,occurred_at=stamp)
+            else:self.lab.post(eid,cid,'payment',amount,stamp,cid+':wallet',merchant,meta)
             return 'settled'
         except LabError:
-            self.lab.event(eid,cid,'payment_declined',amount,self.lab.clock_day,'declined',cid+':wallet',merchant,meta)
+            self.lab.event(eid,cid,'payment_declined',amount,stamp,'declined',cid+':wallet',merchant,meta)
             return 'declined'
 
     def fraud_case(self, tick, rng, forced=None):
@@ -72,7 +75,7 @@ class World:
         return case_id
 
     def daily_cashflows(self, tick, rng):
-        customers=self.lab.rows('SELECT * FROM customers ORDER BY id')
+        customers=self.lab.rows('SELECT * FROM customers ORDER BY id LIMIT ?', (MAX_CUSTOMERS,))
         profiles=self.customer_data.profiles() if self.customer_data else {}
         for p in customers:
             cid=p['id'];wallet=cid+':wallet';day=self.lab.clock_day
@@ -114,7 +117,7 @@ class World:
                 if self.macro:self.macro.daily(tick)
             motions=[];alerts=[]
             profiles=self.customer_data.profiles() if self.customer_data else {}
-            candidates=[cid for cid in sorted(profiles)[:24] if self.customer_data.active(cid,day)] if profiles else []
+            candidates=[cid for cid in sorted(profiles)[:MAX_CUSTOMERS] if self.customer_data.active(cid,day)] if profiles else []
             purchases=max(1,round(activity*self.macro.demand_factor(tick))) if self.macro else activity
             for i in range(purchases):
                 cid='C%03d'%rng.randint(1,24);merchant='m%d'%rng.randint(1,3);amount=rng.randint(40,280)*100

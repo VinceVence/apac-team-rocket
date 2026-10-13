@@ -13,7 +13,7 @@ from google.genai import types
 from pydantic import PrivateAttr
 
 from fraud_agent import MAX_OUTPUT_TOKENS, MODEL, SYSTEM, TOOLS
-from fraud_desk import cues
+from fraud_desk import cues, LESSON, QUESTION
 from lab import LabError, encoded
 
 
@@ -47,6 +47,7 @@ def fixture_choice(packet):
         'questions': [] if packet['customer_replies'] else ["Have you verified the caller through your bank's official support channel?"] if suspicious else [],
         'action': 'request_recall' if suspicious else 'support_followup',
         'customer_message': 'Your report is ready for analyst review. No refund or liability decision has been made.',
+        'lesson':LESSON,'followup_question':QUESTION,
         'purpose': 'Submit the evidence and remaining uncertainty for human review.'}
 
 
@@ -100,18 +101,31 @@ def tools_for(controller, run_id):
         """Save one missing-information question and pause. The local customer reply form resumes the case."""
         return invoke('ask_customer', {'question': question}, purpose, tool_context)
 
+    def get_customer_features(purpose: str, tool_context: ToolContext) -> dict:
+        """Read this case customer's spending, frequency, merchants and device indicators from its pinned BigQuery snapshot. Required before submission when warehouse_available is true."""
+        return invoke('get_customer_features',{},purpose,tool_context)
+
+    def train_behavior_model(purpose: str, tool_context: ToolContext) -> dict:
+        """Optional: after get_customer_features, train or reuse a bounded local CPU anomaly model on up to 100 BigQuery customer histories. Use only if it adds evidence beyond descriptive analysis. Unsupervised, no fraud probability, no automatic bank action."""
+        return invoke('train_behavior_model',{},purpose,tool_context)
+
+    def get_complaint_guidance(purpose: str, tool_context: ToolContext) -> dict:
+        """Read the curated Philippine complaint checklist and BSP source links. Supports institution-led verification and escalation; no guaranteed recovery, invented deadlines or liability decision."""
+        return invoke('get_complaint_guidance',{},purpose,tool_context)
+
     def submit_for_review(assessment: str, summary: str, evidence_ids: list[str], memory_ids: list[str],
                           uncertainties: list[str], questions: list[str], action: str, customer_message: str,
-                          purpose: str, tool_context: ToolContext) -> dict:
+                          lesson: str, followup_question: str, purpose: str, tool_context: ToolContext) -> dict:
         """Submit for human review. Assessment: suspected_scam, needs_information or likely_legitimate.
         Cite every verified reported transaction and only retrieved memories. Action: request_recall
-        (proposal only, for suspected_scam) or support_followup. This never approves a case or moves money.
+        (proposal only, for suspected_scam) or support_followup. Include a case-specific lesson and future question for the analyst. This never approves a case or moves money.
         """
         return invoke('submit_for_review', dict(assessment=assessment, summary=summary, evidence_ids=evidence_ids,
                       memory_ids=memory_ids, uncertainties=uncertainties, questions=questions, action=action,
-                      customer_message=customer_message), purpose, tool_context)
+                      customer_message=customer_message,lesson=lesson,followup_question=followup_question), purpose, tool_context)
 
-    return [get_transactions, compare_behavior, trace_recipient, search_reviewed_cases, ask_customer, submit_for_review]
+    return [get_transactions, compare_behavior, trace_recipient, search_reviewed_cases, ask_customer, submit_for_review,
+            get_customer_features,train_behavior_model,get_complaint_guidance]
 
 
 async def run_turn(controller, run, packet):

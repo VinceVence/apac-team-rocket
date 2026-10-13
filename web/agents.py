@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from decimal import Decimal, ROUND_CEILING
 
 from lab import LabError, encoded, now
+from settings import DAILY_MODEL_CALLS, DAILY_MODEL_USD, TOTAL_MODEL_USD
 
 PROMPT_VERSION = 'minttown-1'
 MODELS = {'gemini-2.5-flash-lite': (0.10, 0.40), 'gemini-3.5-flash-lite': (0.30, 2.50)}
@@ -37,9 +38,9 @@ class Config:
     api_key: str = ''
     live: bool = False
     model: str = 'gemini-2.5-flash-lite'
-    daily_calls: int = 10
-    daily_usd: float = 0.10
-    total_usd: float = 1.0
+    daily_calls: int = DAILY_MODEL_CALLS
+    daily_usd: float = DAILY_MODEL_USD
+    total_usd: float = TOTAL_MODEL_USD
 
     def __post_init__(self):
         if self.model not in MODELS:
@@ -51,9 +52,9 @@ class Config:
     def environment(cls):
         return cls(api_key=os.getenv('GEMINI_API_KEY',''),live=os.getenv('MINTTOWN_LIVE')=='1',
                    model=os.getenv('GEMINI_MODEL','gemini-2.5-flash-lite'),
-                   daily_calls=int(os.getenv('MINTTOWN_DAILY_CALLS','10')),
-                   daily_usd=float(os.getenv('MINTTOWN_DAILY_USD','0.10')),
-                   total_usd=float(os.getenv('MINTTOWN_TOTAL_USD','1.00')))
+                   daily_calls=int(os.getenv('MINTTOWN_DAILY_CALLS',str(DAILY_MODEL_CALLS))),
+                   daily_usd=float(os.getenv('MINTTOWN_DAILY_USD',str(DAILY_MODEL_USD))),
+                   total_usd=float(os.getenv('MINTTOWN_TOTAL_USD',str(TOTAL_MODEL_USD))))
 
 
 def gemini(config, packet):

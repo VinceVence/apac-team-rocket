@@ -12,8 +12,8 @@ from simulate import sandbox
 def main():
     started = time.perf_counter()
     with sandbox() as (server, call, initial), patch('google.genai.Client.__init__', side_effect=AssertionError('No live client in this rehearsal')) as client:
-        # Keep the deployed 10-call / $0.10-day / $1-total limits in this rehearsal.
-        server.agents.config = Config(live=False)
+        # Exercise a smaller 10-call limit while retaining the normal dollar caps.
+        server.agents.config = Config(live=False,daily_calls=10)
         call('/api/world/step', {'expected_tick': initial['world']['tick'], 'activity': 2, 'scenario': 'none'})
         def wait_for_case(report_id):
             deadline = time.monotonic() + 15

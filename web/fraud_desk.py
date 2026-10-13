@@ -7,6 +7,8 @@ import statistics
 import uuid
 
 from lab import LabError, encoded, now
+from fraud_scenarios import SCENARIOS, catalogue, create_scenario
+from settings import MAX_CUSTOMERS
 
 TABLES = ('fraud_reports', 'fraud_investigations', 'fraud_reviews', 'scam_memories')
 LESSON = 'A familiar device and a successful PIN do not rule out deception. Check who requested the transfer and why.'
@@ -30,6 +32,13 @@ def cues(story):
 
 def watch_matches(recipients, payee):
     return payee in recipients
+
+
+def scenario_title(scenario):
+    if not scenario:return None
+    key={'first':'phishing','repeat':'phishing'}.get(scenario,scenario.removesuffix('.control'))
+    title=SCENARIOS.get(key,{}).get('title')
+    return (title+' · lookalike' if scenario.endswith('.control') else title) if title else 'Legitimate payment' if scenario=='benign' else None
 
 
 class FraudDesk:
@@ -109,15 +118,22 @@ class FraudDesk:
                           transactions=self.transactions(report), investigation=self.run(latest[0]) if latest else None,
                           reviews=reviews)
             if self.agent: report['decision_trail'] = self.agent.timeline(report_id)
+            payload=json.loads(self.lab.db.execute('SELECT request_json FROM fraud_reports WHERE id=?',(report_id,)).fetchone()[0])
+            report['scenario_title']=scenario_title(payload.get('scenario') or next((t['metadata'].get('scenario') for t in report['transactions'] if t['metadata'].get('scenario')),None))
+            if self.agent and report['investigation'] and report['investigation']['recommendation']:
+                report['validation_warnings']=self.agent.amount_warnings(report['investigation']['recommendation'],report['investigation']['context'])
             return report
 
     def dashboard(self):
         with self.lab.lock:
-            return {'mode': 'ADK · fake model' if self.agent else 'Offline tool rehearsal', 'gemini_calls': 0,
-                    'agent_runtime': self.agent.runtime() if self.agent else None,
-                    'reports': self.lab.rows('SELECT r.id,r.customer_id,c.name,r.status,r.created_at FROM fraud_reports r JOIN customers c ON c.id=r.customer_id ORDER BY r.rowid DESC'),
+            reports=self.lab.rows("SELECT r.id,r.customer_id,c.name,r.status,r.created_at,coalesce(json_extract(r.request_json,'$.scenario'),json_extract((SELECT metadata FROM financial_events WHERE id=json_extract(r.event_ids,'$[0]')),'$.scenario')) AS scenario FROM fraud_reports r JOIN customers c ON c.id=r.customer_id ORDER BY r.rowid DESC")
+            for report in reports:report['scenario_title']=scenario_title(report.pop('scenario'))
+            live=bool(self.agent and self.agent.live_enabled())
+            return {'mode': 'ADK · Gemini' if live else 'ADK · fake model' if self.agent else 'Offline tool rehearsal', 'gemini_calls': self.agent.agents.budget()['calls_today'] if self.agent else 0,
+                    'agent_runtime': self.agent.runtime() if self.agent else None, 'scenarios':catalogue(),
+                    'reports':reports,
                     'memories': self.memories(),
-                    'customers': self.lab.rows('SELECT id,name FROM customers ORDER BY id'),
+                    'customers': self.lab.rows('SELECT id,name FROM customers ORDER BY id LIMIT ?', (MAX_CUSTOMERS,)),
                     'transactions': self.lab.rows("SELECT id,customer_id,amount_minor,to_account,occurred_at FROM (SELECT id,customer_id,amount_minor,to_account,occurred_at,row_number() OVER (PARTITION BY customer_id ORDER BY occurred_at DESC,rowid DESC) AS recent FROM financial_events WHERE status='settled' AND kind='payment') WHERE recent<=5 ORDER BY occurred_at DESC,id DESC")}
 
     def transactions(self, report):
@@ -130,6 +146,8 @@ class FraudDesk:
 
     def _create(self, customer_id, story, message, event_ids, request_id, request_json):
         text(customer_id, 'Customer ID'); story = text(story, 'Report', 20, 4000)
+        if customer_id not in {c['id'] for c in self.lab.rows('SELECT id FROM customers ORDER BY id LIMIT ?', (MAX_CUSTOMERS,))}:
+            raise LabError('This customer is outside the active simulation cohort.',403)
         message = text(message, 'Message transcript', 0, 2000)
         if not isinstance(event_ids, list) or not 1 <= len(event_ids) <= 10 or any(not isinstance(e, str) for e in event_ids) or len(set(event_ids)) != len(event_ids):
             raise LabError('Choose 1–10 distinct transactions belonging to this customer.')
@@ -154,6 +172,8 @@ class FraudDesk:
             return self.existing_request(request_id, payload) or self._create(customer_id, story, message, event_ids, request_id, encoded(payload))
 
     def demo(self, scenario, request_id):
+        if isinstance(scenario,str) and scenario.removesuffix('.control') in SCENARIOS:
+            return create_scenario(self,scenario,request_id)
         if scenario not in ('first', 'repeat', 'benign'): raise LabError('Choose first, repeat or benign.')
         payload = {'scenario': scenario}
         with self.lab.lock, self.lab.db:
@@ -288,6 +308,9 @@ class FraudDesk:
                 raise LabError('Complete the current investigation before reviewing it.', 409)
             if self.lab.fingerprint(self.transactions(report)) != run['context']['evidence_hash']:
                 raise LabError('Transaction evidence changed. Refresh the report and investigate again.', 409)
+            if self.agent:
+                warnings=self.agent.amount_warnings(run['recommendation'],run['context'])
+                if warnings:raise LabError('Resolve the draft validation warning before approval: '+'; '.join(warnings),409)
             rid = 'REV-' + uuid.uuid4().hex[:10]
             message = {'confirmed_scam': 'An analyst reviewed your report as a scam. We have recorded the next support action. Recovery is not guaranteed.',
                        'not_scam': 'An analyst reviewed the available evidence and did not confirm a scam. Please contact us if you have additional information.',

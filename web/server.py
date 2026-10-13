@@ -23,6 +23,8 @@ from fraud_agent import FraudAgent
 from fraud_runner import InvestigationRunner
 from demo_guard import DemoGuard
 from world_demo import WorldDemo
+from settings import MAX_CUSTOMERS
+from warehouse import Warehouse
 
 ROOT=Path(__file__).resolve().parent
 
@@ -34,7 +36,7 @@ class MintTownServer(ThreadingHTTPServer):
         if hasattr(self, 'fraud_runner'): self.fraud_runner.close()
 
 
-def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=None):
+def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=None, bind_host=None):
     (ROOT/'data').mkdir(exist_ok=True)
     cloud_live=bool(cloud and os.getenv('MINTTOWN_CLOUD_LIVE')=='1' and os.getenv('MINTTOWN_LIVE')=='1' and os.getenv('MINTTOWN_FRAUD_LIVE')=='1')
     if cloud_live and os.getenv('GOOGLE_CLOUD_PROJECT')!='minttown-apac-2026':raise ValueError('Hosted live investigations are scoped to the MintTown project.')
@@ -49,10 +51,12 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
     mesh=Mesh(lab,world,macro,science_team,agents,customer_data)
     fraud_desk=FraudDesk(lab,world);world.fraud_desk=fraud_desk
     checkpoint=(lambda: cloud.save(lab)) if cloud else None
+    warehouse=Warehouse(lab,cloud) if cloud and os.getenv('PALLET_WAREHOUSE_ENABLED')=='1' else None
     fraud_agent=FraudAgent(fraud_desk,agents,checkpoint=checkpoint)
+    fraud_agent.warehouse=warehouse
     fraud_runner=InvestigationRunner(fraud_agent)
     guard=DemoGuard(lab,checkpoint,live_enabled=cloud_live) if cloud else None
-    world_demo=WorldDemo(world,fraud_desk,fraud_runner,checkpoint,guard)
+    world_demo=WorldDemo(world,fraud_desk,fraud_runner,checkpoint,guard,warehouse)
     if cloud: cloud.initialize(lab)
     csrf=secrets.token_urlsafe(32)
 
@@ -86,6 +90,8 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                 if path=='/api/state':
                     with lab.lock:
                         result=lab.snapshot();result.update(budget=agents.budget(),csrf_token=csrf)
+                        result['customers']=result['customers'][:MAX_CUSTOMERS]
+                        result['warehouse']=warehouse.status() if warehouse else {'enabled':False}
                         result['world']=world.status()
                         result['demo']=world_demo.status()
                         result['macro']={'policy':macro.policy(),'metrics':macro.metrics(world.state()['tick']),'goods':macro.goods(),'due':macro.due()}
@@ -95,7 +101,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                 if path=='/api/science':return self.reply(200,science_team.dashboard())
                 if path=='/api/customer-data':return self.reply(200,customer_data.dashboard())
                 if path=='/api/fraud-desk':return self.reply(200,fraud_desk.dashboard())
-                if path=='/api/cloud':return self.reply(200,{**cloud.status(lab),'guardrails':guard.status(),'gemini':'bounded private investigations' if cloud_live else 'disabled'} if cloud else {'enabled':False})
+                if path=='/api/cloud':return self.reply(200,{**cloud.status(lab),'warehouse':warehouse.status() if warehouse else None,'guardrails':guard.status(),'execution':'local' if bind_host=='127.0.0.1' else 'cloud','gemini':'bounded private investigations' if cloud_live else 'disabled'} if cloud else {'enabled':False})
                 if path.startswith('/api/fraud-desk/reports/'):
                     return self.reply(200,fraud_desk.detail(path.rsplit('/',1)[-1]))
                 if path=='/api/mesh':
@@ -140,11 +146,14 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                 if path=='/api/cloud/export':
                     if not cloud:raise LabError('BigQuery export is available on the hosted demo.',409)
                     if set(body)!={'request_id'}:raise LabError('Exports require a request ID and use only the approved simulator tables.')
+                    if warehouse:
+                        warehouse.publish();return self.reply(200,warehouse.latest())
                     return self.reply(200,cloud.export(lab,body['request_id']))
                 if path=='/api/fraud-agent/start':
                     if 'report_id' not in body or set(body)-{'report_id','mode','automatic'}:raise LabError('Invalid ADK start command.')
                     automatic=body.pop('automatic',True)
                     if type(automatic) is not bool:raise LabError('Automatic must be true or false.')
+                    if warehouse and fraud_desk.detail(body['report_id'])['investigation'] is None:warehouse.publish()
                     run=(fraud_runner.start if automatic else fraud_agent.start)(**body)
                     queued=run['context'].get('execution',{}).get('status') in ('queued','running')
                     return self.reply(202 if queued else 200,run)
@@ -250,7 +259,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
             # Request bodies, headers and provider credentials never enter access logs.
             pass
 
-    server=MintTownServer(('0.0.0.0' if cloud else '127.0.0.1',port),Handler)
+    server=MintTownServer((bind_host or ('0.0.0.0' if cloud else '127.0.0.1'),port),Handler)
     server.lab=lab;server.agents=agents
     server.world=world;server.science=science
     server.macro=macro
@@ -262,6 +271,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
     server.fraud_runner=fraud_runner
     server.demo_guard=guard
     server.world_demo=world_demo
+    server.warehouse=warehouse
     return server
 
 
@@ -275,7 +285,7 @@ if __name__=='__main__':
     server=make_server(args.port,db_path,cloud=cloud,public_host=os.getenv('MINTTOWN_PUBLIC_HOST'))
     def terminate(signum, frame): raise KeyboardInterrupt
     signal.signal(signal.SIGTERM,terminate)
-    print('MintTown: http://127.0.0.1:%d · %s' % (server.server_port,server.agents.budget()['mode']),flush=True)
+    print('Pallet Town: http://127.0.0.1:%d · %s' % (server.server_port,server.agents.budget()['mode']),flush=True)
     try: server.serve_forever()
     except KeyboardInterrupt: pass
     finally: server.server_close();server.lab.db.close()

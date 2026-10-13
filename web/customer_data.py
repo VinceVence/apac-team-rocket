@@ -13,6 +13,7 @@ from collections import Counter, defaultdict
 
 from lab import AS_OF, LabError, encoded, now
 from science import fit, predict, evaluate
+from settings import MAX_CUSTOMERS
 
 TABLES = ('customer_profiles', 'bronze_interactions', 'silver_interactions', 'gold_customer_features',
           'customer_dna_models', 'gold_customer_dna', 'marketing_campaigns', 'campaign_assignments', 'customer_pipeline_runs')
@@ -72,11 +73,11 @@ class CustomerData:
         self.seed_interactions()
 
     def profiles(self):
-        return {r['customer_id']: json.loads(r['profile']) for r in self.lab.rows('SELECT * FROM customer_profiles')}
+        return {r['customer_id']: json.loads(r['profile']) for r in self.lab.rows('SELECT * FROM customer_profiles ORDER BY customer_id LIMIT ?', (MAX_CUSTOMERS,))}
 
     def seed_profiles(self):
         with self.lab.db:
-            for customer in self.lab.rows('SELECT * FROM customers'):
+            for customer in self.lab.rows('SELECT * FROM customers ORDER BY id LIMIT ?', (MAX_CUSTOMERS,)):
                 cid = customer['id']; r = seeded(cid, 'profile-v1')
                 profile = {'age_band': r.choice(['18–24', '25–34', '35–44', '45–59', '60+']),
                            'region': r.choice(['Metro Manila', 'Central Luzon', 'Visayas', 'Mindanao']),

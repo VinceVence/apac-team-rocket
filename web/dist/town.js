@@ -1,4 +1,4 @@
-// Original MintTown pixel art, reused as a single-neighborhood case visualizer.
+// Original Pallet Town pixel art, reused as a single-neighborhood case visualizer.
 export function createTown(canvas) {
   let ctx=canvas.getContext('2d');
   function rect(x,y,w,h,c){ctx.fillStyle=c;ctx.fillRect(Math.round(x),Math.round(y),w,h)}
@@ -16,7 +16,7 @@ export function createTown(canvas) {
     {x:563,y:335,name:'FAMILY HOMES',roof:'#849293',kind:0}
   ];
 
-  let customers=[],selected=null,kind='world',running=false,speed=1,raf=0,last=0,background=null,market=null;
+  let customers=[],population=[],recent=[],selected=null,kind='world',running=false,speed=1,raf=0,last=0,background=null,market=null;
   const actors=new Map();const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
   function makeBackground(){
     background=document.createElement('canvas');background.width=768;background.height=480;
@@ -61,10 +61,12 @@ export function createTown(canvas) {
     paint(time);raf=requestAnimationFrame(frame);
   }
   function draw(people,focus,role){
-    customers=people.slice(0,24);selected=focus;kind=role;
+    population=people.slice(0,100);selected=focus;kind=role;
+    const ids=[...new Set([focus,...recent,...population.map(p=>p.id)].filter(Boolean))].slice(0,24);
+    customers=ids.map(id=>population.find(p=>p.id===id)).filter(Boolean);
     customers.forEach((p,i)=>{if(!actors.has(p.id))actors.set(p.id,{x:i%3===0?274:i%3===1?494:45+(i*73)%650,y:i%3<2?40+(i*53)%365:236,path:[],bubble:null,until:0})});paint();
   }
-  draw.motion=function(events){for(const e of events){const a=actors.get(e.customer_id),shop=shops[Number(e.merchant.slice(1))-1];if(!a||!shop)continue;a.path=[{x:a.x,y:236},{x:shop.x,y:236},{x:shop.x,y:shop.y+91}];a.pending=e.status==='blocked'?'BLOCKED':e.status==='declined'?'DECLINED':'₱'+Math.round(e.amount_minor/100);a.until=0}paint()};
+  draw.motion=function(events){recent=[...new Set([...events.map(e=>e.customer_id),...recent])].slice(0,12);draw(population,selected,kind);for(const e of events){const a=actors.get(e.customer_id),shop=shops[Number(e.merchant.slice(1))-1];if(!a||!shop)continue;a.path=[{x:a.x,y:236},{x:shop.x,y:236},{x:shop.x,y:shop.y+91}];a.pending=e.status==='blocked'?'BLOCKED':e.status==='declined'?'DECLINED':'₱'+Math.round(e.amount_minor/100);a.until=0}paint()};
   draw.setRunning=function(on){running=on;last=0;cancelAnimationFrame(raf);if(on)raf=requestAnimationFrame(frame);else{raf=0;paint()}};
   draw.setSpeed=value=>{speed=value};
   draw.setMarket=value=>{market=value};

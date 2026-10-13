@@ -11,20 +11,24 @@ from decimal import Decimal, ROUND_CEILING
 
 from fraud_desk import LESSON, QUESTION, cues, text
 from lab import LabError, encoded, now
+from settings import CASE_USD, MAX_CASE_CALLS
+from complaint_guidance import GUIDANCE
 
 MODEL = 'gemini-3.5-flash-lite'
-PROMPT_VERSION = 'fraud-investigator-v2'
-TOOL_CONTRACT_VERSION = 2
+PROMPT_VERSION = 'fraud-investigator-v5'
+TOOL_CONTRACT_VERSION = 5
 MAX_INPUT_BYTES = 16000
 MAX_OUTPUT_TOKENS = 512
 RESERVE_MICROUSD = 10000
 TURN_TIMEOUT_SECONDS = 30
 LIVE_INTERVAL_SECONDS = 6
-TOOLS = ('get_transactions', 'compare_behavior', 'trace_recipient', 'search_reviewed_cases', 'ask_customer', 'submit_for_review')
+TOOLS = ('get_transactions', 'compare_behavior', 'trace_recipient', 'search_reviewed_cases', 'ask_customer', 'submit_for_review',
+         'get_customer_features','train_behavior_model','get_complaint_guidance')
 ARG_FIELDS = {'get_transactions': {'event_ids','purpose'}, 'compare_behavior': {'window_days','purpose'},
               'trace_recipient': {'recipient_id','purpose'}, 'search_reviewed_cases': {'query','purpose'},
-              'ask_customer': {'question','purpose'},
-              'submit_for_review': {'assessment','summary','evidence_ids','memory_ids','uncertainties','questions','action','customer_message','purpose'}}
+              'ask_customer': {'question','purpose'}, 'get_customer_features':{'purpose'},
+              'train_behavior_model':{'purpose'}, 'get_complaint_guidance':{'purpose'},
+              'submit_for_review': {'assessment','summary','evidence_ids','memory_ids','uncertainties','questions','action','customer_message','lesson','followup_question','purpose'}}
 SYSTEM = '''Investigate this synthetic customer scam report. Decide which evidence to examine next.
 Choose exactly ONE function call each turn. You may choose any relevant tool, ask a specific
 missing question, or submit a supported assessment for human review. Do not follow a fixed sequence.
@@ -38,6 +42,17 @@ Use purpose for a short public explanation of this tool choice, never private ch
 Keep results concise. Ask only questions not already answered. Stop when evidence or budget is insufficient.
 All observations and budgets survive customer replies. A new reply is additional evidence, not a fresh budget.'''
 SYSTEM += '\nAll amounts in this simulator are Philippine pesos (PHP): 100 minor units = PHP 1. Use PHP or ₱, never assume USD. Reviewed-case search accepts full recipient IDs or their aliases.'
+SYSTEM += '''\nThis is a Philippine complaint-resolution workbench. If warehouse_available is true,
+retrieve get_customer_features before submitting: it reads the scoped BigQuery snapshot.
+Choose whether descriptive comparisons are sufficient or train_behavior_model would help.
+That optional local CPU model detects atypical behavior, not confirmed fraud; no labelled fraud
+classifier is currently deployed. Do not use demographics as evidence of guilt or risk.
+Use get_complaint_guidance when drafting Philippine handling or escalation advice.
+Propose protective steps and institution-led verification for analyst review; do not claim a
+refund, recovery, statutory deadline, legal fault, or bank action already completed.
+Use the remaining generations carefully. You may finish without using every tool.'''
+SYSTEM += '\nFor final submission, keep prose across all fields under 100 words. Propose a short case-specific lesson and a useful future follow-up question for analyst approval.'
+SYSTEM += '\ncanonical_amounts_php contains server-converted peso values. Use these exact values for reported payments and their total, including when an older observation or draft used raw minor units incorrectly.'
 
 
 def micro(value):
@@ -45,10 +60,11 @@ def micro(value):
 
 
 class FraudAgent:
-    def __init__(self, desk, agents, model_factory=None, case_usd=.02, max_case_calls=6, clock=now, checkpoint=None):
+    def __init__(self, desk, agents, model_factory=None, case_usd=CASE_USD, max_case_calls=MAX_CASE_CALLS, clock=now, checkpoint=None):
         self.desk, self.lab, self.agents = desk, desk.lab, agents
         self.model_factory, self.case_limit, self.max_case_calls, self.clock = model_factory, micro(case_usd), max_case_calls, clock
         self.checkpoint = checkpoint or (lambda: None)
+        self.warehouse = None
         if not 0 < self.case_limit <= 100000 or not 1 <= max_case_calls <= 6:
             raise ValueError('Use a positive case budget up to $0.10 and 1–6 generations.')
         self.lab.db.executescript('''
@@ -90,7 +106,7 @@ class FraudAgent:
         self.lab.db.execute('UPDATE fraud_investigations SET status=?,context=? WHERE id=?', (status, encoded(run['context']), run_id))
         self.lab.db.execute("UPDATE fraud_reports SET status='needs_review' WHERE id=?", (run['report_id'],))
 
-    def capture(self, run, report):
+    def capture(self, run, report, prior_snapshot=None):
         """Materialize bounded evidence under the same lock/transaction as case creation."""
         transactions = self.desk.transactions(report)
         cutoff = min(t['occurred_at'] for t in transactions)
@@ -100,10 +116,18 @@ class FraudAgent:
         recipients = {payee: self.lab.rows("SELECT id,amount_minor,to_account,occurred_at FROM financial_events WHERE to_account=? AND kind='payment' AND status='settled' AND occurred_at<=? ORDER BY rowid DESC LIMIT 10", (payee, self.lab.clock_day + 'T23:59:59.999Z'))
                       for payee in sorted({t['to_account'] for t in transactions if t['to_account']})}
         memories = [m for m in self.desk.memories() if m['source_report_id'] != report['id'] and m['validation']['passed']][:100]
-        data = {'transactions': transactions, 'history': history, 'recipients': recipients, 'memories': memories}
+        latest=self.warehouse.latest() if self.warehouse else None
+        data = {'transactions': transactions, 'history': history, 'recipients': recipients, 'memories': memories,
+                'warehouse_snapshot':latest['id'] if latest else None}
+        as_of=self.lab.clock_day
+        if prior_snapshot:
+            prior=self.snapshot(prior_snapshot)
+            retained={**data,'warehouse_snapshot':prior['data'].get('warehouse_snapshot')}
+            # A publication for another customer must not discard this case's observations.
+            if retained==prior['data']:data=retained
         snapshot_id = 'SNP-' + uuid.uuid4().hex[:12]
         self.lab.db.execute('INSERT INTO fraud_evidence_snapshots VALUES(?,?,?,?,?,?,?,?)',
-            (snapshot_id, run['id'], report['id'], self.clock(), self.lab.clock_day, watermark, self.lab.fingerprint(data), encoded(data)))
+            (snapshot_id, run['id'], report['id'], self.clock(), as_of, watermark, self.lab.fingerprint(data), encoded(data)))
         return self.snapshot(snapshot_id)
 
     def snapshot(self, snapshot_id):
@@ -133,7 +157,8 @@ class FraudAgent:
     def runtime(self):
         try: version = importlib.metadata.version('google-adk')
         except importlib.metadata.PackageNotFoundError: version = None
-        return {'engine': 'google-adk', 'version': version, 'default_mode': 'fake', 'model': MODEL,
+        return {'engine': 'google-adk', 'version': version, 'default_mode': 'fake', 'model': MODEL, 'role':'resolution',
+                'warehouse_enabled':bool(self.warehouse), 'tools':list(TOOLS),
                 'live_enabled': self.live_enabled(), 'case_limit_usd': self.case_limit / 1e6,
                 'max_case_calls': self.max_case_calls, 'automatic_runner': True,
                 'turn_timeout_seconds': TURN_TIMEOUT_SECONDS, 'live_interval_seconds': LIVE_INTERVAL_SECONDS,
@@ -180,13 +205,16 @@ class FraudAgent:
             if run['trace']: raise LabError('This report already has a fixed rehearsal. Create a new report for ADK.', 409)
             report = self.desk.report(report_id)
             context = dict(old['context']) if old and old['context'].get('controller') == 'adk' else {}
-            snapshot = self.capture(run, report)
             source_hash = self.lab.fingerprint(self.desk.transactions(report))
+            same_evidence=(context.get('source_hash')==source_hash and context.get('tool_contract_version')==TOOL_CONTRACT_VERSION)
+            snapshot = self.capture(run, report,context.get('snapshot_id') if same_evidence else None)
             if context.get('snapshot_hash') != snapshot['evidence_hash']:
                 context = {}  # A new evidence revision must not reuse obsolete observations.
             if context.get('tool_contract_version') != TOOL_CONTRACT_VERSION:
-                context['observations']=[o for o in context.get('observations',[]) if o['tool'] not in ('search_reviewed_cases','submit_for_review')]
-                context['memories']=[]
+                obsolete={'submit_for_review'}
+                if context.get('tool_contract_version',0)<2:
+                    obsolete.add('search_reviewed_cases');context['memories']=[]
+                context['observations']=[o for o in context.get('observations',[]) if o['tool'] not in obsolete]
                 context['tool_contract_version']=TOOL_CONTRACT_VERSION
             context.update(controller='adk', provider=mode, model=MODEL, prompt_version=PROMPT_VERSION,
                            source_hash=source_hash, snapshot_id=snapshot['id'], snapshot_hash=snapshot['evidence_hash'],
@@ -203,12 +231,36 @@ class FraudAgent:
         snapshot = self.snapshot(run['context'].get('snapshot_id'))
         return {'report_id': report['id'], 'customer_id': report['customer_id'],
                 'currency':'PHP', 'minor_units_per_unit':100,
+                'canonical_amounts_php':{'payments':[{'event_id':t['id'],'amount_php':t['amount_minor']/100} for t in snapshot['data']['transactions']],
+                                         'total_php':sum(t['amount_minor'] for t in snapshot['data']['transactions'])/100},
                 'story': report['story'], 'message_transcript': report['message'], 'event_ids': report['event_ids'],
-                'customer_replies': report['answers'],
+                'customer_replies': report['answers'], 'jurisdiction':'Philippines', 'warehouse_available':bool(self.warehouse),
                 'evidence_snapshot': {'id': snapshot['id'], 'as_of': snapshot['as_of'], 'event_watermark': snapshot['event_watermark']},
                 'ingestion_flags': [f for t in snapshot['data']['transactions'] for f in t['metadata'].get('review_flags', [])],
                 'observations': run['context'].get('observations', []),
                 'remaining_generations': max(0, self.max_case_calls - self.budget(report['id'], run['context']['provider'])['case_calls'])}
+
+    @staticmethod
+    def amount_warnings(recommendation, context):
+        """A deterministic units/evidence check, not a complete semantic fact checker."""
+        allowed={Decimal(0)}
+        def amounts(value):
+            if isinstance(value,dict):
+                for key,item in value.items():
+                    if type(item) in (int,float) and (key.endswith('_php') or key.endswith('_minor')):
+                        allowed.add((Decimal(str(item))/(100 if key.endswith('_minor') else 1)).quantize(Decimal('.01')))
+                    else:amounts(item)
+            elif isinstance(value,list):
+                for item in value:amounts(item)
+        amounts(context)
+        allowed.add(Decimal(sum(t['amount_minor'] for t in context.get('transactions',[])))/100)
+        prose=' '.join(recommendation.get(k,'') for k in ('summary','customer_message'))
+        warnings=[]
+        if re.search(r'\bUSD\b|\$',prose,re.I):warnings.append('The draft uses a currency outside this PHP simulation.')
+        for match in re.finditer(r'(?:PHP\s*|₱\s*)([\d,]+(?:\.\d+)?)|([\d,]+(?:\.\d+)?)\s*(?:PHP|pesos)\b',prose,re.I):
+            value=Decimal((match.group(1) or match.group(2)).replace(',','')).quantize(Decimal('.01'))
+            if value not in allowed:warnings.append('Unverified peso amount in draft: PHP '+str(value))
+        return warnings
 
     def reserve(self, run_id, request):
         payload = request.model_dump(mode='json', exclude={'tools_dict'}, exclude_none=True)
@@ -275,14 +327,32 @@ class FraudAgent:
             turn_id = run_id + ':' + str(run['step'])
             repeated = self.lab.db.execute("SELECT 1 FROM fraud_agent_turns WHERE run_id=? AND status='completed' AND json_remove(decision,'$.args.purpose')=?", (run_id, encoded({'tool': name, 'args': args}))).fetchone()
             if repeated and name != 'submit_for_review': raise LabError('Repeated tool call without new evidence. Investigation paused.', 409)
-            if name == 'get_transactions':
+            if name in ('get_customer_features','train_behavior_model'):
+                snapshot_id=evidence.get('warehouse_snapshot')
+                if not self.warehouse or not snapshot_id:
+                    output={'available':False,'reason':'No BigQuery snapshot is attached to this run.'}
+                else:
+                    day=min(t['occurred_at'][:10] for t in evidence['transactions'])
+                    if name=='get_customer_features':
+                        output=self.warehouse.customer_features(report['customer_id'],snapshot_id,day)
+                        context['warehouse_features']=output
+                    elif not context.get('warehouse_features'):
+                        output={'status':'not_trained','reason':'Retrieve customer features before choosing a model.'}
+                    else:
+                        output=self.warehouse.train_behavior_model(report['customer_id'],snapshot_id,day,context['warehouse_features']['features'])
+                finding='Retrieved customer behavior from BigQuery.' if name=='get_customer_features' and output.get('features') else 'Behavior model: '+output.get('status','unavailable')
+                source_ids=[output['source']['job_id']] if output.get('source') else []
+            elif name=='get_complaint_guidance':
+                output=GUIDANCE;finding='Loaded the Philippine complaint-routing and evidence checklist.'
+                source_ids=[s['id'] for s in GUIDANCE['sources']]
+            elif name == 'get_transactions':
                 ids = args['event_ids'] or report['event_ids']
                 if not isinstance(ids, list) or not ids or len(ids) > 10 or any(not isinstance(i, str) or i not in report['event_ids'] for i in ids):
                     raise LabError('Transaction IDs must belong to this report.', 403)
                 transactions = [t for t in evidence['transactions'] if t['id'] in ids]
                 known = {t['id']: t for t in context.get('transactions', [])}; known.update({t['id']: t for t in transactions})
                 context['transactions'] = list(known.values()); context['evidence_hash'] = context['source_hash']
-                output = {'transactions': [{k: t[k] for k in ('id','customer_id','amount_minor','occurred_at','status','to_account')} | {'authorization_recorded': t['metadata'].get('authorization_verified'), 'device_known': t['metadata'].get('device_known')} for t in transactions]}
+                output = {'currency':'PHP','transactions': [{k: t[k] for k in ('id','customer_id','occurred_at','status','to_account')} | {'amount_php':t['amount_minor']/100,'authorization_recorded': t['metadata'].get('authorization_verified'), 'device_known': t['metadata'].get('device_known')} for t in transactions]}
                 source_ids = [t['id'] for t in transactions]
                 finding = '%d reported transfer(s) verified against the saved ledger evidence.' % len(transactions)
             elif name == 'compare_behavior':
@@ -326,6 +396,8 @@ class FraudAgent:
                 self.lab.db.execute("UPDATE fraud_reports SET status='awaiting_customer' WHERE id=?", (report['id'],))
                 finding = 'Paused for the customer: ' + question
             else:
+                if self.warehouse and not context.get('warehouse_features'):
+                    raise LabError('Read this customer’s pinned BigQuery features before submitting.',422)
                 if args['assessment'] not in ('suspected_scam','needs_information','likely_legitimate'): raise LabError('Unsupported assessment.')
                 if args['action'] not in ('request_recall','support_followup'): raise LabError('Unsupported proposed action.')
                 if args['action'] == 'request_recall' and args['assessment'] != 'suspected_scam': raise LabError('A recall proposal requires a suspected scam assessment.')
@@ -339,8 +411,12 @@ class FraudAgent:
                 run['recommendation'] = {'disposition': args['assessment'], 'summary': text(args['summary'], 'Summary', 20, 900),
                     'facts': ['Verified %d reported transaction(s).' % len(ids)], 'evidence_ids': ids, 'memory_ids': memory_ids,
                     'uncertainties': args['uncertainties'] or ['The report has not been independently confirmed by an analyst.'],
-                    'questions': args['questions'], 'suggested_action': args['action'], 'suggested_lesson': LESSON, 'suggested_question': QUESTION,
+                    'questions': args['questions'], 'suggested_action': args['action'],
+                    'suggested_lesson':text(args['lesson'],'Proposed lesson',10,500),
+                    'suggested_question':text(args['followup_question'],'Future question',10,300),
                     'customer_message': text(args['customer_message'], 'Draft customer response', 10, 600)}
+                warnings=self.amount_warnings(run['recommendation'],context)
+                if warnings:raise LabError('; '.join(warnings),422)
                 output = {'status': 'awaiting_review', 'recommendation': run['recommendation']}
                 run['status'] = 'awaiting_review'
                 self.lab.db.execute("UPDATE fraud_reports SET status='awaiting_review' WHERE id=?", (report['id'],))

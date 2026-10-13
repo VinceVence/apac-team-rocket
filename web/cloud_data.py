@@ -44,7 +44,7 @@ class CloudData:
         return 'https://storage.googleapis.com/storage/v1/b/%s/o/%s' % (quote(self.bucket, safe=''), quote(name, safe=''))
 
     def request(self, method, url, **kwargs):
-        response = self.session.request(method, url, timeout=20, **kwargs)
+        response = self.session.request(method, url, timeout=kwargs.pop('timeout',20), **kwargs)
         return response
 
     def upload(self, name, body, generation):
@@ -90,7 +90,7 @@ class CloudData:
             digest = hashlib.sha256(data).hexdigest()
             if digest == self.last_hash: return
             try:
-                self.generation = self.upload(self.state_object, gzip.compress(data, mtime=0), self.generation)
+                self.generation = self.upload(self.state_object, gzip.compress(data, compresslevel=1, mtime=0), self.generation)
             except Exception:
                 self.healthy = False
                 raise LabError('Cloud checkpoint could not be confirmed. This instance stopped accepting changes; no overwrite or retry was attempted.', 503) from None
@@ -107,7 +107,10 @@ class CloudData:
                 'pending_events':pending, 'exports':exports, 'gemini':'disabled in the hosted demo'}
 
     def daily_exports(self, lab):
-        return lab.db.execute('SELECT count(*) FROM cloud_exports WHERE row_count>0 AND substr(created_at,1,10)=?', (now()[:10],)).fetchone()[0]
+        count=lab.db.execute('SELECT count(*) FROM cloud_exports WHERE row_count>0 AND substr(created_at,1,10)=?', (now()[:10],)).fetchone()[0]
+        if lab.db.execute("SELECT 1 FROM sqlite_master WHERE name='warehouse_snapshots'").fetchone():
+            count+=lab.db.execute('SELECT count(*) FROM warehouse_snapshots WHERE substr(created_at,1,10)=?',(now()[:10],)).fetchone()[0]
+        return count
 
     def cursor(self, lab):
         return lab.db.execute("SELECT coalesce(max(event_end),0) FROM cloud_exports WHERE status='completed'").fetchone()[0]
