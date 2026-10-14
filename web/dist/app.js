@@ -13,7 +13,7 @@ async function api(path,body){
 function error(message){$('app-error').textContent=message||'';$('app-error').hidden=!message}
 function setBusy(on){state.busy=on;document.querySelectorAll('[data-view],#play-world').forEach(b=>b.disabled=on)}
 function setMenu(open){$('mint-town').classList.toggle('parameters-open',open);$('sidebar-backdrop').hidden=!open;$('open-menu').setAttribute('aria-expanded',String(open))}
-function incidentCopy(i){return i.status==='passed'?'Legitimate payment completed · no model call':i.status==='blocked'?(i.title.includes('changed recipient')?'New recipient · held for verification':'Held by approved knowledge'):i.status==='budget_limited'?'Investigation allowance reached':i.report_status==='resolved'?'Reviewed · protection active':i.report_status==='awaiting_review'?'Ready for analyst review':i.report_status==='awaiting_customer'?'Waiting for a customer reply':i.report_status==='needs_review'?'Needs manual review':'Agent investigating'}
+function incidentCopy(i){return i.status==='passed'?'Legitimate payment completed · no model call':i.status==='blocked'?(i.title.includes('changed recipient')?'New recipient · held for verification':'Held by approved knowledge'):i.status==='budget_limited'?'Investigation allowance reached':i.report_status==='resolved'?'Analyst reviewed':i.report_status==='awaiting_review'?'Ready for analyst review':i.report_status==='awaiting_customer'?'Waiting for a customer reply':i.report_status==='needs_review'?'Needs manual review':'Agent investigating'}
 function renderWorld(){
   const d=state.data,w=d.world,demo=d.demo;
   if(lastScene&&lastScene!==demo.scene_id){state.customerId=null;drawTown.reset();fraudUI.reset();lastTick=-1}
@@ -33,9 +33,11 @@ function renderWorld(){
     const row=node('div',undefined,'environment-data-row');row.append(node('span',table),node('strong',count.toLocaleString()));$('environment-data-tables').append(row);
   }
   const wh=d.warehouse;
-  $('warehouse-note').textContent=wh?.latest_snapshot?`BigQuery · ${wh.latest_snapshot.row_count.toLocaleString()} rows · ${wh.table_count} tables`:wh?.enabled?'BigQuery ready · publishes before investigation':'Local data · warehouse off';
+  $('warehouse-note').textContent=publication?.enabled?(publication.latest?.status==='completed'?'BigQuery · 6 simulator tables':'BigQuery · publication pending'):wh?.latest_snapshot?`BigQuery · ${wh.latest_snapshot.row_count.toLocaleString()} rows · ${wh.table_count} tables`:wh?.enabled?'BigQuery ready · publishes before investigation':'Local data · warehouse off';
   $('warehouse-tables').replaceChildren();
-  for(const table of wh?.tables||[])$('warehouse-tables').append(node('li',table.replace('pallet_','').replaceAll('_',' ')+(wh.latest_snapshot?' · '+(wh.latest_snapshot.counts[table]||0)+' rows':'')));
+  const exportTables=publication?.enabled?Object.keys(generated.counts):wh?.tables||[];
+  const exportCounts=publication?.enabled?publication.latest?.counts:wh?.latest_snapshot?.counts;
+  for(const table of exportTables)$('warehouse-tables').append(node('li',table.replace('pallet_','').replaceAll('_',' ')+(exportCounts?' · '+(exportCounts[table]||0)+' rows':'')));
   state.playing=!!demo.running;$('mint-town').classList.toggle('is-running',state.playing);
   $('running-label').textContent=state.playing?'● Running':'Paused';$('play-world').textContent=state.playing?'Ⅱ Pause world':phase==='ready'?'Test protection →':['complaint','investigation','followup','review','prevention','activate','attention'].includes(phase)?'Follow the case →':phase==='protected'?'▶ Run new world':'▶ Run world';
   $('world-time').textContent=w.day+' · '+String(w.hour).padStart(2,'0')+':00';$('map-date').textContent=String(w.hour).padStart(2,'0')+':00';
