@@ -15,7 +15,7 @@ def runtime():
     try:
         version = importlib.metadata.version('google-adk')
     except importlib.metadata.PackageNotFoundError:
-        return {'engine': 'local', 'label': 'Local router · start with .venv/bin/python for Google ADK', 'google_adk': None}
+        return {'engine': 'local', 'label': 'Local router · start with uv run --locked python for Google ADK', 'google_adk': None}
     return {'engine': 'google-adk', 'label': 'Google ADK ' + version + ' · typed graph routing', 'google_adk': version}
 
 

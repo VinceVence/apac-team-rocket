@@ -1,0 +1,42 @@
+flowchart LR
+    subgraph simulation ["Simulation"]
+        world["Live world"]
+        ledger["Event ledger"]
+        report["Scam report"]
+        gate["Payment gate before debit"]
+        world --> ledger --> report
+        gate --> world
+    end
+    subgraph dataPlane ["Data plane"]
+        fixtures["AE / SQL generation"]
+        bronze[("Bronze: raw events")]
+        silver[("Silver: validated records")]
+        gold[("Gold: BigQuery features")]
+        models["DS: trained fraud models"]
+        registry["Versioned model registry"]
+        fixtures --> bronze --> silver --> gold --> models --> registry
+    end
+    subgraph agentPlane ["Agent plane"]
+        lead["Case lead"]
+        transaction["Transaction agent"]
+        device["Device & identity agent"]
+        context["Scam context agent"]
+        tools["Scoped evidence & model tools"]
+        workspace["Shared case workspace"]
+        checkpoint[("Durable checkpoints")]
+        analyst["Human risk analyst"]
+        knowledge[("Analyst-approved knowledge")]
+        prevention["Prevention agent"]
+        lead -->|"Delegate"| transaction & device & context
+        transaction & device & context --> tools
+        tools -->|"Evidence + predictions"| workspace
+        workspace --> checkpoint
+        workspace --> lead
+        lead -->|"Resolution"| analyst
+        analyst --> knowledge
+        knowledge --> workspace & prevention
+    end
+    ledger --> bronze
+    report -->|"Complaint"| lead
+    gold & registry --> tools
+    prevention -->|"Safeguard → replay → analyst activation"| gate

@@ -8,12 +8,16 @@ The app has three tabs: **Environment**, **Agent activity**, and **Agents**. Act
 
 ## Start locally
 
-Use Python 3.12 and install `web/requirements-google.txt` in `.venv`.
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then sync the locked Python 3.12 environment:
+
+```sh
+uv sync --locked
+```
 
 For an offline preview:
 
 ```sh
-MINTTOWN_LIVE=0 MINTTOWN_FRAUD_LIVE=0 .venv/bin/python -B web/server.py
+MINTTOWN_LIVE=0 MINTTOWN_FRAUD_LIVE=0 uv run --locked python -B web/server.py
 ```
 
 For live Vertex AI, load your ignored local credential configuration and start the guarded launcher:
@@ -22,7 +26,7 @@ For live Vertex AI, load your ignored local credential configuration and start t
 set -a
 source web/.env.vertex
 set +a
-.venv/bin/python -B web/local_vertex.py --live
+uv run --locked python -B web/local_vertex.py --live
 ```
 
 Open **http://localhost:3000/** and choose **Run world**. The live launcher requires Cloud Run to be disabled with manual scaling zero, restores the existing shared spend ledger, provisions the bounded warehouse, and binds only to loopback. It refuses to create a fresh paid ledger. See [operations](docs/operations.md) for authentication and hosting controls.
@@ -45,6 +49,20 @@ All identities, payments and bank actions are synthetic. Registered detectors ar
 
 BigQuery is bounded to 25 publications/day, 20,000 rows and 16 MiB per publication, 100 queries/day, and 50 MiB per query. The project's 1 GiB/day query quota remains. Typed tables expire seven days after provisioning; historical event-date partitions are retained within that table lifetime. Cloud Run serves the public live demo; the shared-ledger local process is stopped. Cloud infrastructure remains metered; the [$16 shutdown trigger](docs/hosting.md) is additional protection, not a guaranteed $20 final-bill ceiling.
 
+## Repository map
+
+Start with [AGENTS.md](AGENTS.md) for teammate and LLM instructions. Review the proposed [three-plane agent mesh](docs/fraud-agent-mesh.md) before extending the current investigator.
+
+| Area | Location |
+|---|---|
+| Simulation, data and agent Python modules | `web/` — [application map](web/README.md) |
+| Static UI and DM Sans fonts | `web/dist/` |
+| Locked runtime and optional figure tools | `pyproject.toml`, `uv.lock` |
+| Cloud build and provisioning | `Dockerfile`, `deploy/` |
+| Guides and editable architecture figures | `docs/`, `docs/figures/` |
+
+Use `uv add PACKAGE` for runtime dependencies or `uv add --group figures PACKAGE` for drawing tools. Commit `pyproject.toml` and `uv.lock` together. Docker uses the same runtime lock; figure tools are excluded from its image.
+
 ## Help and verification
 
 - [Help index](docs/README.md)
@@ -56,9 +74,8 @@ BigQuery is bounded to 25 publications/day, 20,000 rows and 16 MiB per publicati
 - [Evaluation results and limitations](docs/evaluation.md)
 
 ```sh
-.venv/bin/python -B -m unittest discover -s web -p 'test_*.py'
-.venv/bin/python -B web/evaluate_cases.py --mode fake
-.venv/bin/python -B web/evaluate_cases.py --mode gemini --world --run-id=YOUR_UNIQUE_RUN_ID
+uv run --locked python -B -m unittest discover -s web -p 'test_*.py'
+uv run --locked python -B web/evaluate_cases.py --mode fake
 ```
 
-The fake suite uses injected expected decisions to test execution contracts; it is not an AI-accuracy evaluation. The live command consumes the shared allowance. Detailed synthetic receipts stay under ignored `web/reports/`; source-controlled summaries contain no credentials.
+The fake suite uses injected expected decisions to test execution contracts; it is not an AI-accuracy evaluation. Live evaluation requires explicit authorization and the shared allowance; see [operations](docs/operations.md). Detailed synthetic receipts stay under ignored `web/reports/`; source-controlled summaries contain no credentials.

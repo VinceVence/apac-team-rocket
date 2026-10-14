@@ -1,8 +1,10 @@
 FROM python:3.12-slim
+COPY --from=ghcr.io/astral-sh/uv:0.9.16 /uv /bin/uv
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 MINTTOWN_LIVE=0 MINTTOWN_FRAUD_LIVE=0
+ENV PATH="/app/.venv/bin:$PATH" UV_PYTHON_DOWNLOADS=never
 WORKDIR /app
-COPY web/requirements-google.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt && useradd --uid 10001 --create-home minttown
+COPY pyproject.toml uv.lock /app/
+RUN uv sync --locked --no-default-groups --no-install-project --no-cache && useradd --uid 10001 --create-home minttown
 COPY web/*.py /app/web/
 COPY web/dist /app/web/dist
 RUN mkdir -p /app/web/data && chown -R 10001:10001 /app/web

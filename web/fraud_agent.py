@@ -210,7 +210,7 @@ class FraudAgent:
         report_id = text(report_id, 'Report ID', 1, 80)
         if mode not in ('fake', 'gemini'): raise LabError('Choose fake or gemini.')
         if mode == 'gemini' and not self.live_enabled(): raise LabError('Live Gemini is off. No model request was made.', 409)
-        if not self.runtime()['version']: raise LabError('Install web/requirements-google.txt and start with the project virtual environment.', 409)
+        if not self.runtime()['version']: raise LabError('Run uv sync --locked, then start with uv run --locked python web/server.py.', 409)
         with self.lab.lock, self.lab.db:
             prior = self.lab.db.execute('SELECT id FROM fraud_investigations WHERE report_id=? ORDER BY rowid DESC LIMIT 1', (report_id,)).fetchone()
             old = self.desk.run(prior[0]) if prior else None

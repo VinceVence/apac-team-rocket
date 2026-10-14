@@ -6,6 +6,7 @@
 | Open the public demo and understand team access | [Hosting and shutdown guard](hosting.md) |
 | Present the saved cases in three minutes | [Demo script](demo-script.md) |
 | Follow environment → BigQuery → investigation | [Architecture](architecture.md) |
+| Review simulation, data plane and agent plane | [Mesh architecture and UML figures](fraud-agent-mesh.md) |
 | Add a tool or another agent | [Agent extension guide](agents.md) |
 | Curate cases and compare model experiments | [Risk scientist and validator](risk-lab.md) |
 | Understand the evidence and research proposals | [Research](research.md) |

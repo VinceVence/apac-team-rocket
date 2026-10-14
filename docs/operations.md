@@ -10,7 +10,7 @@ Use locally configured Application Default Credentials with access to the dedica
 set -a
 source web/.env.vertex
 set +a
-.venv/bin/python -B web/local_vertex.py --live --port=3000
+uv run --locked python -B web/local_vertex.py --live --port=3000
 ```
 
 The launcher checks that Cloud Run is paused and has no tagged serving revisions, restores `state/minttown.sqlite3.gz`, refuses a missing ledger, provisions the seven typed BigQuery tables and binds to `127.0.0.1`. It enables inference only inside this explicit live process. The saved `.env.vertex` switches remain off.
@@ -54,7 +54,7 @@ Do not resume Cloud Run while the local process owns the shared ledger. Shut dow
 Run offline contracts with `web/evaluate_cases.py --mode fake`. This uses an isolated temporary fake ledger and no paid model. For the actual world and Vertex path, run:
 
 ```sh
-.venv/bin/python -B web/evaluate_cases.py --mode gemini --world --run-id=YOUR_UNIQUE_RUN_ID
+uv run --locked python -B web/evaluate_cases.py --mode gemini --world --run-id=YOUR_UNIQUE_RUN_ID
 ```
 
 This stages three distinct synthetic complaints and lets Run world produce the other two. It does not approve cases, publish memories, refund funds or increase any limit. Inspect saved outcomes before another live run. Read [evaluation](evaluation.md) for the measured results and remaining coverage gaps.

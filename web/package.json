@@ -2,12 +2,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "../.venv/bin/python server.py",
-    "test": "../.venv/bin/python -B -m unittest discover -s . -p 'test_*.py'",
-    "simulate": "../.venv/bin/python -B simulate.py",
-    "simulate:mesh": "../.venv/bin/python -B simulate_mesh.py",
-    "simulate:customers": "../.venv/bin/python -B simulate_customers.py",
-    "simulate:fraud": "../.venv/bin/python -B simulate_fraud.py",
-    "simulate:adk": "../.venv/bin/python -B simulate_adk.py"
+    "start": "uv run --locked --project .. python server.py",
+    "test": "uv run --locked --project .. python -B -m unittest discover -s . -p 'test_*.py'",
+    "simulate": "uv run --locked --project .. python -B simulate.py",
+    "simulate:mesh": "uv run --locked --project .. python -B simulate_mesh.py",
+    "simulate:customers": "uv run --locked --project .. python -B simulate_customers.py",
+    "simulate:fraud": "uv run --locked --project .. python -B simulate_fraud.py",
+    "simulate:adk": "uv run --locked --project .. python -B simulate_adk.py"
   }
 }

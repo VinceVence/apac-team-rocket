@@ -69,7 +69,7 @@ The child uses fixed trusted recipes and a minimal environment. It is not a gene
 ## Programmatic verification
 
 ```sh
-.venv/bin/python -B -m unittest discover -s web -p 'test_risk_lab.py'
+uv run --locked python -B -m unittest discover -s web -p 'test_risk_lab.py'
 ```
 
 The injected fake model exercises the actual ADK tools and real CPU fits without constructing a paid client. Tests cover distinct tool choices, requests for more labels, rejection enforcement, test-label isolation, timeouts, operator authorization, immutable curation, shared budgets, scene reset and GCS restore. Fake choices establish execution correctness, not Gemini reasoning quality.

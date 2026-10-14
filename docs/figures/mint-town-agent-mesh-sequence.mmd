@@ -1,0 +1,34 @@
+sequenceDiagram
+    actor Customer
+    participant Lead as Case lead
+    participant Specialist as Selected specialist
+    participant Tools as Scoped evidence and model tools
+    participant State as Durable case state
+    actor Analyst as Risk analyst
+    participant KB as Reviewed knowledge
+    participant Prevention as Prevention learner
+    participant Gate as Local payment gate
+    Customer->>Lead: Complaint with disputed transaction IDs
+    Lead->>State: Freeze evidence and reserve generation
+    opt Specialist evidence is useful
+        Lead->>Specialist: Typed question with pinned case revision
+        Specialist->>Tools: Choose a scoped query or registered model
+        Tools-->>Specialist: Versioned facts or prediction receipt
+        Specialist->>State: Commit cited finding and uncertainty
+        State-->>Lead: Updated case revision
+    end
+    opt Customer evidence is missing
+        Lead->>Customer: Focused follow-up question
+        Customer-->>Lead: Reply resumes the same case allowance
+    end
+    Lead->>Analyst: Resolution proposal with evidence and open risks
+    Analyst->>State: Verify and approve the case
+    State->>KB: Publish approved lesson with provenance
+    State->>Prevention: Reviewed case within remaining case budget
+    Prevention->>Tools: Propose safeguard and replay controls
+    Tools-->>Analyst: Replay result and source references
+    Analyst->>State: Persist activation of the reviewed safeguard
+    Customer->>Gate: Later transaction
+    Gate->>State: Read the active policy version
+    State-->>Gate: Approved conditions and provenance
+    Gate-->>Customer: Hold for verification or allow before debit
