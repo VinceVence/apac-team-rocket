@@ -5,8 +5,15 @@ Synthetic Philippine fintech demo: world transactions → complaint → Gemini t
 ## Current vs planned
 
 - Working: resolution and prevention agents; optional risk scientist/validator; BigQuery snapshots; reviewed memory; local payment safeguards.
-- Proposed: case lead + transaction, device/identity and scam-context specialists with shared case state. Read [mesh architecture](docs/fraud-agent-mesh.md) before implementing. These roles are not all deployed yet.
+- Proposed: case lead + transaction, device/identity and scam-context specialists with shared case state. Read [mesh architecture](docs/fraud-agent-mesh.md) and [harness design](docs/agent-harness-design.md) before implementing. These roles are not all deployed yet.
 - AE owns source data; DS owns trained model artifacts/evaluation; agent work owns routing, scoped tools, checkpoints and review. Start with the AE’s four tables (`customers`, `wallets`, `devices`, `wallet_transactions`); the feature branch is not merged. Validate ownership, chronology and label leakage before importing it.
+
+## Next implementation
+
+- Follow the [implementation order](docs/agent-harness-design.md#evaluation-and-implementation): model manifests/receipts → checkpointed delegation → evidence validation/review → scoped knowledge/replay → UI and evaluation. The document is a plan, not completed functionality.
+- Start with native ADK prediction tools and 0–1 specialist per case. Every child generation shares the existing case budget; test scheduling and accounting before nesting `AgentTool` calls.
+- Bind customer scope, cutoff and feature values in server code. Return model/feature versions, score meaning and missing inputs; exclude AE label-derived `risk_score`/`risk_factors`, `is_fraud` and `scam_type` from predictor inputs.
+- Test missing evidence, stale versions, restart/resume, budget exhaustion and legitimate lookalikes offline first. Approved lessons need applicability, counterexamples and revocation; activation remains a separate human decision.
 
 ## Repository map
 

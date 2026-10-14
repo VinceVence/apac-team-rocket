@@ -113,14 +113,14 @@ class Figure:
         points=[(x,y),(x+w-30,y),(x+w,y+42),(x+w-30,y+84),(x,y+84)]
         self.d.add(Polygon([v for a,b in points for v in (a,self.h-b)],fillColor=HexColor(color),strokeColor=None))
         self.text(x+32,y+54,label,31,True,'#FFFFFF')
-    def save(self,stem):
+    def save(self,stem,title=None):
         renderSVG.drawToFile(self.d,str(OUT/(stem+'.svg')))
         svg=(OUT/(stem+'.svg')).read_text()
         styles=''
         for name,file in [('MintSans','dm-sans-400.ttf'),('MintSansB','dm-sans-700.ttf')]:
             font=base64.b64encode((FONTS/file).read_bytes()).decode()
             styles+=f'@font-face{{font-family:"{name}";src:url(data:font/ttf;base64,{font}) format("truetype");}}'
-        title='Mint Town — '+('case sequence' if 'sequence' in stem else 'simulation, data plane and agent plane')
+        title=title or 'Mint Town — '+('case sequence' if 'sequence' in stem else 'simulation, data plane and agent plane')
         svg=svg.replace('<title>...</title>', '<title>'+title+'</title><defs><style type="text/css">'+styles+'</style></defs>',1)
         for asset in OUT.glob('*.jpg'):
             svg=svg.replace(str(asset),'data:image/jpeg;base64,'+base64.b64encode(asset.read_bytes()).decode())

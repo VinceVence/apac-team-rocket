@@ -27,11 +27,13 @@ In this proposal, the world replays AE customers and transactions while investig
 
 Shared notes and checkpoints support this flow inside the investigation team. The world image is a capture of the actual UI, generated locally with Gemini off.
 
+The [harness design and research](agent-harness-design.md) specifies model contracts, checkpointed handoffs, shared cost limits and an evaluation plan.
+
 ## Agent responsibilities
 
 | Role | Decision / tools |
 |---|---|
-| **Case lead** | Select 0–2 specialists, reconcile findings, ask a customer question or submit the resolution |
+| **Case lead** | Select 0–1 specialist initially, reconcile findings, ask a customer question or submit the resolution |
 | **Transaction agent** | Inspect spending, velocity and recipient flows; select a compatible fraud model |
 | **Device & identity agent** | Inspect enrollment, login and authorization; distinguish normal devices from suspicious behavior |
 | **Scam context agent** | Compare the report with scam mechanisms, reviewed cases and legitimate explanations |
