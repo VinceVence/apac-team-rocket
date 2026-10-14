@@ -11,14 +11,23 @@
 | Plane | Responsibility | Owner |
 |---|---|---|
 | **Simulation** | Up to 100 customers transact; the ledger emits events; a customer files a report; the payment gate checks later transactions before debit | Environment workstream |
-| **Data** | AE/SQL history and observed events → bronze → validated silver → gold BigQuery features; trained models become versioned resources | AE + DS teammates |
+| **Data** | Use the AE’s `customers`, `wallets`, `devices` and `wallet_transactions` tables in BigQuery; expose the DS team’s trained models as tools | AE + DS teammates |
 | **Agent** | Choose investigations and tools, combine findings, checkpoint the case, propose a resolution, learn reviewed safeguards | Agent workstream |
 
 The AE branch is [feature/dummy-data-generation](https://github.com/VinceVence/apac-team-rocket/tree/feature/dummy-data-generation). Before ingestion, fix device ownership, account/payment chronology and duplicate IDs. Keep truth labels and label-derived risk scores in private evaluation data. SQL-generated rows are fixtures; the simulation ledger owns settlement and balances.
 
-Each case pins the customer, disputed events, dataset version and evidence cutoff. Missing evidence stays explicit. Prevention features must exist before the payment decision.
+In this proposal, the world replays AE customers and transactions while investigators query the same records. The four AE tables are the starting contract; no additional warehouse layers are required for this design. The AE branch’s proposed knowledge tables and joined view still need implementation and validation. Each case pins the customer, disputed events, dataset version and evidence cutoff. Missing evidence stays explicit. Prevention features must exist before the payment decision.
 
-## Five online roles
+## Follow the four steps
+
+1. **Investigate:** the case lead reads AE data, chooses relevant models and delegates focused questions to specialists.
+2. **Review:** the human risk analyst verifies the resolution and evidence.
+3. **Remember:** approved findings enter shared knowledge for the next case.
+4. **Prevent:** the prevention agent proposes a safeguard; replay and separate analyst activation precede local payment checks.
+
+Shared notes and checkpoints support this flow inside the investigation team. The world image is a capture of the actual UI, generated locally with Gemini off.
+
+## Agent responsibilities
 
 | Role | Decision / tools |
 |---|---|

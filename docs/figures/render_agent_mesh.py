@@ -6,7 +6,7 @@ from pathlib import Path
 import pymupdf
 
 from reportlab.graphics import renderPDF, renderSVG
-from reportlab.graphics.shapes import Drawing, Rect, Circle, Ellipse, Polygon, PolyLine, String
+from reportlab.graphics.shapes import Drawing, Rect, Circle, Ellipse, Polygon, PolyLine, String, Image
 from reportlab.lib.colors import HexColor
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
@@ -86,12 +86,29 @@ class Figure:
             for yy in (15,24,33):p([(14,yy),(32,yy)])
     def card(self,x,y,w,h,title,body,kind='agent',color=GREEN,fill='#FFFFFF',title_size=29,body_size=25):
         self.rect(x,y,w,h,fill,stroke=color,r=8,sw=1.7)
-        self.icon(kind,x+20,y+25,42,color)
-        self.text(x+78,y+53,title,title_size,True)
+        self.icon(kind,x+22,y+22,42,color)
+        ascent,descent=pdfmetrics.getAscentDescent('MintSansB',title_size)
+        self.text(x+80,y+43+(ascent+descent)/2,title,title_size,True)
         self.lines(x+24,y+91,body,body_size,30)
         for line in body:
             assert pdfmetrics.stringWidth(line,'MintSans',body_size)<w-43,(title,line)
         assert pdfmetrics.stringWidth(title,'MintSansB',title_size)<w-94,title
+    def logo(self,x,y,size=64):
+        self.rect(x,y,size,size,'#8bd5b3',stroke=None,r=size*18/64)
+        for pts,color in [
+            ([(11,23),(16,23),(16,17),(23,17),(23,12),(30,12),(30,18),(35,18),(35,35),(11,35)],'#234c3d'),
+            ([(39,26),(44,26),(44,20),(51,20),(51,26),(54,26),(54,41),(39,41)],'#234c3d'),
+            ([(14,41),(22,41),(22,47),(40,47),(40,44),(51,44),(51,52),(17,52),(17,47),(14,47)],'#234c3d'),
+            ([(19,26),(24,26),(24,31),(19,31)],'#c7f3d8'),
+            ([(27,23),(31,23),(31,31),(27,31)],'#c7f3d8'),
+            ([(44,31),(49,31),(49,36),(44,36)],'#c7f3d8')]:
+            self.d.add(Polygon([v for a,b in pts for v in (x+a*size/64,self.h-y-b*size/64)],fillColor=HexColor(color),strokeColor=None))
+    def brand(self,title):
+        self.logo(60,38,64)
+        self.text(142,82,'Mint Town',39,True)
+        self.text(390,82,title,39,True)
+    def picture(self,x,y,w,h,path):
+        self.d.add(Image(x,self.h-y-h,w,h,str(path)))
     def stage(self,x,y,w,label,color):
         points=[(x,y),(x+w-30,y),(x+w,y+42),(x+w-30,y+84),(x,y+84)]
         self.d.add(Polygon([v for a,b in points for v in (a,self.h-b)],fillColor=HexColor(color),strokeColor=None))
@@ -105,6 +122,8 @@ class Figure:
             styles+=f'@font-face{{font-family:"{name}";src:url(data:font/ttf;base64,{font}) format("truetype");}}'
         title='Mint Town — '+('case sequence' if 'sequence' in stem else 'simulation, data plane and agent plane')
         svg=svg.replace('<title>...</title>', '<title>'+title+'</title><defs><style type="text/css">'+styles+'</style></defs>',1)
+        for asset in OUT.glob('*.jpg'):
+            svg=svg.replace(str(asset),'data:image/jpeg;base64,'+base64.b64encode(asset.read_bytes()).decode())
         svg=svg.replace('<desc>...</desc>','<desc>Architecture proposal with original agent icons. See docs/fraud-agent-mesh.md for the review specification.</desc>',1)
         (OUT/(stem+'.svg')).write_text(svg)
         scale=1190/self.w
@@ -115,82 +134,81 @@ class Figure:
             document[0].get_pixmap(matrix=pymupdf.Matrix(self.w/1190,self.w/1190),alpha=False).save(OUT/(stem+'.png'))
 
 def architecture():
-    f=Figure(2800,1510)
-    f.text(60,72,'MINT TOWN',25,True,GREEN)
-    f.text(60,133,'Fraud intelligence architecture',48,True)
+    f=Figure(2600,1435)
+    f.brand('A case becomes protection')
+    for x,w,fill,label,color in [(60,740,'#F8F6F0','Simulation','#74644D'),
+                                (860,540,'#F2F6FA','Data plane',BLUE),
+                                (1460,1080,'#F1F7F3','Agent plane',GREEN)]:
+        f.rect(x,165,w,1155,fill,stroke=None,r=0)
+        f.stage(x,165,w,label,color)
 
-    f.rect(60,200,460,1170,'#F8F6F0',stroke=None,r=0)
-    f.rect(610,200,680,1170,'#F2F6FA',stroke=None,r=0)
-    f.rect(1380,200,1360,1170,'#F1F7F3',stroke=None,r=0)
-    f.stage(60,200,460,'Simulation','#74644D')
-    f.stage(610,200,680,'Data plane',BLUE)
-    f.stage(1380,200,1360,'Agent plane',GREEN)
+    # The real application panel is the simulation, not another abstract box.
+    f.picture(90,315,680,510,OUT/'mint-town-world.jpg')
+    f.logo(92,265,36)
+    f.text(143,292,'Live world',31,True)
+    f.path([(430,825),(430,925)],GREEN,5)
+    f.card(90,925,680,130,'Customer reports a scam',['Story + disputed transaction'],'document',title_size=30,body_size=27)
+    f.card(90,1165,680,125,'Next payment checked',['Flag a related scam before money moves'],'shield',color=PURPLE,title_size=30,body_size=26)
 
-    # Simulation, observed data, and complaint intake.
-    f.path([(285,490),(285,570)],INK)
-    f.path([(285,700),(285,840)],INK)
-    f.path([(460,635),(650,635)],BLUE,6)
-    f.path([(460,905),(555,905),(555,320),(1350,320),(1350,420),(1470,420)],INK)
-    f.text(1010,309,'Complaint',23,True,INK,anchor='middle')
-    f.path([(110,1245),(85,1245),(85,420),(110,420)],PURPLE)
+    # Exactly the four tables produced by the AE, with DS models as tools.
+    f.rect(890,315,480,540,'#FFFFFF',stroke=BLUE,r=8)
+    f.icon('database',918,339,44,BLUE)
+    f.text(982,372,'AE dataset',32,True)
+    f.text(918,414,'BigQuery',26,color=BLUE)
+    for i,name in enumerate(['customers','wallets','devices','wallet_transactions']):
+        yy=450+i*61
+        f.rect(918,yy,424,48,'#F2F6FA',stroke=None,r=5)
+        f.text(938,yy+32,name,26,True,BLUE)
+    f.path([(918,713),(1342,713)],'#D9E3EC',1.8,arrow=False)
+    f.icon('model',920,744,42,BLUE)
+    f.text(982,777,'Fraud model tools',28,True)
+    f.text(918,820,'Trained by the DS team',25,color=MUTED)
+    f.path([(1370,465),(1520,465)],BLUE,5,both=True)
+    f.path([(890,570),(770,570)],BLUE,5)
+    f.text(830,549,'Replay',23,True,BLUE,anchor='middle')
+    f.text(1445,443,'Query / score',22,True,BLUE,anchor='middle')
 
-    f.card(110,350,350,140,'Live world',['Customers · merchants','Payments · devices'],'world',color='#74644D')
-    f.card(110,570,350,130,'Event ledger',['Customer ID + event date'],'database',color='#74644D',body_size=24)
-    f.card(110,840,350,130,'Scam report',['Story + disputed transfer'],'document',color='#74644D',body_size=24)
-    f.card(110,1180,350,130,'Payment gate',['Verify · hold · allow'],'shield',color=PURPLE)
+    # The complaint has one uninterrupted route into the investigation team.
+    f.path([(770,990),(1430,990),(1430,570),(1520,570)],INK,5)
+    f.text(1090,969,'Complaint',25,True,INK,anchor='middle')
 
-    # The warehouse, model creation and versioned serving resources.
-    f.path([(950,490),(950,570)],BLUE,6)
-    f.path([(950,700),(950,740)],BLUE,6)
-    f.path([(950,870),(950,910)],BLUE,6)
-    f.path([(950,1040),(950,1100),(790,1100),(790,1160)],BLUE)
-    f.path([(930,1235),(970,1235)],BLUE)
-    f.path([(1250,975),(1310,975),(1310,890),(1440,890)],BLUE)
-    f.path([(1250,1235),(1330,1235),(1330,930),(1440,930)],BLUE)
+    # Four numbered steps, with specialization contained inside the team.
+    f.rect(1520,315,920,370,'#FFFFFF',stroke=GREEN,r=8)
+    f.circle(1480,358,23,GREEN,stroke=None)
+    f.text(1480,367,'1',25,True,'#FFFFFF',anchor='middle')
+    f.text(1544,369,'Investigate',34,True)
+    f.icon('agent',1874,403,47,GREEN)
+    f.text(1937,438,'Case lead',32,True)
+    f.text(1980,480,'Chooses tools and specialists',25,color=MUTED,anchor='middle')
+    f.path([(1980,496),(1980,515)],GREEN,arrow=False)
+    f.path([(1680,515),(2280,515)],GREEN,arrow=False)
+    for x,label in [(1680,'Transactions'),(1980,'Device & identity'),(2280,'Scam context')]:
+        f.path([(x,515),(x,543)],GREEN,3)
+        f.icon('agent',x-24,554,48,GREEN)
+        f.text(x,640,label,27,True,anchor='middle')
 
-    f.card(650,350,600,140,'AE / SQL generation',['Synthetic history · versioned batches'],'document',color=BLUE)
-    f.card(650,570,600,130,'Bronze · raw events',['Transactions · customers · devices'],'database',color=BLUE)
-    f.card(650,740,600,130,'Silver · validated records',['Ownership · chronology · relationships'],'database',color=BLUE)
-    f.card(650,910,600,130,'Gold · BigQuery features',['Pinned case evidence + model inputs'],'database',color=BLUE)
-    f.card(650,1160,280,145,'Fraud models',['DS training','+ evaluation'],'model',color=BLUE,title_size=24,body_size=24)
-    f.card(970,1160,280,145,'Model registry',['Versioned','predictors'],'model',color=BLUE,title_size=23,body_size=24)
-
-    # A selective agent network, one tool gateway and durable case state.
-    f.path([(1720,495),(1720,545)],GREEN,arrow=False)
-    f.path([(1630,545),(2460,545)],GREEN,arrow=False)
-    for x in (1630,2045,2460):
-        f.path([(x,545),(x,620)],GREEN)
-        f.path([(x,760),(x,835)],GREEN)
-    f.text(2000,533,'Delegate',23,True,GREEN,anchor='middle')
-    f.path([(1970,420),(2250,420)],GREEN,5)
-    f.text(2110,402,'Resolution',23,True,GREEN,anchor='middle')
-    f.path([(1780,965),(1780,1060)],GREEN)
-    f.text(1800,1020,'Evidence + predictions',23,color=GREEN)
-    f.path([(1780,1190),(1780,1240)],GREEN)
-    f.path([(1440,1125),(1400,1125),(1400,470),(1470,470)],GREEN)
-    f.path([(2650,420),(2705,420),(2705,1125),(2650,1125)],PURPLE)
-    f.path([(2290,1125),(2120,1125)],PURPLE)
-    f.path([(2470,1190),(2470,1240)],PURPLE)
-    f.path([(2470,1345),(2470,1430),(555,1430),(555,1245),(460,1245)],PURPLE,5)
-    f.text(1700,1414,'Safeguard → replay → analyst activation',25,True,PURPLE,anchor='middle')
-
-    f.card(1470,350,500,145,'Case lead',['Gemini on Vertex AI · Google ADK','Route · ask · resolve'],title_size=32)
-    f.card(2250,350,400,145,'Risk analyst',['Review + approve'],'human',color=PURPLE,title_size=31)
-    f.card(1440,620,380,140,'Transaction agent',['Spending · recipient flows'],title_size=26,body_size=25)
-    f.card(1855,620,380,140,'Device & identity',['Login · authorization'],title_size=27)
-    f.card(2270,620,380,140,'Scam context',['Report · scam patterns'],title_size=28)
-    f.card(1440,835,1210,130,'Evidence & model tools',['Scoped queries · registered predictors · versioned receipts'],'tool',title_size=31,body_size=27)
-    f.card(1440,1060,680,130,'Shared case workspace',['Facts · findings · open questions'],'document',title_size=31,body_size=27)
-    f.card(1440,1240,680,105,'Durable checkpoints',['Case revision · evidence · spend'],'database',title_size=31,body_size=25)
-    f.card(2290,1060,360,130,'Shared knowledge',['Analyst-approved cases'],'database',color=PURPLE,title_size=25,body_size=24)
-    f.card(2290,1240,360,105,'Prevention agent',['Learn a narrow safeguard'],color=PURPLE,title_size=25,body_size=23)
+    def step(y,n,title,body,kind,color):
+        f.card(1520,y,920,125,title,[body],kind,color=color,title_size=32,body_size=27)
+        f.circle(1480,y+43,23,color,stroke=None)
+        f.text(1480,y+52,str(n),25,True,'#FFFFFF',anchor='middle')
+    f.path([(1980,685),(1980,775)],GREEN,5)
+    f.text(2000,738,'Resolution',24,color=GREEN)
+    step(775,2,'Risk analyst reviews','Verify evidence and approve the case','human',PURPLE)
+    f.path([(1980,900),(1980,960)],PURPLE,5)
+    step(960,3,'Remember the approved case','Shared knowledge for future investigations','database',PURPLE)
+    f.path([(1980,1085),(1980,1145)],PURPLE,5)
+    step(1145,4,'Prevention agent learns','Propose safeguard → replay → analyst activation','agent',PURPLE)
+    # Reuse stays separate from the forward investigation path.
+    f.path([(2440,1022),(2505,1022),(2505,410),(2440,410)],PURPLE,3.5)
+    f.text(2505,389,'Recall',22,True,PURPLE,anchor='end')
+    f.path([(1980,1270),(1980,1373),(430,1373),(430,1290)],PURPLE,5)
+    f.text(1230,1355,'Approved safeguard',26,True,PURPLE,anchor='middle')
     f.save('mint-town-agent-mesh')
 
 
 def sequence():
     f=Figure(2400,1630)
-    f.text(60,72,'MINT TOWN',25,True,GREEN)
-    f.text(60,133,'From one resolved case to the next protected payment',42,True)
+    f.brand('From report to protected payment')
     participants=[('Customer / world','world',180),('Case lead','agent',510),('Specialist','agent',840),
                   ('Tools / gate','tool',1170),('State / knowledge','database',1500),('Risk analyst','human',1830),
                   ('Prevention','agent',2160)]

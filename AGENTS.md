@@ -6,7 +6,7 @@ Synthetic Philippine fintech demo: world transactions → complaint → Gemini t
 
 - Working: resolution and prevention agents; optional risk scientist/validator; BigQuery snapshots; reviewed memory; local payment safeguards.
 - Proposed: case lead + transaction, device/identity and scam-context specialists with shared case state. Read [mesh architecture](docs/fraud-agent-mesh.md) before implementing. These roles are not all deployed yet.
-- AE owns source data; DS owns trained model artifacts/evaluation; agent work owns routing, scoped tools, checkpoints and review. The AE feature branch is not merged; validate ownership, chronology and label leakage before importing it.
+- AE owns source data; DS owns trained model artifacts/evaluation; agent work owns routing, scoped tools, checkpoints and review. Start with the AE’s four tables (`customers`, `wallets`, `devices`, `wallet_transactions`); the feature branch is not merged. Validate ownership, chronology and label leakage before importing it.
 
 ## Repository map
 

@@ -11,8 +11,15 @@
 	<g id="group" transform="scale(1,-1) translate(0,-1630)" style="clip-path: url(#clip)">
 		<g transform="">
 			<rect x="0" y="0" width="2400" height="1630" rx="12" ry="12" style="stroke: none; stroke-linecap: butt; stroke-width: 1.8; fill: rgb(100%,100%,100%); fill-rule: evenodd;"/>
-			<text x="60" y="1558" style="font-family: MintSansB; font-size: 25px;fill: rgb(19%,46%,36%); stroke:none;" transform="translate(0,3116) scale(1,-1)">MINT TOWN</text>
-			<text x="60" y="1497" style="font-family: MintSansB; font-size: 42px;fill: rgb(12%,20%,17%); stroke:none;" transform="translate(0,2994) scale(1,-1)">From one resolved case to the next protected payment</text>
+			<rect x="60" y="1528" width="64" height="64" rx="18.0" ry="18.0" style="stroke: none; stroke-linecap: butt; stroke-width: 1.8; fill: rgb(54%,83%,70%); fill-rule: evenodd;"/>
+			<polygon points="71 1569, 76 1569, 76 1575, 83 1575, 83 1580, 90 1580, 90 1574, 95 1574, 95 1557, 71 1557" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(13%,29%,23%); fill-rule: evenodd;"/>
+			<polygon points="99 1566, 104 1566, 104 1572, 111 1572, 111 1566, 114 1566, 114 1551, 99 1551" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(13%,29%,23%); fill-rule: evenodd;"/>
+			<polygon points="74 1551, 82 1551, 82 1545, 100 1545, 100 1548, 111 1548, 111 1540, 77 1540, 77 1545, 74 1545" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(13%,29%,23%); fill-rule: evenodd;"/>
+			<polygon points="79 1566, 84 1566, 84 1561, 79 1561" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(78%,95%,84%); fill-rule: evenodd;"/>
+			<polygon points="87 1569, 91 1569, 91 1561, 87 1561" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(78%,95%,84%); fill-rule: evenodd;"/>
+			<polygon points="104 1561, 109 1561, 109 1556, 104 1556" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(78%,95%,84%); fill-rule: evenodd;"/>
+			<text x="142" y="1548" style="font-family: MintSansB; font-size: 39px;fill: rgb(12%,20%,17%); stroke:none;" transform="translate(0,3096) scale(1,-1)">Mint Town</text>
+			<text x="390" y="1548" style="font-family: MintSansB; font-size: 39px;fill: rgb(12%,20%,17%); stroke:none;" transform="translate(0,3096) scale(1,-1)">From report to protected payment</text>
 			<rect x="42" y="1299" width="276" height="126" rx="8" ry="8" style="stroke: none; stroke-linecap: butt; stroke-width: 1.8; fill: rgb(94%,96%,95%); fill-rule: evenodd;"/>
 			<polyline points="160.75 1386.917, 170.8333 1397, 180.9167 1386.917, 180.9167 1368.583, 161.6667 1368.583, 161.6667 1386.917" style="stroke: rgb(19%,46%,36%); stroke-linecap: butt; stroke-width: 2.5; fill: None; fill-rule: evenodd;"/>
 			<polyline points="180 1395.167, 189.1667 1403.417, 200.1667 1393.333, 200.1667 1368.583, 183.6667 1368.583" style="stroke: rgb(19%,46%,36%); stroke-linecap: butt; stroke-width: 2.5; fill: None; fill-rule: evenodd;"/>

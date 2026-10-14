@@ -1,42 +1,30 @@
 flowchart LR
     subgraph simulation ["Simulation"]
-        world["Live world"]
-        ledger["Event ledger"]
-        report["Scam report"]
-        gate["Payment gate before debit"]
-        world --> ledger --> report
+        world["Live Mint Town UI"]
+        report["Customer reports a scam"]
+        gate["Next payment checked before debit"]
+        world --> report
         gate --> world
     end
     subgraph dataPlane ["Data plane"]
-        fixtures["AE / SQL generation"]
-        bronze[("Bronze: raw events")]
-        silver[("Silver: validated records")]
-        gold[("Gold: BigQuery features")]
-        models["DS: trained fraud models"]
-        registry["Versioned model registry"]
-        fixtures --> bronze --> silver --> gold --> models --> registry
+        ae[("AE dataset: customers, wallets, devices, wallet_transactions")]
+        models["DS-trained fraud model tools"]
     end
     subgraph agentPlane ["Agent plane"]
-        lead["Case lead"]
-        transaction["Transaction agent"]
-        device["Device & identity agent"]
-        context["Scam context agent"]
-        tools["Scoped evidence & model tools"]
-        workspace["Shared case workspace"]
-        checkpoint[("Durable checkpoints")]
-        analyst["Human risk analyst"]
-        knowledge[("Analyst-approved knowledge")]
-        prevention["Prevention agent"]
-        lead -->|"Delegate"| transaction & device & context
-        transaction & device & context --> tools
-        tools -->|"Evidence + predictions"| workspace
-        workspace --> checkpoint
-        workspace --> lead
-        lead -->|"Resolution"| analyst
-        analyst --> knowledge
-        knowledge --> workspace & prevention
+        subgraph investigation ["1. Investigate"]
+            lead["Case lead: choose tools and specialists"]
+            specialists["Transaction / device / scam-context agents"]
+            lead --> specialists
+        end
+        analyst["2. Risk analyst reviews"]
+        knowledge[("3. Remember the approved case")]
+        prevention["4. Prevention agent learns"]
+        investigation -->|"Resolution"| analyst
+        analyst --> knowledge --> prevention
+        knowledge -->|"Recall in a later case"| lead
     end
-    ledger --> bronze
-    report -->|"Complaint"| lead
-    gold & registry --> tools
-    prevention -->|"Safeguard → replay → analyst activation"| gate
+    ae -->|"Replay customers and transactions"| world
+    report --> lead
+    ae <-->|"Read evidence"| lead
+    models <-->|"Score"| lead
+    prevention -->|"Safeguard, replay, analyst activation"| gate
