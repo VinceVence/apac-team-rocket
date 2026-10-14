@@ -6,7 +6,17 @@ The 1,000-example benchmark separates 100 synthetic customers into 600 training,
 
 Logistic and the tree tie on validation recall and false-positive rate, so the fixed selection policy nominates simpler logistic regression. Logistic then fails the final-test 80% recall gate. The validator **rejects the study**; the better-looking tree remains comparison-only. Selecting it after inspecting final-test results would leak the test set into model selection. Tests confirm that changing test labels cannot change the nominee or thresholds, and that the validator cannot override either restriction.
 
-Authorization, immutable operator-curated labels, missing prepayment snapshot quarantine, insufficient-data stops, timeouts, persisted budgets, and scene-reset/cloud-restore behavior are covered. Saved studies do not change payment serving. Hosted Gemini results are recorded separately after deployment.
+Authorization, immutable operator-curated labels, missing prepayment snapshot quarantine, insufficient-data stops, timeouts, persisted budgets, and scene-reset/cloud-restore behavior are covered. Saved studies do not change payment serving. The hosted Gemini check is recorded below.
+
+## Hosted risk-science check
+
+Cloud Run revision **minttown-00015-425**, application commit **882dcfe**, was verified on October 14. Public research writes without the operator token returned 403. The existing completed fraud scene, its approved knowledge and prevention state remained intact.
+
+The first hosted study, **RISK-e21950a1eb**, ran a fake ADK rehearsal with real CPU fitting and rejected the preselected logistic candidate. The second, **RISK-eb04265233**, used real **Gemini 3.5 Flash-Lite** for both research roles. The scientist called `design_experiment`, choosing transaction + request features and boosted-tree + logistic recipes. Its hypothesis was that combining request behavior and transaction features would outperform amount-only and linear baselines. The bounded tool completed three fits in **4.77 seconds** and retained the rejected candidates.
+
+The validator called `reject_candidates`: the validation-selected logistic model caught only **36/60** synthetic test scams, below the 80% gate. The tree caught **48/60** but was not preselected, so its final-test result could not promote it. No model was deployed and no payment protection changed. Both studies remain visible in **Agent activity → Model experiments**, labelled with the actual provider and benchmark origin.
+
+The live study used **two model calls**, **$0.001602** in application-metered usage, and no retries. Lifetime committed model accounting increased from **$0.055015** to **$0.056617**. These figures use pinned token prices and exclude Cloud Run, Cloud Build, BigQuery, Storage and other infrastructure; they are not a final invoice. The existing limits, single-instance maximum and project shutdown guard were retained. Local receipt: `web/reports/mint-risk-hosted.json` (ignored, with no credentials).
 
 ## Earlier guided two-agent demo — 13 October 2026
 
