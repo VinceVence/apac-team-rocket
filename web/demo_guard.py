@@ -9,7 +9,7 @@ POST_PATHS = frozenset(('/api/world/step','/api/world/start','/api/world/stop','
     '/api/fraud-desk/report','/api/fraud-desk/reply','/api/fraud-desk/review',
     '/api/fraud-agent/start','/api/fraud-agent/recheck','/api/fraud-agent/handoff',
     '/api/prevention/learn','/api/prevention/activate','/api/risk-lab/seed','/api/risk-lab/curate','/api/risk-lab/start'))
-GET_PATHS = frozenset(('/api/state','/api/cloud','/api/fraud-desk','/api/risk-lab'))
+GET_PATHS = frozenset(('/api/state','/api/cloud','/api/fraud-desk','/api/risk-lab','/api/environment-data'))
 
 
 class DemoGuard:

@@ -5,6 +5,7 @@
 | Run the app and protect costs | [Operations](operations.md) |
 | Open the public demo and understand team access | [Hosting and shutdown guard](hosting.md) |
 | Present the saved cases in three minutes | [Demo script](demo-script.md) |
+| Inspect/export data matching Gab’s dictionary | [Simulation data contract](environment-data.md) |
 | Follow environment → BigQuery → investigation | [Architecture](architecture.md) |
 | Review simulation, data plane and agent plane | [Mesh architecture and UML figures](fraud-agent-mesh.md) |
 | Review the agent harness and teammate model contract | [Research-backed harness design](agent-harness-design.md) |

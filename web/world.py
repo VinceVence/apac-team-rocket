@@ -9,7 +9,7 @@ from settings import MAX_CUSTOMERS
 
 class World:
     def __init__(self, lab):
-        self.lab=lab;self.macro=None;self.customer_data=None;self.fraud_desk=None;self.prevention=None
+        self.lab=lab;self.macro=None;self.customer_data=None;self.fraud_desk=None;self.prevention=None;self.environment_data=None
         lab.db.executescript('''
         CREATE TABLE IF NOT EXISTS simulation_state(
           id INTEGER PRIMARY KEY CHECK(id=1), tick INTEGER NOT NULL DEFAULT 0,
@@ -145,9 +145,25 @@ class World:
                     try:self.macro._loan(cid,200000,'auto-loan-%s-%d'%(cid,tick))
                     except LabError:pass
                 rail=profiles[cid]['preferred_rail'] if cid in profiles and rng.random()<.8 else rng.choice(('QR','Card','Wallet'))
-                outcome=self.payment('world-%d-%d'%(tick,i),cid,merchant,amount,'device-'+cid,{'rail':rail})
+                transaction_type='MERCHANT_QR'
+                if self.environment_data and candidates:
+                    transaction_type=('MERCHANT_QR','P2P_TRANSFER','CASH_OUT_AGENT','CASH_IN_AGENT')[(tick+i)%4]
+                    if transaction_type=='P2P_TRANSFER':
+                        peers=[c for c in candidates if c!=cid]
+                        if peers:merchant=rng.choice(peers)+':wallet'
+                        else:transaction_type='MERCHANT_QR'
+                    elif transaction_type in ('CASH_OUT_AGENT','CASH_IN_AGENT'):
+                        active=self.lab.rows('SELECT id FROM customers ORDER BY id LIMIT ?', (MAX_CUSTOMERS,))
+                        agent=active[-min(4,len(active))]['id']
+                        if transaction_type=='CASH_IN_AGENT':cid,merchant=agent,cid+':wallet'
+                        else:merchant=agent+':wallet'
+                    if merchant==cid+':wallet':
+                        merchant='m1';transaction_type='MERCHANT_QR'
+                outcome=self.payment('world-%d-%d'%(tick,i),cid,merchant,amount,'device-'+cid,
+                    {'rail':rail,'transaction_type':transaction_type,'channel':'MOBILE_APP',
+                     'device_known':True,'authorization_verified':True})
                 if self.macro and outcome=='settled':amount=self.lab.db.execute('SELECT amount_minor FROM financial_events WHERE id=?',('world-%d-%d'%(tick,i),)).fetchone()[0]
-                motions.append({'customer_id':cid,'merchant':merchant,'amount_minor':amount,'status':outcome})
+                motions.append({'customer_id':cid,'merchant':merchant,'amount_minor':amount,'status':outcome,'transaction_type':transaction_type})
             # A blocked device retries periodically. The gateway denies it before settlement or another agent call.
             if tick%5==0:
                 block=self.lab.db.execute('SELECT * FROM service_actions ORDER BY rowid DESC LIMIT 1').fetchone()

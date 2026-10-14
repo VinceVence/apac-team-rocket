@@ -8,7 +8,7 @@ import time
 import uuid
 from collections import Counter, defaultdict
 
-from cloud_data import DAILY_EXPORTS, MAX_EXPORT_BYTES, MAX_EXPORT_ROWS
+from cloud_data import DAILY_EXPORTS, MAX_EXPORT_BYTES, MAX_EXPORT_ROWS, wait_job
 from lab import LabError, encoded, now
 from settings import MAX_CUSTOMERS, DAILY_WAREHOUSE_QUERIES
 
@@ -114,16 +114,7 @@ class Warehouse:
                 'query_limit_per_day':DAILY_QUERIES,'max_bytes_per_query':MAX_QUERY_BYTES}
 
     def wait_job(self,job_id,job=None):
-        deadline=time.monotonic()+12
-        for _ in range(20):
-            if job and job.get('status',{}).get('state')=='DONE':
-                if job['status'].get('errorResult'):raise LabError('BigQuery job failed: '+job['status']['errorResult'].get('message','Unknown failure'),502)
-                return job
-            if time.monotonic()>=deadline:break
-            response=self.cloud.request('GET',self.cloud.job_url()+'/'+job_id,params={'location':self.cloud.location},timeout=5)
-            response.raise_for_status();job=response.json()
-            if job.get('status',{}).get('state')!='DONE':time.sleep(.25)
-        raise LabError('BigQuery job is still pending. No job was resubmitted.',503)
+        return wait_job(self.cloud,job_id,job)
 
     def publish(self):
         with self.lab.lock:

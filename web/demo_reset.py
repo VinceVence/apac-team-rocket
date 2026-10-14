@@ -31,6 +31,8 @@ class DemoReset:
         with self.lab.lock:
             if self.runner.pending or self.lab.db.execute("SELECT 1 FROM fraud_agent_turns WHERE status IN ('reserved','responded')").fetchone():
                 raise LabError('An agent is still working. Finish or stop that investigation before starting a fresh demo.',409)
+            if self.lab.db.execute("SELECT 1 FROM sqlite_master WHERE name='environment_publications'").fetchone() and self.lab.db.execute("SELECT 1 FROM environment_publications WHERE status!='completed'").fetchone():
+                raise LabError('A simulator publication needs operator reconciliation before a fresh scene.',409)
             if self.lab.db.in_transaction:raise RuntimeError('Fresh scenes require a committed checkpoint.')
             previous=self.lab.db.execute('SELECT scene_id FROM demo_scene WHERE id=1').fetchone()[0]
             data=self.lab.db.serialize()
@@ -62,7 +64,7 @@ class DemoReset:
                 for row in rows:charges.append({'id':previous+':'+table+':'+row['id'],'provider':row['provider'],
                     'report_id':row['report_id'],'role':row['role'],'created_at':row['created_at'],'amount_microusd':row['amount']})
             usage={r['day']:r for r in self.lab.rows('SELECT * FROM demo_usage_archive')}
-            for table,column,where in [('cloud_exports','publications','WHERE row_count>0'),('warehouse_snapshots','publications',''),('warehouse_queries','queries',''),('behavior_models','model_builds','')]:
+            for table,column,where in [('cloud_exports','publications','WHERE row_count>0'),('warehouse_snapshots','publications',''),('environment_publications','publications',''),('warehouse_queries','queries',''),('behavior_models','model_builds','')]:
                 if table not in tables:continue
                 for row in self.lab.rows('SELECT substr(created_at,1,10) AS day,count(*) AS n FROM '+table+' '+where+' GROUP BY day'):
                     entry=usage.setdefault(row['day'],{'day':row['day'],'publications':0,'queries':0,'model_builds':0});entry[column]+=row['n']

@@ -28,6 +28,8 @@ from warehouse import Warehouse
 from prevention import PreventionAgent, TABLES as PREVENTION_TABLES
 from demo_reset import DemoReset
 from risk_lab import RiskLab
+from environment_data import EnvironmentData
+from environment_cloud import EnvironmentPublisher, initialize as initialize_environment_publications
 
 ROOT=Path(__file__).resolve().parent
 
@@ -73,6 +75,11 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
             finally:fresh.server_close();fresh.lab.db.close()
     resetter=DemoReset(lab,world,fraud_runner,cloud,baseline);world_demo.resetter=resetter
     risk_lab=RiskLab(fraud_agent,fraud_runner)
+    environment_data=EnvironmentData(lab,world,fraud_desk)
+    world.environment_data=environment_data
+    initialize_environment_publications(lab)
+    environment_publisher=EnvironmentPublisher(environment_data,cloud,os.environ['MINTTOWN_ENV_DATASET']) if cloud and os.getenv('MINTTOWN_ENV_DATASET') else None
+    world_demo.environment_publisher=environment_publisher
     operator_token=os.getenv('MINTTOWN_RISK_OPERATOR_TOKEN','')
     if cloud: cloud.initialize(lab)
     csrf=secrets.token_urlsafe(32)
@@ -109,6 +116,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                         result=lab.snapshot();result.update(budget=agents.budget(),csrf_token=csrf)
                         result['customers']=result['customers'][:MAX_CUSTOMERS]
                         result['warehouse']=warehouse.status() if warehouse else {'enabled':False}
+                        result['environment_data']={**environment_data.summary(),'publication':environment_publisher.status() if environment_publisher else {'enabled':False}}
                         result['world']=world.status()
                         result['demo']=world_demo.status()
                         if result['demo'].get('guided'):
@@ -120,6 +128,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                     return self.reply(200,result)
                 if path=='/api/science':return self.reply(200,science_team.dashboard())
                 if path=='/api/customer-data':return self.reply(200,customer_data.dashboard())
+                if path=='/api/environment-data':return self.reply(200,{**environment_data.preview(),'publication':environment_publisher.status() if environment_publisher else {'enabled':False}})
                 if path=='/api/fraud-desk':return self.reply(200,fraud_desk.dashboard())
                 if path=='/api/risk-lab':return self.reply(200,{**risk_lab.dashboard(),'operator_configured':len(operator_token)>=24})
                 if path.startswith('/api/risk-lab/studies/'):
@@ -140,7 +149,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                     with lab.lock: run=agents.public_run(path.rsplit('/',1)[-1])
                     return self.reply(200,run)
                 if path.startswith('/api/'): return self.reply(404,{'error':'Endpoint not found.'})
-                if path not in ('/','/index.html','/app.js','/mesh-ui.js','/customer-ui.js','/fraud-ui.js','/risk-ui.js','/town.js','/styles.css','/mark.svg','/favicon.svg') and not path.startswith('/fonts/'):
+                if path not in ('/','/index.html','/app.js','/mesh-ui.js','/customer-ui.js','/fraud-ui.js','/risk-ui.js','/town.js','/resident-sprites.js','/styles.css','/mark.svg','/favicon.svg') and not path.startswith('/fonts/'):
                     return self.reply(404,{'error':'File not found.'})
                 if '..' in path or '%' in path: return self.reply(404,{'error':'File not found.'})
                 return super().do_GET()
@@ -183,6 +192,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                 if path=='/api/cloud/export':
                     if not cloud:raise LabError('BigQuery export is available on the hosted demo.',409)
                     if set(body)!={'request_id'}:raise LabError('Exports require a request ID and use only the approved simulator tables.')
+                    if environment_publisher:return self.reply(200,environment_publisher.publish())
                     if warehouse:
                         warehouse.publish();return self.reply(200,warehouse.latest())
                     return self.reply(200,cloud.export(lab,body['request_id']))
@@ -190,7 +200,9 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                     if 'report_id' not in body or set(body)-{'report_id','mode','automatic'}:raise LabError('Invalid ADK start command.')
                     automatic=body.pop('automatic',True)
                     if type(automatic) is not bool:raise LabError('Automatic must be true or false.')
-                    if warehouse and fraud_desk.detail(body['report_id'])['investigation'] is None:warehouse.publish()
+                    if fraud_desk.detail(body['report_id'])['investigation'] is None:
+                        if environment_publisher:environment_publisher.publish()
+                        if warehouse:warehouse.publish()
                     run=(fraud_runner.start if automatic else fraud_agent.start)(**body)
                     queued=run['context'].get('execution',{}).get('status') in ('queued','running')
                     return self.reply(202 if queued else 200,run)
@@ -223,6 +235,9 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                     if set(body)!=fields:raise LabError('Invalid fraud-desk command fields.')
                     result=handler(**body)
                     if path=='/api/fraud-desk/review' and body['publish_memory'] and body['disposition']=='confirmed_scam':
+                        if environment_publisher:
+                            try:result['publication']=environment_publisher.publish()
+                            except LabError as exc:result['publication_notice']=str(exc)
                         try:fraud_runner.learn(body['report_id'],'gemini' if fraud_agent.live_enabled() else 'fake')
                         except LabError as exc:result['prevention_notice']=str(exc)
                         result.update(prevention=prevention.for_report(body['report_id']))
@@ -322,6 +337,8 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
     server.warehouse=warehouse
     server.prevention=prevention
     server.risk_lab=risk_lab
+    server.environment_data=environment_data
+    server.environment_publisher=environment_publisher
     return server
 
 

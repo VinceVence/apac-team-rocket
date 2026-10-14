@@ -95,6 +95,6 @@ def create_scenario(desk, scenario, request_id):
                       'authorized_payee':payee,'rail':'Wallet','review_flags':desk.screen(cid,payee)}
             desk.lab.post(eid,cid,'payment',amount,desk.lab.clock_day,cid+':wallet',payee,metadata)
             desk.lab.db.execute('UPDATE financial_events SET occurred_at=? WHERE id=?',
-                (desk.lab.clock_day+'T10:%02d:%02dZ'%(0 if key=='payment_burst' else n,n*4 if key=='payment_burst' else 0),eid))
+                (desk.lab.clock_day+'T%02d:%02d:%02dZ'%(desk.world.status()['hour'],0 if key=='payment_burst' else n,n*4 if key=='payment_burst' else 0),eid))
         prefix='control_' if control else ''
         return desk._create(cid,spec[prefix+'story'],spec[prefix+'message'],events,request_id,encoded(payload))

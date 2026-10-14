@@ -114,11 +114,11 @@ class Lab:
                 for day_index in range(28):
                     day = (dt.date.fromisoformat(AS_OF)-dt.timedelta(days=28-day_index)).isoformat()
                     if day_index % 7 == 0:
-                        self.post('payroll-%s-%s' % (cid, day), cid, 'payroll', 350000+i*9000, day, 'treasury', cid+':wallet')
+                        self.post('payroll-%s-%s' % (cid, day), cid, 'payroll', 350000+i*9000, day+'T08:00:00Z', 'treasury', cid+':wallet')
                     for j in range(2):
                         merchant = 'm%d' % rng.randint(1, 3)
                         self.post('purchase-%s-%s-%d' % (cid, day, j), cid, 'payment', rng.randint(40,180)*100,
-                                  day, cid+':wallet', merchant,
+                                  day+'T%02d:00:00Z'%(10+j*8), cid+':wallet', merchant,
                                   {'category':'essential' if j == 0 else 'discretionary', 'device_id':'device-'+cid,
                                    'rail':['QR','Card','Wallet'][j % 3]})
             # Explicit scenario setup transfers create low/high buffers without silently changing balances.

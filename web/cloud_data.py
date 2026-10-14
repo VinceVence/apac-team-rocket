@@ -24,6 +24,20 @@ MAX_EXPORT_ROWS = 20000
 DAILY_EXPORTS = DAILY_PUBLICATIONS
 
 
+def wait_job(cloud,job_id,job=None,location=None):
+    """Poll one submitted job; never resubmit a load or query."""
+    deadline=time.monotonic()+12
+    for _ in range(20):
+        if job and job.get('status',{}).get('state')=='DONE':
+            if job['status'].get('errorResult'):raise LabError('BigQuery job failed: '+job['status']['errorResult'].get('message','Unknown failure'),502)
+            return job
+        if time.monotonic()>=deadline:break
+        response=cloud.request('GET',cloud.job_url()+'/'+job_id,params={'location':location or cloud.location},timeout=5)
+        response.raise_for_status();job=response.json()
+        if job.get('status',{}).get('state')!='DONE':time.sleep(.25)
+    raise LabError('BigQuery job is still pending. No job was resubmitted.',503)
+
+
 class CloudData:
     def __init__(self, project, bucket, dataset, location='us-central1', session=None):
         self.project, self.bucket, self.dataset, self.location = project, bucket, dataset, location
@@ -122,8 +136,9 @@ class CloudData:
 
     def daily_exports(self, lab):
         count=lab.db.execute('SELECT count(*) FROM cloud_exports WHERE row_count>0 AND substr(created_at,1,10)=?', (now()[:10],)).fetchone()[0]
-        if lab.db.execute("SELECT 1 FROM sqlite_master WHERE name='warehouse_snapshots'").fetchone():
-            count+=lab.db.execute('SELECT count(*) FROM warehouse_snapshots WHERE substr(created_at,1,10)=?',(now()[:10],)).fetchone()[0]
+        for table in ('warehouse_snapshots','environment_publications'):
+            if lab.db.execute("SELECT 1 FROM sqlite_master WHERE name=?",(table,)).fetchone():
+                count+=lab.db.execute('SELECT count(*) FROM '+table+' WHERE substr(created_at,1,10)=?',(now()[:10],)).fetchone()[0]
         if lab.db.execute("SELECT 1 FROM sqlite_master WHERE name='demo_usage_archive'").fetchone():
             count+=lab.db.execute('SELECT coalesce(sum(publications),0) FROM demo_usage_archive WHERE day=?',(now()[:10],)).fetchone()[0]
         return count

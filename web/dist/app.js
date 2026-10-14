@@ -24,6 +24,14 @@ function renderWorld(){
   document.querySelectorAll('[data-demo-stage]').forEach((n,i)=>{n.classList.toggle('current',i===stage);n.classList.toggle('done',i<stage);if(i===stage)n.setAttribute('aria-current','step');else n.removeAttribute('aria-current')});
 
   $('population-count').textContent=d.customers.length+' customers';
+  const generated=d.environment_data;
+  $('environment-data-total').textContent=generated?`${generated.counts.wallet_transactions.toLocaleString()} transfers`:'';
+  const publication=generated?.publication;
+  $('environment-data-status').textContent=publication?.enabled?`${publication.dataset} · ${publication.latest?.status==='completed'?'saved':publication.latest?'publication needs review':'publishes with the case'}`:'Local generation · 100 customers';
+  $('environment-data-tables').replaceChildren();
+  for(const [table,count] of Object.entries(generated?.counts||{})){
+    const row=node('div',undefined,'environment-data-row');row.append(node('span',table),node('strong',count.toLocaleString()));$('environment-data-tables').append(row);
+  }
   const wh=d.warehouse;
   $('warehouse-note').textContent=wh?.latest_snapshot?`BigQuery · ${wh.latest_snapshot.row_count.toLocaleString()} rows · ${wh.table_count} tables`:wh?.enabled?'BigQuery ready · publishes before investigation':'Local data · warehouse off';
   $('warehouse-tables').replaceChildren();
@@ -50,12 +58,12 @@ function renderWorld(){
   for(const e of payments){
     const name=d.customers.find(c=>c.id===e.customer_id)?.name||'Customer';
     const row=node('div',undefined,'world-event '+e.status),body=node('div');row.append(node('span',e.status==='blocked'?'✓':'↗','event-icon'));
-    body.append(node('strong',`${name} ${e.status==='blocked'?'was protected':e.status==='declined'?'payment declined':'paid '+money(e.amount_minor)}`),node('small',e.status==='blocked'?'Transfer held before settlement':e.metadata?.rail||'Wallet payment'));row.append(body);$('world-events').append(row);
+    body.append(node('strong',`${name} ${e.status==='blocked'?'was protected':e.status==='declined'?'payment declined':'paid '+money(e.amount_minor)}`),node('small',e.status==='blocked'?'Transfer held before settlement':({P2P_TRANSFER:'Person-to-person transfer',MERCHANT_QR:'Merchant QR payment',CASH_IN_AGENT:'Cash-in',CASH_OUT_AGENT:'Cash-out'}[e.metadata?.transaction_type]||e.metadata?.rail||'Wallet payment')));row.append(body);$('world-events').append(row);
   }
   drawTown.setAlerts(demo.incidents.filter(i=>i.status==='blocked'||(i.report_id&&i.report_status!=='resolved')).map(i=>({customer_id:i.customer_id,mark:i.status==='blocked'?'✓':'!'})));
   drawTown(d.customers,state.customerId,state.customerId?'fraud':'world');drawTown.setSpeed(state.playing?demo.speed:state.speed);
   drawTown.setRunning(state.playing&&state.view==='world'&&!document.hidden);
-  if(w.tick!==lastTick&&lastTick!==-1)drawTown.motion(payments.slice(0,4).map(e=>({customer_id:e.customer_id,merchant:['m1','m2','m3'].includes(e.to_account)?e.to_account:'m4',amount_minor:e.amount_minor,status:e.status})));
+  if(w.tick!==lastTick&&lastTick!==-1)drawTown.motion(payments.slice(0,4).map(e=>({customer_id:e.customer_id,merchant:['m1','m2','m3'].includes(e.to_account)?e.to_account:'m4',receiver_customer_id:e.to_account?.endsWith(':wallet')?e.to_account.split(':')[0]:null,transaction_type:e.metadata?.transaction_type,amount_minor:e.amount_minor,status:e.status})));
   lastTick=w.tick;
 }
 async function refresh(){state.data=await api('/api/state');renderWorld();schedulePoll()}

@@ -12,7 +12,7 @@ class WorldDemo:
     def __init__(self, world, desk, runner, checkpoint=None, guard=None, warehouse=None):
         self.world,self.lab,self.desk,self.runner=world,world.lab,desk,runner
         self.checkpoint=checkpoint or (lambda:None);self.guard=guard
-        self.warehouse=warehouse
+        self.warehouse=warehouse;self.environment_publisher=None
         self.thread=None;self.stopping=threading.Event();self.closed=False;self.resetter=None
         self.lab.db.executescript('''
         CREATE TABLE IF NOT EXISTS world_demo_state(
@@ -127,7 +127,8 @@ class WorldDemo:
                         if amount<100:break
                         eid=identifier+'-'+str(n)
                         at=self.lab.clock_day+'T%02d:00:%02dZ'%(self.world.status()['hour'],n*4)
-                        outcome=self.world.payment(eid,cid,spec['payee'],amount,'device-'+cid,
+                        device=('device-' if spec['device_known'] else 'unrecognized-')+cid
+                        outcome=self.world.payment(eid,cid,spec['payee'],amount,device,
                             {**metadata,'authorized_payee':spec['payee']},occurred_at=at)
                         if outcome=='declined':continue
                         events.append(eid);total+=amount
@@ -155,10 +156,13 @@ class WorldDemo:
             self.checkpoint()
         if report_id:
             try:
+                if self.environment_publisher:self.environment_publisher.publish()
                 if self.warehouse:self.warehouse.publish()
                 self.runner.start(report_id,provider)
-            except LabError:
-                with self.lab.lock,self.lab.db:self.lab.db.execute("UPDATE world_incidents SET status='needs_review' WHERE id=?",(identifier,))
+            except LabError as exc:
+                with self.lab.lock,self.lab.db:
+                    self.lab.db.execute("UPDATE world_incidents SET status='needs_review' WHERE id=?",(identifier,))
+                    self.lab.db.execute('UPDATE world_demo_state SET note=? WHERE id=1',(str(exc),))
                 self.checkpoint()
         return identifier
 

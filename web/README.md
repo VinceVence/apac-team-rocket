@@ -16,6 +16,7 @@ Use the [root README](../README.md) for startup and the [help index](../docs/REA
 | Five realistic scenario families and controls | `fraud_scenarios.py` |
 | Philippine complaint-routing checklist | `complaint_guidance.py` |
 | Environment and ledger | `world_demo.py`, `world.py`, `lab.py` |
+| AE dictionary projections, validation, export and isolated BigQuery mirror | `environment_data.py`, `environment_cloud.py`, `export_environment.py` |
 | Typed BigQuery tables and bounded CPU model | `warehouse.py` |
 | Durable shared checkpoint and legacy batch export | `cloud_data.py` |
 | End-to-end evaluation and regression tests | `evaluate_cases.py`, `test_*.py` |
@@ -28,6 +29,7 @@ The earlier macroeconomics, marketing and model-release modules remain for histo
 | Endpoint | Behavior |
 |---|---|
 | `GET /api/state` | Environment, current allowance and warehouse publication |
+| `GET /api/environment-data` | Six dictionary-shaped table previews and joined ledger, with private fields removed |
 | `GET /api/cloud` | Persistence, warehouse and query/publication limits |
 | `GET /api/fraud-desk` | Cases, scenario catalogue, runtime and approved memory |
 | `GET /api/fraud-desk/reports/{id}` | Complaint, frozen evidence, selected tools, proposed resolution |

@@ -27,7 +27,7 @@ ADC inherits the account's access. Project pinning in this launcher is an applic
 | Retry | One SDK attempt; no automatic provider retry or upgrade |
 | Pacing | At least six seconds between live requests |
 | Case admission | 25 new reports and 25 fresh scenes/day; 1,500 writes/day; 600 world steps/day |
-| BigQuery publication | 25/day, shared with legacy export; 20,000 rows and 16 MiB each |
+| BigQuery publication | 25/day shared across legacy export, evidence snapshots and the `minttown_world` mirror; 20,000 rows and 16 MiB each |
 | BigQuery queries | 100/day; maximum 50 MiB per query; project quota 1 GiB/day |
 | Local training | At most two new behavior models/day; bounded CPU iterations |
 | Risk research | 2 studies/day, 2 calls and $0.02/study, 3 CPU fits/study; shared global model budget |
