@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from google.cloud import bigquery
 import pandas as pd
 
@@ -6,13 +8,25 @@ dataset_id = "minttown_simulated_env"
 
 folder_path = '../generator'
 
+# BQ NUMERIC is decimal128 (16 bytes); pandas float64 is 8 bytes → ArrowInvalid
+# unless we convert to Decimal before load_table_from_dataframe.
+def prepare_dataframe(table_name: str, df: pd.DataFrame) -> pd.DataFrame:
+    if table_name == "wallet_transactions":
+        df = df.copy()
+        df["amount"] = df["amount"].map(lambda x: Decimal(str(x)))
+        df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
+    return df
+
 # 1. Load CSVs into BigQuery
 tables = ["customers", "wallets", "devices", "wallet_transactions"]
+job_config = bigquery.LoadJobConfig(
+    write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
+)
 for table_name in tables:
-    df = pd.read_csv(f"{folder_path}/{table_name}.csv")
+    df = prepare_dataframe(table_name, pd.read_csv(f"{folder_path}/{table_name}.csv"))
     table_ref = client.dataset(dataset_id).table(table_name)
-    
-    job = client.load_table_from_dataframe(df, table_ref)
+
+    job = client.load_table_from_dataframe(df, table_ref, job_config=job_config)
     job.result()
     print(f"Loaded table `{table_name}` ({len(df)} rows) successfully!")
 
