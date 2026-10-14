@@ -1,4 +1,4 @@
-# Pallet Town
+# Mint Town
 
 A synthetic Philippine fintech environment with a **real Gemini investigation loop**. Customers transact, complaints arrive, customer features are published to BigQuery, and the agent chooses tools before proposing a resolution. An analyst controls approval and memory publication.
 
@@ -37,9 +37,11 @@ Open **http://localhost:3000/** and choose **Run world**. The live launcher requ
 
 All identities, payments and bank actions are synthetic. Registered detectors are versioned rules, not calibrated fraud probabilities. The optional CPU model is unsupervised anomaly detection. The prevention check runs inside this simulator's payment gateway; a device-edge deployment is future work.
 
+**Model experiments:** open the subtab in Agent activity to follow a risk scientist choosing bounded experiments and a validator reviewing actual fitted models. Compare rejected baselines and candidate results. Trusted operators can curate reviewed cases or explicitly use the labelled synthetic benchmark. Candidates await human model review and do not change payment decisions. See the [risk lab guide](docs/risk-lab.md).
+
 ## Limits
 
-**$2 per UTC day · $0.05 per case · $8 lifetime model spend · 100 model calls/day · six/case shared by both agents · 25 new reports/day.** No automatic model retries, fallback upgrades, or unbounded agent loops. Local and hosted execution share the same durable ledger.
+**$2 per UTC day · $0.05 per case · $8 lifetime model spend · 100 model calls/day · six/case shared by resolution and prevention · 25 new reports/day.** No automatic model retries, fallback upgrades, or unbounded agent loops. Local and hosted execution share the same durable ledger.
 
 BigQuery is bounded to 25 publications/day, 20,000 rows and 16 MiB per publication, 100 queries/day, and 50 MiB per query. The project's 1 GiB/day query quota remains. Typed tables expire seven days after provisioning; historical event-date partitions are retained within that table lifetime. Cloud Run serves the public live demo; the shared-ledger local process is stopped. Cloud infrastructure remains metered; the [$16 shutdown trigger](docs/hosting.md) is additional protection, not a guaranteed $20 final-bill ceiling.
 
@@ -48,6 +50,7 @@ BigQuery is bounded to 25 publications/day, 20,000 rows and 16 MiB per publicati
 - [Help index](docs/README.md)
 - [Architecture and seven-table data model](docs/architecture.md)
 - [Agent roles and extension guide](docs/agents.md)
+- [Curated data, scientist and validator](docs/risk-lab.md)
 - [Operations and cost controls](docs/operations.md)
 - [Research and Philippine complaint workflow](docs/research.md)
 - [Evaluation results and limitations](docs/evaluation.md)

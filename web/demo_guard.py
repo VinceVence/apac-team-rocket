@@ -8,8 +8,8 @@ from settings import DAILY_REPORTS, DAILY_WRITES, DAILY_WORLD_STEPS, READS_PER_M
 POST_PATHS = frozenset(('/api/world/step','/api/world/start','/api/world/stop','/api/world/prove','/api/cloud/export','/api/fraud-desk/demo',
     '/api/fraud-desk/report','/api/fraud-desk/reply','/api/fraud-desk/review',
     '/api/fraud-agent/start','/api/fraud-agent/recheck','/api/fraud-agent/handoff',
-    '/api/prevention/learn','/api/prevention/activate'))
-GET_PATHS = frozenset(('/api/state','/api/cloud','/api/fraud-desk'))
+    '/api/prevention/learn','/api/prevention/activate','/api/risk-lab/seed','/api/risk-lab/curate','/api/risk-lab/start'))
+GET_PATHS = frozenset(('/api/state','/api/cloud','/api/fraud-desk','/api/risk-lab'))
 
 
 class DemoGuard:
@@ -31,7 +31,7 @@ class DemoGuard:
     def allow(self, method, path, body=None, checkpoint=True):
         # Global limits are intentional: rotating client IDs must not create new allowances.
         if method=='GET':
-            allowed=path in GET_PATHS or path.startswith('/api/fraud-desk/reports/')
+            allowed=path in GET_PATHS or path.startswith(('/api/fraud-desk/reports/','/api/risk-lab/studies/'))
         else:allowed=path in POST_PATHS
         if not allowed:raise LabError('This endpoint is disabled on the hosted demo.',403)
         with self.lab.lock:

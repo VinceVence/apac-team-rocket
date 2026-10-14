@@ -19,6 +19,7 @@ class InvestigationRunner:
         self.closed = False
         self.stopping = threading.Event()
         self.prevention = None
+        self.risk_lab = None
 
     def learn(self, report_id, mode='fake'):
         if not self.prevention:raise LabError('Prevention learning is unavailable.',409)
@@ -112,7 +113,9 @@ class InvestigationRunner:
         self.pool.shutdown(wait=True, cancel_futures=True)
         with self.lab.lock, self.lab.db:
             for run_id in self.pending:
-                if run_id.startswith('PREV-'):
+                if run_id.startswith('RISK-'):
+                    self.lab.db.execute("UPDATE risk_studies SET status='interrupted',error='Worker stopped; no retry was made.' WHERE id=?",(run_id,))
+                elif run_id.startswith('PREV-'):
                     self.lab.db.execute("UPDATE prevention_jobs SET status='interrupted',error='Worker stopped; no retry was made.' WHERE id=?",(run_id,))
                 else:
                     self.agent.stop(run_id, 'interrupted', 'The queued investigation stopped with the server. No request was retried.')

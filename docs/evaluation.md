@@ -1,4 +1,14 @@
-# Guided two-agent demo — 13 October 2026
+# Risk science extension — 14 October 2026
+
+The full programmatic suite passes **124 tests**, including 11 research checks. No paid SDK is constructed in the fake-model tests. The research path runs actual scikit-learn CPU fits through two tool-limited ADK roles and preserves the existing global meter, six-call fraud-case limit and no-retry policy.
+
+The 1,000-example benchmark separates 100 synthetic customers into 600 training, 200 validation and 200 final-test requests. The fake scientist chooses request + transaction features and both allowlisted recipes. On the final synthetic test (60 scams, 140 legitimate requests), the narrow rule catches 12 scams, the amount-only baseline catches 0, logistic catches 36, and the small boosted tree catches 48. All four have zero false holds on these synthetic controls. This is not production accuracy or calibrated probability evidence.
+
+Logistic and the tree tie on validation recall and false-positive rate, so the fixed selection policy nominates simpler logistic regression. Logistic then fails the final-test 80% recall gate. The validator **rejects the study**; the better-looking tree remains comparison-only. Selecting it after inspecting final-test results would leak the test set into model selection. Tests confirm that changing test labels cannot change the nominee or thresholds, and that the validator cannot override either restriction.
+
+Authorization, immutable operator-curated labels, missing prepayment snapshot quarantine, insufficient-data stops, timeouts, persisted budgets, and scene-reset/cloud-restore behavior are covered. Saved studies do not change payment serving. Hosted Gemini results are recorded separately after deployment.
+
+## Earlier guided two-agent demo — 13 October 2026
 
 The current contract suite passes **113 tests**, including fresh scenes, validated detector routing, analyst approval, prevention learning, human activation and local payment protection. A follow-up three-test guided suite also confirms that a cloud-checkpoint restore retains spending, call counts, report admissions and warehouse usage after repeated scene resets. The ten scenario/control fake-model rehearsal still passes. These tests make no paid requests.
 

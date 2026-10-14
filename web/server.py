@@ -27,6 +27,7 @@ from settings import MAX_CUSTOMERS
 from warehouse import Warehouse
 from prevention import PreventionAgent, TABLES as PREVENTION_TABLES
 from demo_reset import DemoReset
+from risk_lab import RiskLab
 
 ROOT=Path(__file__).resolve().parent
 
@@ -71,6 +72,8 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                 return '\n'.join(line for line in fresh.lab.db.iterdump() if line not in ('BEGIN TRANSACTION;','COMMIT;'))
             finally:fresh.server_close();fresh.lab.db.close()
     resetter=DemoReset(lab,world,fraud_runner,cloud,baseline);world_demo.resetter=resetter
+    risk_lab=RiskLab(fraud_agent,fraud_runner)
+    operator_token=os.getenv('MINTTOWN_RISK_OPERATOR_TOKEN','')
     if cloud: cloud.initialize(lab)
     csrf=secrets.token_urlsafe(32)
 
@@ -118,6 +121,9 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                 if path=='/api/science':return self.reply(200,science_team.dashboard())
                 if path=='/api/customer-data':return self.reply(200,customer_data.dashboard())
                 if path=='/api/fraud-desk':return self.reply(200,fraud_desk.dashboard())
+                if path=='/api/risk-lab':return self.reply(200,{**risk_lab.dashboard(),'operator_configured':len(operator_token)>=24})
+                if path.startswith('/api/risk-lab/studies/'):
+                    return self.reply(200,risk_lab.study(path.rsplit('/',1)[-1]))
                 if path=='/api/cloud':return self.reply(200,{**cloud.status(lab),'warehouse':warehouse.status() if warehouse else None,'guardrails':guard.status(),'execution':'local' if bind_host=='127.0.0.1' else 'cloud','gemini':'bounded private investigations' if cloud_live else 'disabled'} if cloud else {'enabled':False})
                 if path.startswith('/api/fraud-desk/reports/'):
                     return self.reply(200,fraud_desk.detail(path.rsplit('/',1)[-1]))
@@ -134,7 +140,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                     with lab.lock: run=agents.public_run(path.rsplit('/',1)[-1])
                     return self.reply(200,run)
                 if path.startswith('/api/'): return self.reply(404,{'error':'Endpoint not found.'})
-                if path not in ('/','/index.html','/app.js','/mesh-ui.js','/customer-ui.js','/fraud-ui.js','/town.js','/styles.css','/mark.svg','/favicon.svg') and not path.startswith('/fonts/'):
+                if path not in ('/','/index.html','/app.js','/mesh-ui.js','/customer-ui.js','/fraud-ui.js','/risk-ui.js','/town.js','/styles.css','/mark.svg','/favicon.svg') and not path.startswith('/fonts/'):
                     return self.reply(404,{'error':'File not found.'})
                 if '..' in path or '%' in path: return self.reply(404,{'error':'File not found.'})
                 return super().do_GET()
@@ -153,7 +159,18 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                 body=json.loads(self.rfile.read(size))
                 if not isinstance(body,dict): raise LabError('Expected a JSON object.')
                 path=urlsplit(self.path).path
+                if path.startswith('/api/risk-lab/') and (len(operator_token)<24 or not secrets.compare_digest(self.headers.get('X-MintTown-Operator',''),operator_token)):
+                    raise LabError('Research writes require the operator token. Public visitors can inspect saved experiments.',403)
                 if guard:guard.allow('POST',path,body)
+                if path=='/api/risk-lab/seed':
+                    if body!={}:raise LabError('The benchmark uses the fixed simulator recipe.')
+                    return self.reply(200,risk_lab.seed())
+                if path=='/api/risk-lab/curate':
+                    if set(body)!={'report_id','label','note'}:raise LabError('Choose a reviewed case, explicit label and curation rationale.')
+                    return self.reply(200,risk_lab.curate(**body))
+                if path=='/api/risk-lab/start':
+                    if set(body)!={'request_id','source','provider'}:raise LabError('Choose a fixed dataset source and allowed provider.')
+                    return self.reply(202,risk_lab.start(**body))
                 if path=='/api/world/start':
                     if set(body)-{'expected_run','activity','speed','fresh'} or not {'expected_run','activity','speed'}<=set(body):raise LabError('Invalid world start.')
                     return self.reply(200,world_demo.start(**{**body,'fresh':body.get('fresh',True)}))
@@ -304,6 +321,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
     server.world_demo=world_demo
     server.warehouse=warehouse
     server.prevention=prevention
+    server.risk_lab=risk_lab
     return server
 
 
@@ -317,7 +335,7 @@ if __name__=='__main__':
     server=make_server(args.port,db_path,cloud=cloud,public_host=os.getenv('MINTTOWN_PUBLIC_HOST'))
     def terminate(signum, frame): raise KeyboardInterrupt
     signal.signal(signal.SIGTERM,terminate)
-    print('Pallet Town: http://127.0.0.1:%d · %s' % (server.server_port,server.agents.budget()['mode']),flush=True)
+    print('Mint Town: http://127.0.0.1:%d · %s' % (server.server_port,server.agents.budget()['mode']),flush=True)
     try: server.serve_forever()
     except KeyboardInterrupt: pass
     finally: server.server_close();server.lab.db.close()

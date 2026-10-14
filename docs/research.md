@@ -1,10 +1,10 @@
-# Pallet Town: fraud resolution grounded in a living economy
+# Mint Town: fraud resolution grounded in a living economy
 
 This report records the initial five-case evaluation. Current operating limits and public live access are documented in [hosting](hosting.md).
 
-## Pallet Town and the current Gemini evidence
+## Mint Town and the current Gemini evidence
 
-Pallet Town should demonstrate a fraud analyst’s workbench: a customer reports a problem, an agent gathers relevant evidence, and a human reviews an actionable resolution. The simulator makes the evidence and consequences inspectable. It is useful because we control the transaction history and can test whether an intervention actually changes a later payment. A recommendation alone is not a resolved complaint, a recovered balance, or a validated fraud detector. [1, 2]
+Mint Town should demonstrate a fraud analyst’s workbench: a customer reports a problem, an agent gathers relevant evidence, and a human reviews an actionable resolution. The simulator makes the evidence and consequences inspectable. It is useful because we control the transaction history and can test whether an intervention actually changes a later payment. A recommendation alone is not a resolved complaint, a recovered balance, or a validated fraud detector. [1, 2]
 
 The implemented investigator uses Gemini on Vertex AI through Google ADK. It chooses a native function call, receives its actual result, and chooses again within a shared budget. The available actions include scoped ledger inspection, BigQuery customer features, historical comparisons, recipient tracing, approved-memory retrieval, a customer question, Philippine complaint guidance, optional local model training, and submission for review. Submission requires verified disputed transactions and, when enabled, the customer’s warehouse features. Those evidence prerequisites do not impose a fixed five-step itinerary. [1]
 
@@ -74,13 +74,13 @@ The analyst should see verified facts separately from reported allegations and i
 
 ## Methods worth adapting
 
-**Reviewed experience memory is the best first learning mechanism.** Reflexion demonstrates linguistic feedback and episodic memory without updating model weights. Pallet Town can adapt the idea by using analyst-reviewed feedback rather than allowing the model to treat its own confident reflection as truth. The useful memory is a scoped correction or investigative lesson, not an unreviewed accusation. This is a proposed financial-domain adaptation; the paper’s benchmark gains do not establish fraud performance here. [14]
+**Reviewed experience memory is the best first learning mechanism.** Reflexion demonstrates linguistic feedback and episodic memory without updating model weights. Mint Town can adapt the idea by using analyst-reviewed feedback rather than allowing the model to treat its own confident reflection as truth. The useful memory is a scoped correction or investigative lesson, not an unreviewed accusation. This is a proposed financial-domain adaptation; the paper’s benchmark gains do not establish fraud performance here. [14]
 
-**Contrast successful and failed investigations.** ExpeL extracts insights from successful trajectories and success/failure comparisons, then reuses relevant experience without gradient updates. Its practical implication is to store why a decision changed: the missing recipient verification, the contradictory device observation, or the misleading assumption. Pallet Town’s amount-formatting failure is an example of feedback that belongs in a tool/schema correction as well as an evaluation case. A generic instruction to be more careful is weaker. [15]
+**Contrast successful and failed investigations.** ExpeL extracts insights from successful trajectories and success/failure comparisons, then reuses relevant experience without gradient updates. Its practical implication is to store why a decision changed: the missing recipient verification, the contradictory device observation, or the misleading assumption. Mint Town’s amount-formatting failure is an example of feedback that belongs in a tool/schema correction as well as an evaluation case. A generic instruction to be more careful is weaker. [15]
 
 **Remember reusable investigative fragments, not rigid scripts.** Agent Workflow Memory induces reusable workflows and supplies them as context. Its reported difficulty in knowing when to diverge is directly relevant: a useful invoice-verification checklist should not force the same steps onto an account-takeover complaint. Store prerequisites, relevant evidence and stopping conditions, and let the agent select or reject the fragment for the current case. [16]
 
-**Use legitimate counterexamples when promoting knowledge.** A proposed lesson should carry at least one counterexample, such as a burst of recognized purchases or an independently verified supplier change. Replay the candidate against both. A candidate that catches the scam but also blocks the control should remain a warning or verification prompt, not an active blocking rule. This contrastive promotion procedure is an original design proposal for Pallet Town, informed by experience-memory research rather than a newly validated fraud algorithm. [15, 17]
+**Use legitimate counterexamples when promoting knowledge.** A proposed lesson should carry at least one counterexample, such as a burst of recognized purchases or an independently verified supplier change. Replay the candidate against both. A candidate that catches the scam but also blocks the control should remain a warning or verification prompt, not an active blocking rule. This contrastive promotion procedure is an original design proposal for Mint Town, informed by experience-memory research rather than a newly validated fraud algorithm. [15, 17]
 
 **Prune and correct memory.** The empirical memory-management study identifies error propagation and misleading experience replay. More stored cases do not necessarily produce a better investigator. Add source/review IDs, scope, version, exceptions and a review date; retain a way to revoke a lesson and measure whether later cases actually benefit. A superficially similar old case can be the wrong guide for a new customer. [17]
 
@@ -144,7 +144,7 @@ The next credible experiment is small and specific: compare an investigation wit
 
 ## Sources
 
-[1] Pallet Town investigation controller and native ADK adapter. https://github.com/VinceVence/apac-team-rocket/blob/main/web/fraud_agent.py
+[1] Mint Town investigation controller and native ADK adapter. https://github.com/VinceVence/apac-team-rocket/blob/main/web/fraud_agent.py
 
 [2] Google ADK, Why evaluate agents. https://google.github.io/adk-docs/evaluate/
 
@@ -158,7 +158,7 @@ The next credible experiment is small and specific: compare an investigation wit
 
 [7] FTC, Investment Scams. https://consumer.ftc.gov/articles/investment-scams
 
-[8] Pallet Town typed warehouse and model implementation. https://github.com/VinceVence/apac-team-rocket/blob/main/web/warehouse.py
+[8] Mint Town typed warehouse and model implementation. https://github.com/VinceVence/apac-team-rocket/blob/main/web/warehouse.py
 
 [9] Google Cloud, Manual scaling. https://docs.cloud.google.com/run/docs/configuring/services/manual-scaling
 
@@ -190,6 +190,6 @@ The next credible experiment is small and specific: compare an investigation wit
 
 [23] Google Cloud, Agent Platform generative AI pricing; global standard Gemini 3.5 Flash-Lite rates retrieved October 12–13, 2026. https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing
 
-[24] Pallet Town local operation, budgets and evaluation commands. https://github.com/VinceVence/apac-team-rocket/blob/main/docs/operations.md
+[24] Mint Town local operation, budgets and evaluation commands. https://github.com/VinceVence/apac-team-rocket/blob/main/docs/operations.md
 
-[25] Pallet Town measured evaluation, including failures and corrections. https://github.com/VinceVence/apac-team-rocket/blob/main/docs/evaluation.md
+[25] Mint Town measured evaluation, including failures and corrections. https://github.com/VinceVence/apac-team-rocket/blob/main/docs/evaluation.md

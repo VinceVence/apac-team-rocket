@@ -7,7 +7,8 @@ Use the [root README](../README.md) for startup and the [help index](../docs/REA
 | HTTP boundary and local Vertex launcher | `server.py`, `local_vertex.py` |
 | Shared limits and paid-call accounting | `settings.py`, `agents.py`, `fraud_agent.py`, `demo_guard.py` |
 | Native ADK model/tool adapter | `fraud_adk.py` |
-| Shared worker for resolution and prevention | `fraud_runner.py` |
+| Shared worker for resolution, prevention and research | `fraud_runner.py` |
+| Curated corpus, scientist/validator roles and fixed CPU recipes | `risk_lab.py`, `risk_models.py` |
 | Reviewed-case learning, replay and local payment safeguards | `prevention.py` |
 | Registered versioned evidence detectors | `fraud_detectors.py` |
 | Fresh scenes, private archives and persistent accounting | `demo_reset.py` |
@@ -30,6 +31,11 @@ The earlier macroeconomics, marketing and model-release modules remain for histo
 | `GET /api/cloud` | Persistence, warehouse and query/publication limits |
 | `GET /api/fraud-desk` | Cases, scenario catalogue, runtime and approved memory |
 | `GET /api/fraud-desk/reports/{id}` | Complaint, frozen evidence, selected tools, proposed resolution |
+| `GET /api/risk-lab` | Public corpus summaries and saved model experiments |
+| `GET /api/risk-lab/studies/{id}` | Frozen experiment, agent trail, actual metrics and verdict |
+| `POST /api/risk-lab/seed` | Operator-only explicit synthetic benchmark load |
+| `POST /api/risk-lab/curate` | Operator-only verified label from a resolved case |
+| `POST /api/risk-lab/start` | Operator-only bounded fake or Gemini study; no model activation |
 | `POST /api/world/start` | Start a fresh guided scene by default with `expected_run`, `activity`, `speed`; `fresh:false` retains the legacy evaluation episode |
 | `POST /api/world/prove` | Test an active safeguard against a changed recipient and a legitimate payment; no model call |
 | `POST /api/prevention/learn` | Queue one reviewed-case learner using the source case allowance |

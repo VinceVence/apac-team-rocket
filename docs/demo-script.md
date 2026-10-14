@@ -1,4 +1,4 @@
-# Pallet Town — 3-minute guided demo
+# Mint Town — 3-minute guided demo
 
 Use the public app's **Environment**, **Agent activity**, and **Agents** tabs. Run the live case before presenting if latency is uncertain. Saved timelines and the payment proof can be shown without new model calls. Starting a new world or approving a case with a remaining learner call can consume the shared allowance.
 
@@ -43,3 +43,11 @@ Click **Test a similar payment**. Show the green protection marker and the two o
 > The contribution is the complete feedback loop: evidence-driven investigation, human-reviewed knowledge, a tested prevention proposal, and an observable effect on the next transaction—all within one shared cost budget.
 
 Leave the completed scene visible. **Run new world** archives it and clears its active lessons, but never resets spend or daily counters. To replay without paid calls, inspect the saved trace and use the already-completed payment proof; do not start a new world or new learner.
+
+## Optional extension — the risk data science team
+
+Open **Agent activity → Model experiments**. Showing a saved study makes no model call.
+
+> The scientist chooses a hypothesis, feature groups and bounded model recipes—or asks for more labelled data. These are real CPU fits. The amount baseline can fail, and the validator cannot waive the measured gate. Candidate selection uses validation data; the final test can only veto it. A recommendation goes to human model review and does not silently replace payment protection.
+
+Point to the dataset label. A **synthetic benchmark** result must be presented as synthetic. **Curated cases** require separate operator verification and sufficient legitimate controls, customer separation and label timing. Read the actual saved tool choices and measured results rather than promising a particular candidate will pass.

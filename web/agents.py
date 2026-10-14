@@ -99,6 +99,7 @@ class Agents:
         if db.execute("SELECT 1 FROM sqlite_master WHERE name='science_reviews'").fetchone():sources.append("SELECT created_at,coalesce(cost_usd,reserved_usd) amount FROM science_reviews WHERE provider='gemini'")
         if db.execute("SELECT 1 FROM sqlite_master WHERE name='mesh_turns'").fetchone():sources.append("SELECT created_at,coalesce(cost_usd,reserved_usd) amount FROM mesh_turns WHERE provider='gemini'")
         if db.execute("SELECT 1 FROM sqlite_master WHERE name='fraud_agent_turns'").fetchone():sources.append("SELECT created_at,coalesce(cost_microusd,reserved_microusd)/1000000.0 amount FROM fraud_agent_turns WHERE provider='gemini'")
+        if db.execute("SELECT 1 FROM sqlite_master WHERE name='risk_agent_turns'").fetchone():sources.append("SELECT created_at,coalesce(cost_microusd,reserved_microusd)/1000000.0 amount FROM risk_agent_turns WHERE provider='gemini'")
         if db.execute("SELECT 1 FROM sqlite_master WHERE name='model_usage_archive'").fetchone():sources.append("SELECT created_at,amount_microusd/1000000.0 amount FROM model_usage_archive WHERE provider='gemini'")
         query=' UNION ALL '.join(sources)
         today=db.execute('SELECT count(*),coalesce(sum(amount),0) FROM ('+query+') WHERE substr(created_at,1,10)=?',(day,)).fetchone()

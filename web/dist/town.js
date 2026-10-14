@@ -1,4 +1,4 @@
-// Original Pallet Town pixel art, reused as a single-neighborhood case visualizer.
+// Original Mint Town pixel art, reused as a single-neighborhood case visualizer.
 export function createTown(canvas) {
   let ctx=canvas.getContext('2d');
   function rect(x,y,w,h,c){ctx.fillStyle=c;ctx.fillRect(Math.round(x),Math.round(y),w,h)}

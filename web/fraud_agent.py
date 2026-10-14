@@ -69,6 +69,7 @@ def micro(value):
 
 
 class FraudAgent:
+    turn_table='fraud_agent_turns'
     def __init__(self, desk, agents, model_factory=None, case_usd=CASE_USD, max_case_calls=MAX_CASE_CALLS, clock=now, checkpoint=None):
         self.desk, self.lab, self.agents = desk, desk.lab, agents
         self.model_factory, self.case_limit, self.max_case_calls, self.clock = model_factory, micro(case_usd), max_case_calls, clock
@@ -306,7 +307,10 @@ class FraudAgent:
                 gate=self.lab.db.execute('SELECT * FROM fraud_live_control WHERE id=1').fetchone()
                 if gate['blocked_reason']:raise LabError('Live circuit is open: '+gate['blocked_reason'],409)
                 if self.live_delay({'context':{'provider':mode}})>0:raise LabError('Live request spacing limit reached. No model request was made.',409)
-                if self.lab.db.execute("SELECT 1 FROM fraud_agent_turns WHERE provider='gemini' AND status IN ('reserved','responded')").fetchone():
+                busy=self.lab.db.execute("SELECT 1 FROM fraud_agent_turns WHERE provider='gemini' AND status IN ('reserved','responded')").fetchone()
+                if self.lab.db.execute("SELECT 1 FROM sqlite_master WHERE name='risk_agent_turns'").fetchone():
+                    busy=busy or self.lab.db.execute("SELECT 1 FROM risk_agent_turns WHERE provider='gemini' AND status IN ('reserved','responded')").fetchone()
+                if busy:
                     raise LabError('Another live model request is in progress. No request was made.',409)
             b = self.budget(report_id, mode)
             if b['case_calls'] >= b['max_case_calls']: raise LabError('Per-case generation limit reached.', 429)
@@ -316,9 +320,8 @@ class FraudAgent:
                                        ('Lifetime', b['total_committed_microusd'], b['total_limit_microusd'])]:
                 if used + RESERVE_MICROUSD > limit: raise LabError(label + ' cost limit reached before the next request.', 429)
             identifier = run_id + ':' + str(seq)
-            self.lab.db.execute('INSERT INTO fraud_agent_turns(id,report_id,run_id,seq,provider,model,status,reserved_microusd,created_at,request_json) VALUES(?,?,?,?,?,?,?,?,?,?)',
-                                (identifier, report_id, run_id, seq, mode, MODEL, 'reserved', RESERVE_MICROUSD, self.clock(), encoded(payload)))
-            if job_id:self.lab.db.execute('UPDATE fraud_agent_turns SET role=?,job_id=? WHERE id=?',(role,job_id,identifier))
+            self.lab.db.execute('INSERT INTO '+self.turn_table+'(id,report_id,run_id,seq,provider,model,status,reserved_microusd,created_at,request_json,role,job_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',
+                                (identifier, report_id, run_id, seq, mode, MODEL, 'reserved', RESERVE_MICROUSD, self.clock(), encoded(payload),role,job_id))
             if mode=='gemini':
                 self.lab.db.execute('UPDATE fraud_live_control SET next_call_at=? WHERE id=1',
                                     (dt.datetime.fromisoformat(self.clock()).timestamp()+LIVE_INTERVAL_SECONDS,))
@@ -335,7 +338,7 @@ class FraudAgent:
         outputs = candidates + thoughts
         cost = (inputs * 3 + outputs * 25 + 9) // 10  # micro-USD, rounded upward; includes reasoning.
         with self.lab.lock, self.lab.db:
-            self.lab.db.execute("UPDATE fraud_agent_turns SET cost_microusd=?,input_tokens=?,output_tokens=?,status='responded' WHERE id=?", (cost, inputs, outputs, turn_id))
+            self.lab.db.execute('UPDATE '+self.turn_table+" SET cost_microusd=?,input_tokens=?,output_tokens=?,status='responded' WHERE id=?", (cost, inputs, outputs, turn_id))
         if cost > RESERVE_MICROUSD or outputs > MAX_OUTPUT_TOKENS or inputs > MAX_INPUT_BYTES + 4096:
             raise LabError('Provider usage exceeded the reserved token envelope. No tool was executed.', 502)
         calls = [p.function_call for p in (response.content.parts if response.content else []) if p.function_call]
@@ -344,7 +347,7 @@ class FraudAgent:
             raise LabError('Expected one allowed function call. No tool was executed.', 422)
         decision = {'tool': calls[0].name, 'args': calls[0].args}
         with self.lab.lock, self.lab.db:
-            self.lab.db.execute('UPDATE fraud_agent_turns SET decision=? WHERE id=?', (encoded(decision), turn_id))
+            self.lab.db.execute('UPDATE '+self.turn_table+' SET decision=? WHERE id=?', (encoded(decision), turn_id))
         if not isinstance(calls[0].args, dict) or set(calls[0].args) != arg_fields[calls[0].name]:
             raise LabError('Function-call arguments do not match the allowed schema.', 422)
 

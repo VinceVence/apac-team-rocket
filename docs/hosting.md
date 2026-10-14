@@ -26,9 +26,11 @@ Up to 100 model calls, 25 new reports, 25 BigQuery publications and 100 bounded 
 
 ## Team development
 
-Gab and Jansen use their supplied Google accounts. Their scoped access covers Cloud Run development, the existing BigQuery dataset and query jobs, the existing container repository, logs, and Vertex prediction. They can act as the app runtime service account to deploy containers. Billing administration, IAM administration, service enablement, Vertex training/endpoint creation and Cloud Build job creation are not granted.
+Gab and Jansen use their supplied Google accounts. Both retain scoped Cloud Run development, the existing BigQuery dataset and query jobs, the existing container repository, logs, and Vertex prediction, plus permission to act as the runtime service account.
 
-Build containers locally and push them to the existing Artifact Registry repository. Use your own Google credentials. Never copy the owner's ADC file or put credentials in source control. Enabling live inference or restoring Vertex after a shutdown is an owner operation; it requires reviewing both the cumulative budget and the app's existing spend ledger.
+On October 14, Gab's access was expanded: project-scoped BigQuery data/jobs/models and dataset/table access management, excluding reservations and capacity purchases; Cloud Build Editor; administration of the existing `minttown` Cloud Run service and container repository; permission to act as the existing runtime and builder accounts; build-prefix object management and bucket metadata/list access. The BigQuery permissions are in the custom `minttownBigQueryManager` role. Jansen's existing grants were unchanged.
+
+Billing administration, project IAM administration, service enablement and Vertex training/endpoint creation were not granted. Resource creation can still incur charges outside the app ledger; the project-level shutdown guard is separate. Use your own Google credentials. Never copy the owner's ADC file or put credentials in source control. Enabling live inference or restoring Vertex after a shutdown is an owner operation; it requires reviewing both the cumulative budget and the app's existing spend ledger. GitHub collaborator invitations are separate and require verified GitHub usernames; email addresses alone do not confirm repository access.
 
 Detailed deployment, IAM and shutdown-test receipts remain in ignored `output/google-cloud/`. The guided and saved-result walkthrough is [demo-script.md](demo-script.md).
 

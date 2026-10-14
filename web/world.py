@@ -52,6 +52,9 @@ class World:
         if self.prevention:
             from prevention import FEATURE_SCHEMA_VERSION
             meta['prevention_features']=values;meta['prevention_schema_version']=FEATURE_SCHEMA_VERSION
+            from risk_models import vector,VERSION
+            meta['risk_features']=vector(meta,amount,self.prevention.history(cid,stamp),merchant,stamp)
+            meta['risk_feature_version']=VERSION;meta['risk_recorded_at']=now()
         if flags:meta['review_flags']=flags
         if meta.get('review_flags'):
             blocked=True

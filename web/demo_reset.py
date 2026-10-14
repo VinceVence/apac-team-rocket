@@ -47,6 +47,10 @@ class DemoReset:
                 target.parent.mkdir(parents=True,exist_ok=True)
                 with target.open('xb') as f:f.write(archive)
             tables={r['name'] for r in self.lab.rows("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")}
+            # Curated research is independent of the disposable scene. Its charges
+            # remain in risk_agent_turns, so do not also archive them as model usage.
+            from risk_lab import TABLES as RISK_TABLES
+            research={table:self.lab.rows('SELECT * FROM '+table) for table in RISK_TABLES if table in tables}
             charges=self.lab.rows('SELECT * FROM model_usage_archive')
             for table in ('agent_runs','macro_decisions','science_reviews','mesh_turns','fraud_agent_turns'):
                 if table not in tables:continue
@@ -70,6 +74,10 @@ class DemoReset:
             drop='\n'.join('DROP TABLE "'+name.replace('"','""')+'";' for name in tables)
             try:
                 self.lab.db.executescript('PRAGMA foreign_keys=OFF; BEGIN IMMEDIATE;\n'+drop+'\n'+script)
+                for table,rows in research.items():
+                    for row in rows:
+                        columns=list(row)
+                        self.lab.db.execute('INSERT INTO '+table+'('+','.join(columns)+') VALUES('+','.join('?' for _ in columns)+')',tuple(row[k] for k in columns))
                 self.lab.db.executemany('INSERT OR IGNORE INTO model_usage_archive VALUES(:id,:provider,:report_id,:role,:created_at,:amount_microusd)',charges)
                 self.lab.db.executemany('INSERT OR REPLACE INTO demo_usage_archive VALUES(:day,:publications,:queries,:model_builds)',usage.values())
                 self.lab.db.executemany('INSERT OR REPLACE INTO demo_scene_archives VALUES(:scene_id,:created_at,:location)',archives)

@@ -1,4 +1,4 @@
-"""Run Pallet Town locally with Vertex and the existing shared cloud spend ledger.
+"""Run Mint Town locally with Vertex and the existing shared cloud spend ledger.
 
 Requires the hosted service to be disabled (manual scaling 0). Never creates a
 fresh paid ledger, changes cloud resources, retries a model, or raises dollar caps.
@@ -42,7 +42,7 @@ def main():
         server.warehouse.provision()
         def terminate(*_):raise KeyboardInterrupt
         signal.signal(signal.SIGTERM,terminate)
-        print(f'Pallet Town: http://127.0.0.1:{args.port} · Vertex AI · shared ledger · Cloud Run paused',flush=True)
+        print(f'Mint Town: http://127.0.0.1:{args.port} · Vertex AI · shared ledger · Cloud Run paused',flush=True)
         print(f'${DAILY_MODEL_USD:g}/UTC day · ${CASE_USD:g}/case · ${TOTAL_MODEL_USD:g} lifetime · {DAILY_MODEL_CALLS} calls/day · {MAX_CASE_CALLS}/case · no retries',flush=True)
         try:server.serve_forever()
         except KeyboardInterrupt:pass

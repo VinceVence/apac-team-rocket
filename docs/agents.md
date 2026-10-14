@@ -43,6 +43,10 @@ The payment gate evaluates active rules locally alongside the existing exact-rec
 
 Neither agent may approve its own output, decide legal fault, promise recovery or treat demographics/sentiment as proof. Prior knowledge is a lead to verify. The public timeline shows concise decision purposes, evidence, tool validation and results—not private chain of thought.
 
+## Risk science roles
+
+`risk_lab.py` adds the **risk scientist** (`design_experiment` or `request_labels`) and **model-risk validator** (`recommend_candidate` or `reject_candidates`). They hand off typed records through the same ADK adapter, shared worker and global meter. `risk_models.py` fits only allowlisted CPU recipes. Dataset quality and model gates are enforced by code; neither role can waive them. A study uses at most two calls and never activates a candidate. Read the [risk lab guide](risk-lab.md) for provenance, synthetic benchmark limitations and operator access.
+
 ## Detector registry
 
 `fraud_detectors.py` exposes device integrity, payment velocity and payment-request intent. They are **versioned rule detectors**, not trained or calibrated fraud probabilities. Missing inputs are reported as unavailable. Scores describe matched signals only. Detectors read prepayment metadata, not later complaints, hidden scenario labels or future case outcomes.
