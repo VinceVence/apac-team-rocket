@@ -57,3 +57,5 @@ Mutation requests require the same-origin session token. The model cannot call a
 `dist/town-art.js` draws the original river-town scenery once into a cached canvas. `dist/town.js` routes residents along streets, displays real payment/report events, and supports resident picking and reduced motion. These visuals do not change data generation or invoke a model.
 
 Run `node web/test_town.mjs` from the repository root for street routing, animation lifecycle, picking and reduced-motion checks. Use the fake model for visual playtests.
+
+The [harness runtime](../docs/harness-runtime.md) documents new-case specialist delegation, model contracts, local judges and reviewed-knowledge lifecycle. `evaluate_harness.py` runs the ten-fixture offline execution report.

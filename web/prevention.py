@@ -156,7 +156,8 @@ class PreventionAgent:
     def active(self):
         rows=self.lab.rows("SELECT * FROM prevention_rules WHERE status='active' AND expires_at>? ORDER BY created_at DESC LIMIT 50",(now(),))
         for row in rows:row['signals']=json.loads(row['signals']);row['replay']=json.loads(row['replay'])
-        return [row for row in rows if row['replay'].get('feature_schema_version')==FEATURE_SCHEMA_VERSION]
+        active_memories={m['id'] for m in self.desk.memories()}
+        return [row for row in rows if row['replay'].get('feature_schema_version')==FEATURE_SCHEMA_VERSION and row['memory_id'] in active_memories]
 
     def basis(self,report_id):
         report=self.desk.report(report_id)

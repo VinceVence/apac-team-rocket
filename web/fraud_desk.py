@@ -9,6 +9,7 @@ import uuid
 from lab import LabError, encoded, now
 from fraud_scenarios import SCENARIOS, catalogue, create_scenario
 from settings import MAX_CUSTOMERS
+import fraud_knowledge
 
 TABLES = ('fraud_reports', 'fraud_investigations', 'fraud_reviews', 'scam_memories')
 LESSON = 'A familiar device and a successful PIN do not rule out deception. Check who requested the transfer and why.'
@@ -46,6 +47,7 @@ class FraudDesk:
         self.lab, self.world = lab, world
         self.agent = None
         self.prevention = None
+        fraud_knowledge.initialize(lab)
         lab.db.executescript('''
         CREATE TABLE IF NOT EXISTS fraud_reports(
           id TEXT PRIMARY KEY, request_id TEXT NOT NULL UNIQUE, request_json TEXT NOT NULL,
@@ -70,11 +72,12 @@ class FraudDesk:
           created_at TEXT NOT NULL);
         ''')
 
-    def memories(self):
+    def memories(self,include_inactive=False):
         rows = self.lab.rows('SELECT * FROM scam_memories ORDER BY rowid DESC')
         for row in rows:
             for key in ('pattern', 'validation'): row[key] = json.loads(row[key])
-        return rows
+            row['lifecycle']=fraud_knowledge.lifecycle(self.lab,row)
+        return rows if include_inactive else [r for r in rows if r['lifecycle']['active']]
 
     def screen(self, customer_id, payee):
         # ponytail: a small reviewed-recipient watchlist; indexed serving if the demo grows.
@@ -118,12 +121,17 @@ class FraudDesk:
             report.update(customer=dict(self.lab.db.execute('SELECT * FROM customers WHERE id=?', (report['customer_id'],)).fetchone()),
                           transactions=self.transactions(report), investigation=self.run(latest[0]) if latest else None,
                           reviews=reviews)
-            if self.agent: report['decision_trail'] = self.agent.timeline(report_id)
+            if self.agent:
+                report['decision_trail'] = self.agent.timeline(report_id)
+                report['harness']=self.agent.harness.dashboard(report['investigation'])
             if self.prevention:report['prevention']=self.prevention.for_report(report_id)
             payload=json.loads(self.lab.db.execute('SELECT request_json FROM fraud_reports WHERE id=?',(report_id,)).fetchone()[0])
             report['scenario_title']=scenario_title(payload.get('scenario') or next((t['metadata'].get('scenario') for t in report['transactions'] if t['metadata'].get('scenario')),None))
             if self.agent and report['investigation'] and report['investigation']['recommendation']:
                 report['validation_warnings']=self.agent.amount_warnings(report['investigation']['recommendation'],report['investigation']['context'])
+                checks=report.get('harness',{}).get('checks',[])
+                if report['investigation']['status']=='awaiting_review' and checks and not checks[0]['passed']:
+                    report['validation_warnings'] += [b for j in checks[0]['judges'] for b in j['blockers']]
             return report
 
     def dashboard(self):
@@ -134,7 +142,7 @@ class FraudDesk:
             return {'mode': 'ADK · Gemini' if live else 'ADK · fake model' if self.agent else 'Offline tool rehearsal', 'gemini_calls': self.agent.agents.budget()['calls_today'] if self.agent else 0,
                     'agent_runtime': self.agent.runtime() if self.agent else None, 'scenarios':catalogue(),
                     'reports':reports,
-                    'memories': self.memories(),
+                    'memories': self.memories(include_inactive=True),
                     'customers': self.lab.rows('SELECT id,name FROM customers ORDER BY id LIMIT ?', (MAX_CUSTOMERS,)),
                     'transactions': self.lab.rows("SELECT id,customer_id,amount_minor,to_account,occurred_at FROM (SELECT id,customer_id,amount_minor,to_account,occurred_at,row_number() OVER (PARTITION BY customer_id ORDER BY occurred_at DESC,rowid DESC) AS recent FROM financial_events WHERE status='settled' AND kind='payment') WHERE recent<=5 ORDER BY occurred_at DESC,id DESC")}
 
@@ -311,6 +319,7 @@ class FraudDesk:
             if self.lab.fingerprint(self.transactions(report)) != run['context']['evidence_hash']:
                 raise LabError('Transaction evidence changed. Refresh the report and investigate again.', 409)
             if self.agent:
+                self.agent.harness.guard_review(run)
                 warnings=self.agent.amount_warnings(run['recommendation'],run['context'])
                 if warnings:raise LabError('Resolve the draft validation warning before approval: '+'; '.join(warnings),409)
             rid = 'REV-' + uuid.uuid4().hex[:10]
@@ -331,13 +340,17 @@ class FraudDesk:
                 validation = {'passed': bool(recipients) and all(watch_matches(recipients, p) for p in recipients) and not watch_matches(recipients, 'unrelated:control'),
                               'checks': ['Reviewed recipient matches', 'Unrelated recipient does not match'],
                               'scope': 'Exact-recipient watch only; not a measured fraud-detection accuracy.'}
+                memory_id='MEM-'+uuid.uuid4().hex[:10]
+                pattern={'cues':run['context']['cues'],'recipient_accounts':recipients,'evidence_ids':run['recommendation']['evidence_ids']}
                 self.lab.db.execute('INSERT INTO scam_memories VALUES(?,?,?,?,?,?,?,?)',
-                                    ('MEM-' + uuid.uuid4().hex[:10], report_id, rid,
-                                     encoded({'cues': run['context']['cues'], 'recipient_accounts': recipients,
-                                              'evidence_ids': run['recommendation']['evidence_ids']}), lesson, next_question, encoded(validation), now()))
+                    (memory_id,report_id,rid,encoded(pattern),lesson,next_question,encoded(validation),now()))
+                fraud_knowledge.publish(self.lab,memory_id,pattern,run)
             self.lab.db.execute('UPDATE fraud_reports SET status=? WHERE id=?', ('awaiting_customer' if disposition == 'needs_information' else 'resolved', report_id))
             self.lab.db.execute("UPDATE fraud_investigations SET status='reviewed' WHERE id=?", (investigation_id,))
             return self.detail(report_id)
+
+    def revoke_memory(self,memory_id,reason):
+        with self.lab.lock,self.lab.db:return fraud_knowledge.revoke(self.lab,memory_id,reason)
 
     def answer(self, report_id, answer, expected_revision):
         answer = text(answer, 'Customer reply', 10, 2000)

@@ -5,13 +5,13 @@ Synthetic Philippine fintech demo: world transactions → complaint → Gemini t
 ## Current vs planned
 
 - Working: AE-dictionary generation and isolated `minttown_world` publishing (`web/environment_data.py`, `environment_cloud.py`); updated resident sprites; resolution/prevention agents; optional risk scientist/validator; versioned BigQuery evidence; reviewed memory and payment safeguards.
-- Proposed: case lead + transaction, device/identity and scam-context specialists with shared case state. Read [mesh architecture](docs/fraud-agent-mesh.md) and [harness design](docs/agent-harness-design.md) before implementing. These roles are not all deployed yet.
+- New cases use the [investigation harness](docs/harness-runtime.md): case lead, 0–1 scoped specialist/critic, versioned model receipts and local judges before human review. Legacy saved cases keep their original traces. Research rationale: [mesh](docs/fraud-agent-mesh.md), [harness design](docs/agent-harness-design.md).
 - AE owns source data; DS owns trained model artifacts/evaluation; agent work owns routing, scoped tools, checkpoints and review. Start with the AE’s four tables (`customers`, `wallets`, `devices`, `wallet_transactions`); the dictionary is synced from Gab’s `f03a384`; his generator/loader are not merged. Validate ownership, chronology and label leakage before importing it.
 
 ## Next implementation
 
-- Follow the [implementation order](docs/agent-harness-design.md#evaluation-and-implementation): model manifests/receipts → checkpointed delegation → evidence validation/review → scoped knowledge/replay → UI and evaluation. The document is a plan, not completed functionality.
-- Start with native ADK prediction tools and 0–1 specialist per case. Every child generation shares the existing case budget; test scheduling and accounting before nesting `AgentTool` calls.
+- Next: integrate DS-reviewed trained artifacts and run a separately authorized bounded Gemini evaluation. Current predictor adapters are three registered demo rules; never present their scores as probabilities. The research design includes future extensions beyond the implemented scope.
+- Keep native ADK tools, one worker and at most one specialist generation per case. Parent completes before child scheduling. All roles share the meter; no nested `AgentTool` calls. Judges enforce contracts, not factual certainty.
 - Bind customer scope, cutoff and feature values in server code. Return model/feature versions, score meaning and missing inputs; exclude AE label-derived `risk_score`/`risk_factors`, `is_fraud` and `scam_type` from predictor inputs.
 - Test missing evidence, stale versions, restart/resume, budget exhaustion and legitimate lookalikes offline first. Approved lessons need applicability, counterexamples and revocation; activation remains a separate human decision.
 
@@ -21,7 +21,7 @@ Synthetic Philippine fintech demo: world transactions → complaint → Gemini t
 |---|---|
 | Simulation | `web/world.py`, `world_demo.py`, `customer_data.py`, `lab.py` |
 | Data plane | `web/environment_data.py`, `environment_cloud.py`, `warehouse.py`, `cloud_data.py`; AE data work on `feature/dummy-data-generation` |
-| Agent plane | `web/fraud_agent.py`, `fraud_adk.py`, `fraud_runner.py`, `fraud_desk.py`, `prevention.py` |
+| Agent plane | `web/fraud_agent.py`, `fraud_adk.py`, `fraud_harness.py`, `fraud_models.py`, `fraud_knowledge.py`, `fraud_runner.py`, `prevention.py` |
 | Models / research | `web/fraud_detectors.py`, `risk_lab.py`, `risk_models.py` |
 | UI / deployment / docs | `web/dist/`, `Dockerfile`, `deploy/`, `docs/` |
 
@@ -32,6 +32,7 @@ uv sync --locked
 MINTTOWN_LIVE=0 MINTTOWN_FRAUD_LIVE=0 uv run --locked python -B web/server.py
 uv run --locked python -B -m unittest discover -s web -p 'test_*.py'
 uv run --locked python -B web/evaluate_cases.py --mode fake
+uv run --locked python -B web/evaluate_harness.py
 uv run --locked python -B web/export_environment.py --output output/environment-data
 uv run --locked --group figures python docs/figures/render_agent_mesh.py
 ```

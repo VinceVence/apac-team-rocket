@@ -14,23 +14,30 @@ from lab import LabError, encoded, now
 from settings import CASE_USD, MAX_CASE_CALLS
 from complaint_guidance import GUIDANCE
 from fraud_detectors import REGISTRY as DETECTORS, predict_case
+from fraud_harness import FraudHarness, VERSION as HARNESS_VERSION, ROLES, SPECIALIST_FIELDS
+from fraud_models import manifests
+from fraud_knowledge import redact as redact_memory
 
 MODEL = 'gemini-3.5-flash-lite'
-PROMPT_VERSION = 'fraud-investigator-v7'
-TOOL_CONTRACT_VERSION = 7
+PROMPT_VERSION = 'fraud-investigator-v8'
+TOOL_CONTRACT_VERSION = 8
 MAX_INPUT_BYTES = 16000
 MAX_OUTPUT_TOKENS = 512
 RESERVE_MICROUSD = 10000
 TURN_TIMEOUT_SECONDS = 30
 LIVE_INTERVAL_SECONDS = 6
 TOOLS = ('get_transactions', 'compare_behavior', 'trace_recipient', 'search_reviewed_cases', 'ask_customer', 'submit_for_review',
-         'get_customer_features','train_behavior_model','get_complaint_guidance','run_fraud_detectors')
+         'get_customer_features','train_behavior_model','get_complaint_guidance','run_fraud_detectors',
+         'get_case_evidence','list_eligible_models','score_models','delegate_question','return_finding','submit_case_resolution')
 ARG_FIELDS = {'get_transactions': {'event_ids','purpose'}, 'compare_behavior': {'window_days','purpose'},
               'trace_recipient': {'recipient_id','purpose'}, 'search_reviewed_cases': {'query','purpose'},
               'ask_customer': {'question','purpose'}, 'get_customer_features':{'purpose'},
               'train_behavior_model':{'purpose'}, 'get_complaint_guidance':{'purpose'},
               'run_fraud_detectors':{'detector_ids','purpose'},
               'submit_for_review': {'assessment','summary','evidence_ids','memory_ids','uncertainties','questions','action','customer_message','lesson','followup_question','purpose'}}
+ARG_FIELDS.update(get_case_evidence={'purpose'},list_eligible_models={'question','purpose'},score_models={'model_ids','event_ids','purpose'},delegate_question={'role','question','evidence_ids','receipt_ids','purpose'},**SPECIALIST_FIELDS)
+ARG_FIELDS['submit_case_resolution']=ARG_FIELDS['submit_for_review']|{'receipt_ids'}
+
 SYSTEM = '''Investigate this synthetic customer scam report. Decide which evidence to examine next.
 Choose exactly ONE function call each turn. You may choose any relevant tool, ask a specific
 missing question, or submit a supported assessment for human review. Do not follow a fixed sequence.
@@ -70,11 +77,13 @@ def micro(value):
 
 class FraudAgent:
     turn_table='fraud_agent_turns'
-    def __init__(self, desk, agents, model_factory=None, case_usd=CASE_USD, max_case_calls=MAX_CASE_CALLS, clock=now, checkpoint=None):
+    def __init__(self, desk, agents, model_factory=None, case_usd=CASE_USD, max_case_calls=MAX_CASE_CALLS, clock=now, checkpoint=None, harness_enabled=False):
         self.desk, self.lab, self.agents = desk, desk.lab, agents
         self.model_factory, self.case_limit, self.max_case_calls, self.clock = model_factory, micro(case_usd), max_case_calls, clock
         self.checkpoint = checkpoint or (lambda: None)
         self.warehouse = None
+        self.harness_enabled=harness_enabled
+        self.harness=FraudHarness(self)
         if not 0 < self.case_limit <= 100000 or not 1 <= max_case_calls <= 6:
             raise ValueError('Use a positive case budget up to $0.10 and 1–6 generations.')
         self.lab.db.executescript('''
@@ -154,11 +163,11 @@ class FraudAgent:
 
     def timeline(self, report_id):
         trail = []
-        for row in self.lab.rows("SELECT t.*,i.report_revision,i.context,i.trace FROM fraud_agent_turns t JOIN fraud_investigations i ON i.id=t.run_id WHERE t.report_id=? AND t.role='resolution' ORDER BY t.rowid", (report_id,)):
+        for row in self.lab.rows("SELECT t.*,i.report_revision,i.context,i.trace FROM fraud_agent_turns t JOIN fraud_investigations i ON i.id=t.run_id WHERE t.report_id=? AND t.role!='prevention' ORDER BY t.rowid", (report_id,)):
             decision = json.loads(row['decision']) if row['decision'] else {}
             receipt = next((r for r in json.loads(row['trace']) if r['step'] == row['seq'] + 1), {})
             trail.append({'number': len(trail) + 1, 'turn_id': row['id'], 'run_id': row['run_id'],
-                'revision': row['report_revision'], 'tool': decision.get('tool'),
+                'revision': row['report_revision'], 'tool': decision.get('tool'), 'role':row['role'],
                 'purpose': decision.get('args', {}).get('purpose', ''), 'status': row['status'],
                 'finding': receipt.get('finding', ''), 'provenance': receipt.get('provenance'),
                 'result': json.loads(row['tool_result']) if row['tool_result'] else None,
@@ -173,6 +182,7 @@ class FraudAgent:
         except importlib.metadata.PackageNotFoundError: version = None
         return {'engine': 'google-adk', 'version': version, 'default_mode': 'fake', 'model': MODEL, 'role':'resolution',
                 'warehouse_enabled':bool(self.warehouse), 'tools':list(TOOLS),
+                'harness_enabled':self.harness_enabled,'specialist_roles':list(ROLES),
                 'live_enabled': self.live_enabled(), 'case_limit_usd': self.case_limit / 1e6,
                 'max_case_calls': self.max_case_calls, 'automatic_runner': True,
                 'turn_timeout_seconds': TURN_TIMEOUT_SECONDS, 'live_interval_seconds': LIVE_INTERVAL_SECONDS,
@@ -217,7 +227,13 @@ class FraudAgent:
             if old and old['context'].get('controller') == 'adk' and old['context']['provider'] != mode:
                 raise LabError('The provider is pinned to this case. Use a separate report for a comparison.', 409)
             run = self.desk.start(report_id)
-            if run['context'].get('controller') == 'adk': return run
+            if run['context'].get('controller') == 'adk':
+                if self.harness.can_resume(run):
+                    run['context'].pop('stop_reason',None);run['context'].pop('execution',None)
+                    self.lab.db.execute("UPDATE fraud_investigations SET status='running',context=? WHERE id=?",(encoded(run['context']),run['id']))
+                    self.lab.db.execute("UPDATE fraud_reports SET status='investigating' WHERE id=?",(report_id,))
+                    return self.desk.run(run['id'])
+                return run
             if run['trace']: raise LabError('This report already has a fixed rehearsal. Create a new report for ADK.', 409)
             report = self.desk.report(report_id)
             context = dict(old['context']) if old and old['context'].get('controller') == 'adk' else {}
@@ -239,25 +255,32 @@ class FraudAgent:
             context.pop('pending_question', None); context.pop('stop_reason', None)
             context.pop('execution', None)
             context.setdefault('observations', []); context.setdefault('memories', [])
+            if self.harness_enabled:
+                context.setdefault('harness_version',HARNESS_VERSION);context.setdefault('model_manifests',manifests())
             self.lab.db.execute('UPDATE fraud_investigations SET context=? WHERE id=?', (encoded(context), run['id']))
             return self.desk.run(run['id'])
 
     def packet(self, run):
         report = self.desk.report(run['report_id'])
         snapshot = self.snapshot(run['context'].get('snapshot_id'))
-        return {'report_id': report['id'], 'customer_id': report['customer_id'],
+        packet={'report_id': report['id'], 'customer_id': report['customer_id'],
                 'currency':'PHP', 'minor_units_per_unit':100,
                 'canonical_amounts_php':{'payments':[{'event_id':t['id'],'amount_php':t['amount_minor']/100} for t in snapshot['data']['transactions']],
                                          'total_php':sum(t['amount_minor'] for t in snapshot['data']['transactions'])/100},
                 'story': report['story'], 'message_transcript': report['message'], 'event_ids': report['event_ids'],
                 'customer_replies': report['answers'], 'jurisdiction':'Philippines', 'warehouse_available':bool(self.warehouse),
                 'available_detectors':DETECTORS,
+                'harness_version':run['context'].get('harness_version'),'active_role':'case_lead',
+                'available_models':run['context'].get('model_manifests',{}),
+                'specialist_findings':run['context'].get('specialist_findings',[]),
+                'delegation_used':bool(self.lab.db.execute('SELECT 1 FROM fraud_delegations WHERE report_id=?',(report['id'],)).fetchone()),
                 'guided_demo':any(t['metadata'].get('guided_demo') for t in snapshot['data']['transactions']),
                 'reviewed_memory_count':len(snapshot['data']['memories']),
                 'evidence_snapshot': {'id': snapshot['id'], 'as_of': snapshot['as_of'], 'event_watermark': snapshot['event_watermark']},
                 'ingestion_flags': [f for t in snapshot['data']['transactions'] for f in t['metadata'].get('review_flags', [])],
                 'observations': run['context'].get('observations', []),
                 'remaining_generations': max(0, self.max_case_calls - self.budget(report['id'], run['context']['provider'])['case_calls'])}
+        return self.harness.compact(packet) if run['context'].get('harness_version') else packet
 
     @staticmethod
     def amount_warnings(recommendation, context):
@@ -284,10 +307,14 @@ class FraudAgent:
     def reserve(self, run_id, request):
         with self.lab.lock:
             run=self.desk.run(run_id)
-            if any(t['metadata'].get('guided_demo') for t in self.snapshot(run['context']['snapshot_id'])['data']['transactions']):
+            if run['context'].get('harness_version') or any(t['metadata'].get('guided_demo') for t in self.snapshot(run['context']['snapshot_id'])['data']['transactions']):
                 if self.budget(run['report_id'],run['context']['provider'])['case_calls']>=self.max_case_calls-1:
                     raise LabError('Resolution allowance reached. One shared case call is reserved for prevention; hand the evidence to an analyst.',429)
-            return self._reserve_turn(run['report_id'],run_id,run['step'],run['context']['provider'],request)
+            task=self.harness.task(run['context'])
+            if task:
+                self.harness.validate_task(run,task)
+                with self.lab.db:self.lab.db.execute("UPDATE fraud_delegations SET status='running' WHERE id=?",(task['id'],))
+            return self._reserve_turn(run['report_id'],run_id,run['step'],run['context']['provider'],request,task['role'] if task else 'resolution',task['id'] if task else None)
 
     def reserve_prevention(self, job, request):
         """The learner shares the source case's six calls, dollars and global lock."""
@@ -360,11 +387,39 @@ class FraudAgent:
             if context['source_hash'] != self.lab.fingerprint(self.desk.transactions(report)):
                 raise LabError('Transaction evidence changed. Hand this case to an analyst.', 409)
             snapshot = self.snapshot(context.get('snapshot_id')); evidence = snapshot['data']
+            raw_args=args
+            if context.get('harness_version'):args=self.harness.decode_args(run,args)
             source_ids, memory_ids = [], []
             turn_id = run_id + ':' + str(run['step'])
-            repeated = self.lab.db.execute("SELECT 1 FROM fraud_agent_turns WHERE run_id=? AND status='completed' AND json_remove(decision,'$.args.purpose')=?", (run_id, encoded({'tool': name, 'args': args}))).fetchone()
+            repeated = self.lab.db.execute("SELECT 1 FROM fraud_agent_turns WHERE run_id=? AND status='completed' AND json_remove(decision,'$.args.purpose')=?", (run_id, encoded({'tool': name, 'args': raw_args}))).fetchone()
             if repeated and name != 'submit_for_review': raise LabError('Repeated tool call without new evidence. Investigation paused.', 409)
-            if name=='run_fraud_detectors':
+            task=self.harness.task(context)
+            if task and name!='return_finding':raise LabError('A specialist may only return its scoped finding.',403)
+            if not task and name=='return_finding':raise LabError('Only an assigned specialist can return a finding.',403)
+            if name=='get_case_evidence':
+                transactions=evidence['transactions'];context['transactions']=transactions;context['evidence_hash']=context['source_hash']
+                public=[{k:t[k] for k in ('id','customer_id','occurred_at','status','to_account')}|{'amount_php':t['amount_minor']/100,'device_known':t['metadata'].get('device_known'),'authorization_recorded':t['metadata'].get('authorization_verified')} for t in transactions]
+                context['public_transactions']=public
+                output={'currency':'PHP','transactions':public,'guidance':GUIDANCE,'warehouse':{'available':False}}
+                if self.warehouse and evidence.get('warehouse_snapshot'):
+                    day=min(t['occurred_at'][:10] for t in transactions)
+                    output['warehouse']=self.warehouse.customer_features(report['customer_id'],evidence['warehouse_snapshot'],day)
+                    context['warehouse_features']=output['warehouse']
+                source_ids=[t['id'] for t in transactions];finding='Verified case payments, pinned behavior features and complaint guidance.'
+            elif name=='list_eligible_models':
+                text(args['question'],'Model question',5,300)
+                output={'models':list(context.get('model_manifests',{}).values()),'selection_question':args['question']}
+                finding='Listed registered models with target, required evidence and score meaning.'
+            elif name=='score_models':
+                if not context.get('transactions'):raise LabError('Verify case evidence before prediction.',422)
+                output=self.harness.score(run,report,snapshot,args)
+                context['detector_results']={'detectors':[r['prediction'] for r in output['receipts'] if r['prediction']]}
+                source_ids=[t['id'] for t in context['transactions']];finding='Saved versioned model receipts; unavailable inputs remain unknown.'
+            elif name=='delegate_question':
+                output=self.harness.delegate(run,report,snapshot,args);source_ids=output['evidence_ids'];finding='Checkpointed a question for '+ROLES[args['role']][0]+'.'
+            elif name=='return_finding':
+                output=self.harness.complete_task(run,args);source_ids=output['evidence_ids'];finding=output['summary']
+            elif name=='run_fraud_detectors':
                 if not context.get('transactions'):raise LabError('Verify the disputed transactions before running a detector.',422)
                 output=predict_case(args['detector_ids'],snapshot['data']['transactions'])
                 context['detector_results']=output
@@ -423,23 +478,26 @@ class FraudAgent:
                 query = text(args['query'], 'Search query', 3, 200)
                 tokens = set(re.findall(r'[a-z_]+', query.lower())) | set(cues(query))
                 matches = []
+                active_ids={m['id'] for m in self.desk.memories()}
                 for m in evidence['memories']:
+                    if m['id'] not in active_ids:continue
                     query_words=' '+' '.join(re.findall(r'[a-z0-9]+',query.casefold()))+' '
                     aliases=[' '+' '.join(re.findall(r'[a-z0-9]+',p.split(':',1)[-1].casefold()))+' ' for p in m['pattern']['recipient_accounts']]
                     if tokens & set(m['pattern']['cues']) or any(alias.strip() and alias in query_words for alias in aliases):
                         matches.append(m)
                 context['memories'] = matches[:3]
-                output = {'matches': [{'id': m['id'], 'source_report_id': m['source_report_id'], 'review_id': m['review_id'], 'lesson': m['lesson'], 'next_question': m['next_question']} for m in context['memories']]}
+                output = {'matches': [redact_memory(self.desk,m) for m in context['memories']]}
                 memory_ids = [m['id'] for m in context['memories']]
                 finding = '%d analyst-approved case(s) matched. Retrieved lessons are leads to verify.' % len(memory_ids)
             elif name == 'ask_customer':
                 question = text(args['question'], 'Customer question', 10, 400)
+                if re.search(r'(?:^(?:please\s+)?(?:provide|share|send|enter|give|tell me)|reply with|what (?:is|was) your).*?\b(?:pin|otp|password|cvv|security code)\b',question,re.I):raise LabError('Customer follow-up must not request authentication secrets.',403)
                 context['pending_question'] = question; output = {'question': question, 'status': 'awaiting_customer'}
                 run['status'] = 'awaiting_customer'
                 self.lab.db.execute("UPDATE fraud_reports SET status='awaiting_customer' WHERE id=?", (report['id'],))
                 finding = 'Paused for the customer: ' + question
-            else:
-                if any(t['metadata'].get('guided_demo') for t in snapshot['data']['transactions']) and not context.get('detector_results'):
+            elif name in ('submit_for_review','submit_case_resolution'):
+                if not context.get('harness_version') and any(t['metadata'].get('guided_demo') for t in snapshot['data']['transactions']) and not context.get('detector_results'):
                     raise LabError('Run at least one registered detector before submitting this guided case.',422)
                 if self.warehouse and not context.get('warehouse_features'):
                     raise LabError('Read this customer’s pinned BigQuery features before submitting.',422)
@@ -462,11 +520,19 @@ class FraudAgent:
                     'customer_message': text(args['customer_message'], 'Draft customer response', 10, 600)}
                 warnings=self.amount_warnings(run['recommendation'],context)
                 if warnings:raise LabError('; '.join(warnings),422)
-                output = {'status': 'awaiting_review', 'recommendation': run['recommendation']}
-                run['status'] = 'awaiting_review'
-                self.lab.db.execute("UPDATE fraud_reports SET status='awaiting_review' WHERE id=?", (report['id'],))
+                verdict=self.harness.check(run,run['recommendation'],args.get('receipt_ids')) if context.get('harness_version') else None
+                context['submitted_receipt_ids']=args.get('receipt_ids')
+                if verdict and not verdict['passed']:
+                    output={'status':'revision_required','harness_judges':verdict}
+                    context['rejected_draft']=run['recommendation'];run['recommendation']=None
+                    finding='Harness judges withheld the draft; correction or manual review is required.'
+                else:
+                    output = {'status': 'awaiting_review', 'recommendation': run['recommendation'],'harness_judges':verdict}
+                    run['status'] = 'awaiting_review'
+                    self.lab.db.execute("UPDATE fraud_reports SET status='awaiting_review' WHERE id=?", (report['id'],))
+                    finding='Proposed resolution passed the available checks; human review is still required.'
                 source_ids = ids; memory_ids = args['memory_ids']
-                finding = 'Submitted %s with %d transaction citation(s) and %d reviewed memory citation(s). No action was executed.' % (args['assessment'].replace('_', ' '), len(ids), len(memory_ids))
+            else:raise LabError('Unknown investigation tool.',403)
             provenance = {'snapshot_id': snapshot['id'], 'as_of': snapshot['as_of'], 'captured_at': snapshot['captured_at'],
                           'event_watermark': snapshot['event_watermark'], 'evidence_hash': snapshot['evidence_hash'],
                           'record_ids': source_ids, 'memory_ids': memory_ids}
@@ -487,7 +553,12 @@ class FraudAgent:
             if run['context'].get('controller') != 'adk' or run['status'] not in ('failed','budget_exhausted','interrupted'):
                 raise LabError('Only a stopped ADK investigation can be handed off.', 409)
             report = self.desk.report(run['report_id']); transactions = self.desk.transactions(report)
-            run['context'].update(transactions=transactions, evidence_hash=self.lab.fingerprint(transactions), manual_handoff=True)
+            run['context'].update(transactions=transactions, evidence_hash=self.lab.fingerprint(transactions), manual_handoff=True,
+                manual_source_hash=self.lab.fingerprint(transactions),manual_captured_at=self.clock(),submitted_receipt_ids=[])
+            task=self.harness.task(run['context'])
+            if task:
+                self.lab.db.execute("UPDATE fraud_delegations SET status='cancelled' WHERE id=? AND status!='completed'",(task['id'],))
+                run['context'].pop('active_task_id',None)
             recommendation = {'disposition': 'needs_information',
                 'summary': 'The automated investigation stopped. An analyst must review the available report and ledger evidence.',
                 'facts': ['The local service retrieved the reported transaction records for manual review.'],
@@ -495,6 +566,7 @@ class FraudAgent:
                 'uncertainties': [run['context'].get('stop_reason', 'The process was interrupted.')],
                 'questions': [], 'suggested_action': 'support_followup', 'suggested_lesson': LESSON,
                 'suggested_question': QUESTION, 'customer_message': 'Your case needs manual review.'}
+            if run['context'].get('harness_version'):self.harness.check(run,recommendation,[])
             self.lab.db.execute("UPDATE fraud_investigations SET status='awaiting_review',context=?,recommendation=? WHERE id=?", (encoded(run['context']), encoded(recommendation), run_id))
             self.lab.db.execute("UPDATE fraud_reports SET status='awaiting_review' WHERE id=?", (report['id'],))
             return self.desk.detail(report['id'])
@@ -532,14 +604,18 @@ class FraudAgent:
             report = self.desk.report(run['report_id'])
             if report['revision'] != run['report_revision']: raise LabError('The report changed; start the current revision.', 409)
             self.lab.db.execute("UPDATE fraud_investigations SET status='stepping' WHERE id=?", (run_id,))
+        task=None
         try:
             with self.lab.lock:
                 if run['context']['source_hash'] != self.lab.fingerprint(self.desk.transactions(report)):
                     raise LabError('Transaction evidence changed. Hand this case to an analyst.', 409)
                 packet = self.packet(run)
-            from fraud_adk import run_turn
+                task=self.harness.task(run['context'])
+                if task:packet=self.harness.specialist_packet(run,packet)
+                if run['context'].get('harness_version'):packet=self.harness.model_packet(run,packet)
+            from fraud_adk import run_turn, specialist_tools
             async def bounded_turn():
-                return await asyncio.wait_for(run_turn(self,run,packet),timeout=timeout)
+                return await asyncio.wait_for(run_turn(self,run,packet,**({'instruction':self.harness.instruction(task['role']),'tools_factory':specialist_tools,'allowed_tools':('return_finding',),'agent_name':task['role']} if task else {})),timeout=timeout)
             events = asyncio.run(bounded_turn())
             with self.lab.lock, self.lab.db:
                 latest = self.desk.run(run_id)
@@ -553,6 +629,8 @@ class FraudAgent:
             with self.lab.lock, self.lab.db:
                 status = 'budget_exhausted' if isinstance(exc, LabError) and exc.status == 429 else 'failed'
                 self.stop(run_id, status, message)
+                if run['context'].get('harness_version'):self.harness.record_error(run,message)
+                if task:self.lab.db.execute("UPDATE fraud_delegations SET status='failed' WHERE id=? AND status!='completed'",(task['id'],))
                 self.lab.db.execute("UPDATE fraud_agent_turns SET status='failed',error=? WHERE run_id=? AND seq=? AND status!='completed'", (message, run_id, expected_step))
                 if run['context']['provider']=='gemini' and self.lab.db.execute('SELECT 1 FROM fraud_agent_turns WHERE run_id=? AND seq=?',(run_id,expected_step)).fetchone():
                     self.lab.db.execute('UPDATE fraud_live_control SET blocked_reason=? WHERE id=1',

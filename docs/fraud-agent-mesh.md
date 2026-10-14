@@ -1,6 +1,6 @@
 # Mint Town agent mesh
 
-**Architecture proposal for review.** The current app has a resolution agent, prevention learner and optional scientist/validator workflow. The case lead and specialist mesh below are the next extension, not a deployed capability.
+**Architecture and implementation scope.** New app cases use a case lead, one optional specialist/critic, shared receipts and local judges. See the [runtime guide](harness-runtime.md) for the tested boundaries. These figures show the broader design; longer specialist loops remain future work. The scientist/validator workflow stays separate.
 
 ![Simulation, data plane and agent plane](figures/mint-town-agent-mesh.png)
 
@@ -16,7 +16,7 @@
 
 The AE branch is [feature/dummy-data-generation](https://github.com/VinceVence/apac-team-rocket/tree/feature/dummy-data-generation). Before ingestion, fix device ownership, account/payment chronology and duplicate IDs. Keep truth labels and label-derived risk scores in private evaluation data. SQL-generated rows are fixtures; the simulation ledger owns settlement and balances.
 
-In this proposal, the world replays AE customers and transactions while investigators query the same records. The four AE tables are the starting contract; no additional warehouse layers are required for this design. The AE branch’s proposed knowledge tables and joined view still need implementation and validation. Each case pins the customer, disputed events, dataset version and evidence cutoff. Missing evidence stays explicit. Prevention features must exist before the payment decision.
+In this proposal, the world replays AE customers and transactions while investigators query the same records. The four AE tables are the starting contract; no additional warehouse layers are required for this design. The simulator now publishes six dictionary-shaped tables and a joined view to the isolated `minttown_world` dataset; investigation tools retain their pinned evidence snapshots. Each case pins the customer, disputed events, dataset version and evidence cutoff. Missing evidence stays explicit. Prevention features must exist before the payment decision.
 
 ## Follow the four steps
 

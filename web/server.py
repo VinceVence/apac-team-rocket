@@ -57,7 +57,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
     fraud_desk=FraudDesk(lab,world);world.fraud_desk=fraud_desk
     checkpoint=(lambda: cloud.save(lab)) if cloud else None
     warehouse=Warehouse(lab,cloud) if cloud and os.getenv('PALLET_WAREHOUSE_ENABLED')=='1' else None
-    fraud_agent=FraudAgent(fraud_desk,agents,checkpoint=checkpoint)
+    fraud_agent=FraudAgent(fraud_desk,agents,checkpoint=checkpoint,harness_enabled=True)
     fraud_agent.warehouse=warehouse
     fraud_runner=InvestigationRunner(fraud_agent)
     prevention=PreventionAgent(fraud_agent);fraud_runner.prevention=prevention;world.prevention=prevention
@@ -149,7 +149,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                     with lab.lock: run=agents.public_run(path.rsplit('/',1)[-1])
                     return self.reply(200,run)
                 if path.startswith('/api/'): return self.reply(404,{'error':'Endpoint not found.'})
-                if path not in ('/','/index.html','/app.js','/mesh-ui.js','/customer-ui.js','/fraud-ui.js','/risk-ui.js','/town.js','/town-art.js','/resident-sprites.js','/styles.css','/mark.svg','/favicon.svg') and not path.startswith('/fonts/'):
+                if path not in ('/','/index.html','/app.js','/mesh-ui.js','/customer-ui.js','/fraud-ui.js','/harness-ui.js','/risk-ui.js','/town.js','/town-art.js','/resident-sprites.js','/styles.css','/mark.svg','/favicon.svg') and not path.startswith('/fonts/'):
                     return self.reply(404,{'error':'File not found.'})
                 if '..' in path or '%' in path: return self.reply(404,{'error':'File not found.'})
                 return super().do_GET()
@@ -227,6 +227,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                         '/api/fraud-desk/demo': (fraud_desk.demo, {'scenario','request_id'}),
                         '/api/fraud-desk/report': (fraud_desk.create, {'customer_id','story','message','event_ids','request_id'}),
                         '/api/fraud-desk/investigate': (fraud_desk.start, {'report_id'}),
+                        '/api/fraud-desk/revoke-memory': (fraud_desk.revoke_memory, {'memory_id','reason'}),
                         '/api/fraud-desk/step': (fraud_desk.step, {'run_id','expected_step'}),
                         '/api/fraud-desk/review': (fraud_desk.review, {'report_id','investigation_id','disposition','action','note','publish_memory','lesson','next_question'}),
                         '/api/fraud-desk/reply': (fraud_runner.reply, {'report_id','answer','expected_revision'})}
@@ -234,6 +235,9 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                     handler,fields=commands[path]
                     if set(body)!=fields:raise LabError('Invalid fraud-desk command fields.')
                     result=handler(**body)
+                    if path=='/api/fraud-desk/revoke-memory' and environment_publisher:
+                        try:result['publication']=environment_publisher.publish()
+                        except LabError as exc:result['publication_notice']=str(exc)
                     if path=='/api/fraud-desk/review' and body['publish_memory'] and body['disposition']=='confirmed_scam':
                         if environment_publisher:
                             try:result['publication']=environment_publisher.publish()

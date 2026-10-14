@@ -18,3 +18,5 @@
 Start with one complete case. A normal demo follows **Run world → complaint → selected tools → analyst review → approved knowledge → later payment hold**. A stopped investigation is a visible result, not a reason to silently retry it.
 
 Mint Town is the product name. Existing Google project, bucket, dataset and environment-variable names retain `minttown` so the rename does not duplicate resources or reset accounting.
+
+- [Investigation harness](harness-runtime.md): implemented roles, judges, model receipts, checkpoints, knowledge lifecycle and offline evaluation.

@@ -77,6 +77,7 @@ class WarehouseChecks(unittest.TestCase):
     def test_adk_can_use_warehouse_guidance_and_model_tools_inside_case_envelope(self):
         desk=self.server.fraud_desk;case=desk.demo('phishing','all-tools')
         self.warehouse.publish();agent=self.server.fraud_agent;agent.warehouse=self.warehouse
+        agent.harness_enabled=False  # Retained single-agent baseline; mesh cases do not expose training.
         def choose(packet):
             seen={o['tool'] for o in packet['observations']}
             for tool in ('get_customer_features','get_complaint_guidance','train_behavior_model'):

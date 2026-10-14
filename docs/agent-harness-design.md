@@ -1,6 +1,6 @@
 # Mint Town: an evidence-driven fraud investigation harness
 
-Design proposal · sources checked 14 October 2026 · no runtime changes or paid evaluations
+Research design · sources checked 14 October 2026. The bounded implementation is described in [harness-runtime.md](harness-runtime.md): one optional specialist generation, deterministic judges, versioned receipts and scoped knowledge. Longer specialist loops and paid comparative evaluations remain future work.
 
 **Stack:** Google ADK / Gemini / Vertex AI / BigQuery, within the existing Cloud Run application.
 

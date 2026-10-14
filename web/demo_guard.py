@@ -6,7 +6,7 @@ from lab import LabError, now
 from settings import DAILY_REPORTS, DAILY_WRITES, DAILY_WORLD_STEPS, READS_PER_MINUTE, WRITES_PER_MINUTE
 
 POST_PATHS = frozenset(('/api/world/step','/api/world/start','/api/world/stop','/api/world/prove','/api/cloud/export','/api/fraud-desk/demo',
-    '/api/fraud-desk/report','/api/fraud-desk/reply','/api/fraud-desk/review',
+    '/api/fraud-desk/report','/api/fraud-desk/reply','/api/fraud-desk/review','/api/fraud-desk/revoke-memory',
     '/api/fraud-agent/start','/api/fraud-agent/recheck','/api/fraud-agent/handoff',
     '/api/prevention/learn','/api/prevention/activate','/api/risk-lab/seed','/api/risk-lab/curate','/api/risk-lab/start'))
 GET_PATHS = frozenset(('/api/state','/api/cloud','/api/fraud-desk','/api/risk-lab','/api/environment-data'))
