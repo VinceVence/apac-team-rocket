@@ -51,3 +51,9 @@ The earlier macroeconomics, marketing and model-release modules remain for histo
 | `POST /api/cloud/export` | Publish/reuse the current typed snapshot when warehouse mode is enabled |
 
 Mutation requests require the same-origin session token. The model cannot call approval, billing, arbitrary SQL, deployment or bank-action APIs. Add tools through the [extension guide](../docs/agents.md), not by bypassing `FraudAgent.reserve`.
+
+### Town renderer
+
+`dist/town-art.js` draws the original river-town scenery once into a cached canvas. `dist/town.js` routes residents along streets, displays real payment/report events, and supports resident picking and reduced motion. These visuals do not change data generation or invoke a model.
+
+Run `node web/test_town.mjs` from the repository root for street routing, animation lifecycle, picking and reduced-motion checks. Use the fake model for visual playtests.
