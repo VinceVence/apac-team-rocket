@@ -185,6 +185,9 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                 if path=='/api/world/start':
                     if set(body)-{'expected_run','activity','speed','fresh','mode'} or not {'expected_run','activity','speed'}<=set(body):raise LabError('Invalid world start.')
                     return self.reply(200,world_demo.start(**{**body,'fresh':body.get('fresh',True)}))
+                if path=='/api/world/restart':
+                    if set(body)!={'expected_run','activity','speed'}:raise LabError('Use the current simulation and valid restart controls.')
+                    return self.reply(200,world_demo.restart(**body))
                 if path=='/api/world/prove':
                     if set(body)!={'expected_run'}:raise LabError('Use the current demo run.')
                     return self.reply(200,world_demo.prove(**body))

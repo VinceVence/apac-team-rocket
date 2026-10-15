@@ -75,3 +75,7 @@ body.guide-open{overflow:hidden!important;overscroll-behavior:none}#demo-guide{p
 
 /* One explicit demo consent, kept next to the normal analyst review. */
 .demo-analyst-control{display:flex;flex-wrap:wrap;align-items:center;gap:16px;padding:20px 0;border-bottom:1px solid var(--line,#d7e2d4);margin-bottom:20px}.demo-analyst-control>div{flex:1 1 260px;min-width:0}.demo-analyst-control strong{font-size:16px}.demo-analyst-control p{font-size:15px;line-height:1.5;margin:6px 0 0}.demo-analyst-control button{flex:none;white-space:normal}.demo-analyst-control #demo-analyst-status{flex-basis:100%;margin:0;color:#526b5a}.demo-approval-receipt{font-weight:600;color:#285a43}
+
+#restart-dialog{margin:auto;width:min(460px,calc(100vw - 32px));padding:28px;border:1px solid var(--line);border-radius:16px;background:var(--main);color:var(--text);font:inherit}#restart-dialog::backdrop{background:#173b2d99}#restart-dialog h2{font-size:24px}#restart-dialog p{font-size:16px;line-height:1.6;margin:16px 0 24px}#restart-dialog form>div{display:flex;gap:12px;justify-content:flex-end}#restart-world{min-width:88px}@media(min-width:761px) and (max-width:1300px){.lab-toolbar{gap:12px;padding-inline:20px}.main-tabs{gap:16px}.main-tabs button{font-size:15px}.world-run-controls button{padding:9px 10px}}
+
+@media(max-width:760px){.world-run-controls{max-width:100%;flex-wrap:wrap;justify-content:flex-end}}

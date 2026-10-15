@@ -50,7 +50,7 @@ export function createFraudUI({$,api,state,setPlaying,setBusy,refresh,error,focu
     $('prevention-signals').replaceChildren();
     for(const signal of rule?.signals||[])$('prevention-signals').append(el('li',pretty(signal)));
     $('prevention-test-summary').replaceChildren();
-    if(rule){for(const [value,label,bad] of [[rule.replay.changed_recipient_matches,'similar scam held',false],[`${rule.replay.false_flags} / ${rule.replay.legitimate_controls}`,'legitimate payments held',rule.replay.false_flags>0]]){const metric=el('div',undefined,'replay-metric'+(bad?' warning':''));metric.append(el('strong',String(value)),el('span',label));$('prevention-test-summary').append(metric)}$('prevention-test-summary').append(el('small','Synthetic replay · not real-world accuracy','replay-note'))}
+    if(rule){for(const [value,label,bad] of [[`${rule.replay.changed_recipient_matches} / ${rule.replay.source_variants}`,'similar requests held',rule.replay.changed_recipient_matches<rule.replay.source_variants],[`${rule.replay.false_flags} / ${rule.replay.legitimate_controls}`,'legitimate payments held',rule.replay.false_flags>0]]){const metric=el('div',undefined,'replay-metric'+(bad?' warning':''));metric.append(el('strong',String(value)),el('span',label));$('prevention-test-summary').append(metric)}$('prevention-test-summary').append(el('small','Synthetic replay · not real-world accuracy','replay-note'))}
     $('prevention-activate').hidden=!rule||!rule.replay.passed||active;
     $('prevention-disable').hidden=!active;
     $('prevention-prove').hidden=!active||!state.data?.demo.guided||state.data?.demo.focus_report_id!==report.id;

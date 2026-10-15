@@ -5,7 +5,7 @@ from collections import deque
 from lab import LabError, now
 from settings import DAILY_REPORTS, DAILY_WRITES, DAILY_WORLD_STEPS, READS_PER_MINUTE, WRITES_PER_MINUTE
 
-POST_PATHS = frozenset(('/api/world/step','/api/world/start','/api/world/stop','/api/world/prove','/api/world/demo-action','/api/world/demo-approve','/api/cloud/export','/api/fraud-desk/demo',
+POST_PATHS = frozenset(('/api/world/step','/api/world/start','/api/world/restart','/api/world/stop','/api/world/prove','/api/world/demo-action','/api/world/demo-approve','/api/cloud/export','/api/fraud-desk/demo',
     '/api/fraud-desk/report','/api/fraud-desk/reply','/api/fraud-desk/review','/api/fraud-desk/revoke-memory',
     '/api/fraud-agent/start','/api/fraud-agent/recheck','/api/fraud-agent/handoff',
     '/api/prevention/learn','/api/prevention/activate','/api/risk-lab/seed','/api/risk-lab/curate','/api/risk-lab/start'))
@@ -48,13 +48,15 @@ class DemoGuard:
             if is_report and isinstance(body.get('request_id'),str):
                 is_report=not self.lab.db.execute('SELECT 1 FROM fraud_reports WHERE request_id=?',(body['request_id'],)).fetchone()
             is_step=path=='/api/world/step'
-            is_start=path=='/api/world/start' and body.get('fresh',True)
+            is_start=path=='/api/world/restart' or path=='/api/world/start' and body.get('fresh',True)
             if is_start:
                 scene=self.lab.db.execute('SELECT run_id,running FROM world_demo_state WHERE id=1').fetchone()
-                is_start=bool(scene and not scene['running'] and scene['run_id']==body.get('expected_run'))
+                is_start=bool(scene and (path=='/api/world/restart' or not scene['running']) and scene['run_id']==body.get('expected_run'))
             with self.lab.db:
                 self.lab.db.execute('INSERT OR IGNORE INTO demo_daily_usage(day) VALUES(?)',(day,))
                 usage=self.lab.db.execute('SELECT * FROM demo_daily_usage WHERE day=?',(day,)).fetchone()
+                if is_start and usage['world_steps']>=DAILY_WORLD_STEPS:
+                    raise LabError('Daily world-step limit reached. Restart cannot replenish this allowance; the current scene was kept.',429)
                 for label,used,added,limit in (('write',usage['writes'],1,DAILY_WRITES),
                     ('world-step',usage['world_steps'],int(is_step),DAILY_WORLD_STEPS),
                     ('new-report',usage['reports'],int(is_report),DAILY_REPORTS),

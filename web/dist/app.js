@@ -19,6 +19,8 @@ function setBusy(on){state.busy=on;document.querySelectorAll('[data-view]').forE
 function renderRunControls(){
   const demo=state.data?.demo;if(!demo)return;
   $('run-demo').disabled=state.busy||!!demo.running||!!demo.restart_blocked;
+  $('restart-world').disabled=state.busy||!!demo.restart_blocked;
+  $('restart-world').title=demo.restart_blocked?'Wait for the current agent work to finish.':'Archive this scene and start an empty simulation. Usage limits stay unchanged.';
   $('play-world').disabled=state.busy||(!demo.running&&!demo.continuous&&!!demo.restart_blocked);
   $('play-world').textContent=demo.running?'Ⅱ Pause simulation':demo.continuous?'▶ Resume simulation':'▶ Run simulation';
   $('play-world').title=demo.running?'Pause payments; active investigations can finish.':demo.continuous?'Resume this world with its cases and safeguards.':'Start an empty world. Payments continue while agents investigate.';
@@ -161,6 +163,17 @@ async function runWorld(mode){
 }
 $('play-world').onclick=()=>runWorld('simulation');
 $('run-demo').onclick=()=>runWorld('demo');
+let restartRun=null;
+$('restart-world').onclick=()=>{guide.close();restartRun=state.data.demo.run_id;$('restart-dialog').returnValue='';$('restart-dialog').showModal()};
+$('restart-dialog').addEventListener('close',async()=>{
+  const expectedRun=restartRun;restartRun=null;
+  if($('restart-dialog').returnValue!=='restart'||state.busy)return;
+  setBusy(true);error('');
+  try{
+    await api('/api/world/restart',{expected_run:expectedRun,activity:Number($('activity').value),speed:state.speed});
+    await refresh();await cloudStatus();await showView('world');
+  }catch(e){error(e.message);await refresh().catch(()=>{})}finally{setBusy(false)}
+});
 $('world-report').onclick=()=>openIncident(state.data.demo.incidents[0]);
 $('cloud-export').onclick=async()=>{if(state.busy)return;setBusy(true);$('cloud-export').disabled=true;try{const id=sessionStorage.getItem('minttown-export-request')||crypto.randomUUID();sessionStorage.setItem('minttown-export-request',id);const r=await api('/api/cloud/export',{request_id:id});if(['completed','failed'].includes(r.status))sessionStorage.removeItem('minttown-export-request');$('cloud-export-result').textContent=`${r.row_count.toLocaleString()} records · ${r.status}`}catch(e){error(e.message)}finally{setBusy(false);await cloudStatus().catch(e=>error(e.message))}};
 document.addEventListener('visibilitychange',()=>{if(document.hidden){clearTimeout(pollTimer);drawTown.setVisible(false)}else refresh().catch(e=>error(e.message))});

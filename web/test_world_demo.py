@@ -27,6 +27,50 @@ class WorldDemoChecks(unittest.TestCase):
             time.sleep(.02)
         self.fail('Investigation did not stop')
 
+    def test_restart_archives_scene_and_preserves_model_and_admission_usage(self):
+        from demo_guard import DemoGuard
+        self.demo.guard=DemoGuard(self.lab,lambda:None)
+        state=self.demo.start(0,background=False,fresh=True,mode='simulation');self.demo.tick(state['run_id'])
+        self.demo.incident(state['run_id'],'phishing');self.wait(self.demo.status()['incidents'][0]['report_id'])
+        while self.server.fraud_runner.pending:time.sleep(.01)
+        before=self.server.fraud_agent.budget('', 'fake')
+        self.demo.guard.allow('POST','/api/world/restart',{'expected_run':state['run_id']})
+        usage=self.demo.guard.status()['used'].copy()
+        result=self.demo.restart(state['run_id'],background=False)
+        self.assertNotEqual(result['scene_id'],state['scene_id']);self.assertEqual(result['run_id'],state['run_id']+1)
+        self.assertTrue(result['continuous']);self.assertTrue(result['running']);self.assertEqual(result['steps'],0)
+        for table in ('financial_events','fraud_reports','scam_memories','prevention_rules'):
+            self.assertEqual(self.lab.db.execute('SELECT count(*) FROM '+table).fetchone()[0],0)
+        self.assertEqual(self.lab.db.execute('SELECT count(*) FROM customers').fetchone()[0],100)
+        self.assertEqual(self.demo.guard.status()['used'],usage)
+        self.assertEqual(self.server.fraud_agent.budget('', 'fake')['daily_calls'],before['daily_calls'])
+        archive=self.lab.db.execute('SELECT location FROM demo_scene_archives WHERE scene_id=?',(state['scene_id'],)).fetchone()[0]
+        self.assertTrue((Path(self.temp.name)/archive).exists())
+        self.assertEqual(self.demo.restart(state['run_id'],background=False)['scene_id'],result['scene_id'])
+        self.assertEqual(self.lab.db.execute('SELECT count(*) FROM demo_scene_archives').fetchone()[0],2)
+
+    def test_restart_rejects_active_work_and_exhausted_daily_steps_before_reset(self):
+        from demo_guard import DemoGuard
+        from lab import LabError
+        self.demo.guard=DemoGuard(self.lab,lambda:None)
+        state=self.demo.start(0,background=False,fresh=True,mode='simulation')
+        self.server.fraud_runner.pending.add('busy-fixture')
+        try:
+            with self.assertRaisesRegex(LabError,'current agent'):self.demo.restart(state['run_id'],background=False)
+        finally:self.server.fraud_runner.pending.discard('busy-fixture')
+        self.assertEqual(self.demo.status()['scene_id'],state['scene_id']);self.assertTrue(self.demo.status()['running'])
+        with patch('demo_guard.DAILY_WORLD_STEPS',1):
+            self.demo.tick(state['run_id'])
+            with self.assertRaisesRegex(LabError,'cannot replenish'):
+                self.demo.guard.allow('POST','/api/world/restart',{'expected_run':state['run_id']})
+        self.assertEqual(self.demo.status()['scene_id'],state['scene_id']);self.assertEqual(self.demo.status()['steps'],1)
+
+    def test_restart_stops_previous_background_world_before_starting_empty(self):
+        state=self.demo.start(0,background=True,fresh=True,mode='simulation');previous=self.demo.thread
+        result=self.demo.restart(state['run_id'],background=False)
+        self.assertFalse(previous.is_alive());self.assertEqual(result['steps'],0)
+        self.assertEqual(self.lab.db.execute('SELECT count(*) FROM financial_events').fetchone()[0],0)
+
     def test_world_opens_case_and_approved_knowledge_prevents_related_transfer(self):
         with patch('google.genai.Client.__init__',side_effect=AssertionError('No live client')) as client:
             state=self.demo.start(0,background=False)

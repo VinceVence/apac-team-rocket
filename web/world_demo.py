@@ -107,6 +107,21 @@ class WorldDemo:
             self.lab.db.execute("UPDATE world_demo_state SET running=0,note='Paused' WHERE id=1")
         self.checkpoint();return self.status()
 
+    def restart(self,expected_run,activity=2,speed=1,background=True):
+        """Archive this scene and start empty; accounting and limits survive."""
+        if type(expected_run) is not int or type(activity) is not int or activity not in range(1,5) or type(speed) is not int or speed not in (1,2,4):
+            raise LabError('Invalid restart controls.')
+        with self.lab.lock:
+            state=self.status()
+            if expected_run!=state['run_id']:return state
+            if state['restart_blocked']:raise LabError('Wait for the current agent or evidence work to finish before restarting.',409)
+            previous=self.thread
+            self.stop(expected_run)
+        if previous:
+            previous.join(timeout=5)
+            if previous.is_alive():raise LabError('The previous simulation is still stopping. Its saved scene is unchanged.',409)
+        return self.start(expected_run,activity,speed,background=background,fresh=True,mode='simulation')
+
     def incident(self, run_id, kind, repeat=False, cycle=0, background=False):
         """A scoped simulator event; observed payments are the investigator's evidence."""
         spec=dict(SCAMS[kind])
