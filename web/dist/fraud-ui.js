@@ -59,6 +59,10 @@ export function createFraudUI({$,api,state,setPlaying,setBusy,refresh,error,focu
     $('prevention-trace').textContent=job?JSON.stringify(publicEvidence({actions:job.trace,review_id:job.review_id,source:job.source.feature_provenance,replay:rule?.replay,rule_id:rule?.id,expires_at:rule?.expires_at}),null,2):'No safeguard has been proposed.';
   }
   function render(){
+    const analyst=demoAnalystState(report);
+    $('demo-analyst-approve').disabled=!analyst.enabled||!!state.replay;$('demo-analyst-approve').textContent=analyst.label;
+    $('demo-analyst-case').textContent=report?report.scenario_title+' · '+report.id:'Open a completed case.';
+    $('demo-analyst-status').textContent=report?analyst.detail:'';
     $('fraud-select').replaceChildren();for(const r of dashboard.reports)$('fraud-select').add(new Option(`${r.scenario_title||r.name} · ${names[r.status]}`,r.id));
     if(report)$('fraud-select').value=report.id;
     $('fraud-history').hidden=dashboard.reports.length<2;
@@ -78,9 +82,6 @@ export function createFraudUI({$,api,state,setPlaying,setBusy,refresh,error,focu
     let run=report.investigation;if(run?.report_revision!==report.revision)run=null;
     if(starting&&!run&&!report.preparation)report.preparation={status:'running',stage:'request',detail:'Sending the investigation request.'};
     const reviewed=report.status==='resolved';
-    const analyst=demoAnalystState(report);
-    $('demo-analyst-approve').disabled=!analyst.enabled;$('demo-analyst-approve').textContent=analyst.label;
-    $('demo-analyst-status').textContent=analyst.detail;
     const warnings=report.validation_warnings||[];$('fraud-unit-warning').hidden=!warnings.length;$('fraud-unit-warning').textContent=warnings.join(' ');$('fraud-approve').disabled=!!warnings.length;
     const resumable=report.harness?.can_resume===true;
     const stopped=run&&['failed','budget_exhausted','interrupted'].includes(run.status)&&!resumable;
@@ -89,7 +90,7 @@ export function createFraudUI({$,api,state,setPlaying,setBusy,refresh,error,focu
     if(learning())$('fraud-status').textContent='Prevention agent is learning from the approved resolution…';
     else if(automatic)$('fraud-status').textContent=activity.title;
     else $('fraud-status').textContent=names[report.status]||'Review the saved investigation.';
-    $('fraud-provider-note').textContent=(run?run.provider==='gemini':dashboard.agent_runtime?.live_enabled)?'Live investigation':'Offline rehearsal';
+    $('fraud-provider-note').textContent=report.presentation_mode==='replay'?'Recorded Gemini replay':(run?run.provider==='gemini':dashboard.agent_runtime?.live_enabled)?'Live investigation':'Offline rehearsal';
     const progress=renderCaseTracker(report,state.data?.demo,onNavigate);
     $('fraud-snapshot').hidden=!run?.snapshot;
     if(run?.snapshot)$('fraud-snapshot').textContent=`Frozen evidence · simulation date ${run.snapshot.as_of} · ${run.snapshot.id}. ${report.preparation?.detail||''}`;
@@ -183,7 +184,7 @@ export function createFraudUI({$,api,state,setPlaying,setBusy,refresh,error,focu
   async function select(id){pollRun='';report=await api('/api/fraud-desk/reports/'+encodeURIComponent(id));$('fraud-note').value='Reviewed the synthetic report and its transaction evidence.';render();focusCustomer(report.customer_id)}
   async function perform(fn){
     if(working||state.busy||state.stepping)return;let succeeded=false;working=true;setPlaying(false);setBusy(true);error('');$('fraud-status').textContent='Working locally…';
-    const controls=[...$('fraud-view').querySelectorAll('button,input,select,textarea')],disabled=controls.map(n=>n.disabled);controls.forEach(n=>n.disabled=true);
+    const controls=[...$('fraud-view').querySelectorAll('button,input,select,textarea'),$('demo-analyst-approve')],disabled=controls.map(n=>n.disabled);controls.forEach(n=>n.disabled=true);
     try{await fn();await refresh();await load();succeeded=true;$('fraud-status').textContent='Saved'}catch(e){error(e.message);$('fraud-status').textContent='Not saved'}
     finally{working=false;setBusy(false);controls.forEach((n,i)=>n.disabled=disabled[i]);if(succeeded)render()}
   }
@@ -213,5 +214,5 @@ export function createFraudUI({$,api,state,setPlaying,setBusy,refresh,error,focu
   $('prevention-prove').onclick=()=>perform(async()=>{await api('/api/world/prove',{expected_run:state.data.demo.run_id});location.hash='';});
   $('fraud-reply-form').onsubmit=e=>{e.preventDefault();perform(async()=>{report=await api('/api/fraud-desk/reply',{report_id:report.id,answer:$('fraud-reply').value,expected_revision:report.revision});$('fraud-reply').value='';if(report.auto_resume_error)error(report.auto_resume_error)})};
   $('fraud-report-form').onsubmit=e=>{e.preventDefault();perform(async()=>{report=await api('/api/fraud-desk/report',{customer_id:$('fraud-customer').value,story:$('fraud-report-story').value,message:$('fraud-report-message').value,event_ids:[$('fraud-event').value],request_id:crypto.randomUUID()});$('fraud-new-report').open=false;focusCustomer(report.customer_id)})};
-  return {load,demo,open:select,startInvestigation:()=>investigate(true),reset:()=>{clearTimeout(pollTimer);report=null;dashboard=null;pollRun='';pollKey='';pollProblem=''}};
+  return {load,demo,open:select,startInvestigation:()=>investigate(true),reset:()=>{clearTimeout(pollTimer);report=null;dashboard=null;pollRun='';pollKey='';pollProblem='';$('demo-analyst-approve').disabled=true;$('demo-analyst-case').textContent='Open a completed case.';$('demo-analyst-status').textContent=''}};
 }

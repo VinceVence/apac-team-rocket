@@ -47,7 +47,7 @@ export function decisionMap(report,selected=null){
     manual?'Saved evidence goes to a manual review.':run?.recommendation?'Next: Fraud Analyst review.':'Waiting for a recorded agent action.';
   if(['failed','interrupted','budget_exhausted'].includes(run?.status))nextAction='Investigation stopped. No automatic retry.';
   return {phase,live,manual,selected:focus?.number??null,
-    badge:origin==='gemini'?(live?'Live agent':'Recorded live decision'):origin==='fake'?'Offline rehearsal':manual?'Manual evidence review':'Waiting for investigator',
+    badge:report?.presentation_mode==='replay'?'Recorded Gemini replay':origin==='gemini'?(live?'Live agent':'Recorded live decision'):origin==='fake'?'Offline rehearsal':manual?'Manual evidence review':'Waiting for investigator',
     actor:!focus&&manual?'Fraud Analyst':roleNames[focus?.role]||'Resolution agent',actorIcon:!focus&&manual?'human':focus?.role&& !['resolution','case_lead'].includes(focus.role)?'specialist':'resolution',
     tool:focus?.tool||null,toolLabel:focus?.tool?(toolLabels[focus.tool]||pretty(focus.tool)):working?'Choosing a tool':'No tool chosen yet',
     reason:text(focus?.purpose)||'No public decision summary has been recorded yet.',

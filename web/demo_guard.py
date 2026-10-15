@@ -49,6 +49,7 @@ class DemoGuard:
                 is_report=not self.lab.db.execute('SELECT 1 FROM fraud_reports WHERE request_id=?',(body['request_id'],)).fetchone()
             is_step=path=='/api/world/step'
             is_start=path=='/api/world/restart' or path=='/api/world/start' and body.get('fresh',True)
+            guided_start=path=='/api/world/start' and body.get('mode','demo')=='demo'
             if is_start:
                 scene=self.lab.db.execute('SELECT run_id,running FROM world_demo_state WHERE id=1').fetchone()
                 is_start=bool(scene and (path=='/api/world/restart' or not scene['running']) and scene['run_id']==body.get('expected_run'))
@@ -57,15 +58,13 @@ class DemoGuard:
                 usage=self.lab.db.execute('SELECT * FROM demo_daily_usage WHERE day=?',(day,)).fetchone()
                 if is_start and usage['world_steps']>=DAILY_WORLD_STEPS:
                     raise LabError('Daily world-step limit reached. Restart cannot replenish this allowance; the current scene was kept.',429)
-                if is_start and path=='/api/world/start' and body.get('mode','demo')=='demo' and usage['reports']>=DAILY_REPORTS:
-                    raise LabError('Daily scam-report allowance reached. The current scene was kept. New demos reopen at 00:00 UTC.',429)
                 for label,used,added,limit in (('write',usage['writes'],1,DAILY_WRITES),
                     ('world-step',usage['world_steps'],int(is_step),DAILY_WORLD_STEPS),
                     ('new-report',usage['reports'],int(is_report),DAILY_REPORTS),
-                    ('fresh-demo',usage['starts'],int(is_start),DAILY_REPORTS)):
-                    if used+added>limit:raise LabError('Daily hosted '+label+' limit reached. No work was queued.',429)
+                    ('fresh-simulation',usage['starts'],int(is_start and not guided_start),DAILY_REPORTS)):
+                    if added and used+added>limit:raise LabError('Daily hosted '+label+' limit reached. No work was queued.',429)
                 self.lab.db.execute('UPDATE demo_daily_usage SET writes=writes+1,world_steps=world_steps+?,reports=reports+?,starts=starts+? WHERE day=?',
-                                    (int(is_step),int(is_report),int(is_start),day))
+                                    (int(is_step),int(is_report),int(is_start and not guided_start),day))
             if checkpoint:self.checkpoint()  # External work is admitted durably before it begins.
 
     def status(self):

@@ -2,7 +2,7 @@
 
 Public URL: https://minttown-1040017899050.us-central1.run.app/
 
-The public release supports real Gemini investigations. **Run world** generates synthetic transactions and reports; Gemini chooses tools, reads BigQuery evidence and proposes a resolution for analyst review. All three live flags are enabled, Vertex is enabled, and the runtime has only `aiplatform.endpoints.predict` for model access. The five previously saved live investigations remain available.
+The public release supports real Gemini investigations. **Run simulation** generates synthetic transactions and reports; Gemini chooses tools, reads frozen case-time ledger evidence and proposes a resolution for analyst review. Analytics is mirrored to BigQuery in batches; current new-case features are computed in Python from the canonical ledger, not by a BigQuery query. The runtime has only `aiplatform.endpoints.predict` for model access. The labelled recorded Gemini demo is available without new paid calls when live work cannot start.
 
 The October 13 limit increase preserves all existing usage and case histories. Availability is shared across visitors; a new browser session or server restart does not replenish budgets.
 
@@ -22,7 +22,7 @@ Google references: [native spend caps](https://docs.cloud.google.com/billing/doc
 
 ## Daily demo allowance
 
-Up to 100 model calls, 25 new reports, 25 BigQuery publications and 100 bounded queries per UTC day. World execution allows 600 steps and 1,500 mutating requests per day. Reads are limited to 600/minute and writes to 60/minute. Each publication remains capped at 20,000 rows/16 MiB; each query at 50 MiB, with the project-wide 1 GiB/day query quota retained. There is one active investigation, one queued, six seconds between model calls, one SDK attempt, and no automatic retries. Model failures open the persistent circuit.
+Up to 100 model calls, 25 simulation/submitted reports, 25 BigQuery publications and 100 bounded queries per UTC day. Guided starts and their server-created scam complaint are exempt from report/start quotas; paid calls still use the same meter. The browser-only recorded demo has no work quota. Live world execution allows 600 steps and 1,500 mutating requests per day. Reads are limited to 600/minute and writes to 60/minute. Each publication remains capped at 20,000 rows/16 MiB; each query at 50 MiB, with the project-wide 1 GiB/day query quota retained. There is one active investigation, one queued, six seconds between model calls, one SDK attempt, and no automatic retries. Model failures open the persistent circuit.
 
 ## Team development
 
@@ -30,7 +30,9 @@ Gab and Jansen use their supplied Google accounts. Both retain scoped Cloud Run 
 
 On October 14, Gab's access was expanded: project-scoped BigQuery data/jobs/models and dataset/table access management, excluding reservations and capacity purchases; Cloud Build Editor; administration of the existing `minttown` Cloud Run service and container repository; permission to act as the existing runtime and builder accounts; build-prefix object management and bucket metadata/list access. The BigQuery permissions are in the custom `minttownBigQueryManager` role. Jansen's existing grants were unchanged.
 
-Billing administration, project IAM administration, service enablement and Vertex training/endpoint creation were not granted. Resource creation can still incur charges outside the app ledger; the project-level shutdown guard is separate. Use your own Google credentials. Never copy the owner's ADC file or put credentials in source control. Enabling live inference or restoring Vertex after a shutdown is an owner operation; it requires reviewing both the cumulative budget and the app's existing spend ledger. GitHub collaborator invitations are separate and require verified GitHub usernames; email addresses alone do not confirm repository access.
+On October 15, Karlo (`karlomfdp@gmail.com`) received Vertex AI User, BigQuery Job User, Service Usage Consumer and Logs Viewer in this project. He can read `minttown_simulated_env`, `minttown_world` and `minttown_demo`, and write training outputs to `minttown_models`. He can act as `minttown-training@minttown-apac-2026.iam.gserviceaccount.com`, which has scoped data and artifact access. Model artifacts use `gs://minttown-apac-2026-demo-state/models/`; container uploads use the existing `minttown` Artifact Registry repository. The checkpoint prefix is not granted. No training jobs or service-account keys were created.
+
+Billing administration, project IAM administration and service enablement were not granted. Vertex AI User permits paid training and model resource operations outside the demo's model-call meter. The existing project budget/shutdown controls remain separate and delayed; they do not guarantee a hard total bill. Use your own Google credentials and stop idle training resources. Never copy the owner's ADC file or put credentials in source control. Enabling live inference or restoring Vertex after a shutdown is an owner operation; it requires reviewing both the cumulative budget and the app's existing spend ledger. GitHub collaborator invitations are separate and require verified GitHub usernames; email addresses alone do not confirm repository access.
 
 Detailed deployment, IAM and shutdown-test receipts remain in ignored `output/google-cloud/`. The guided and saved-result walkthrough is [demo-script.md](demo-script.md).
 

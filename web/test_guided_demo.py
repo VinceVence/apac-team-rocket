@@ -52,32 +52,27 @@ class GuidedDemoChecks(unittest.TestCase):
         demo.demo_action(state['run_id'],rid,'investigate')
         self.assertEqual(self.lab.db.execute('SELECT count(*) FROM fraud_agent_turns').fetchone()[0],count)
 
-    def test_full_report_allowance_keeps_the_scene_instead_of_starting_a_dead_demo(self):
+    def test_full_report_and_scene_quotas_do_not_block_the_guided_demo(self):
         from settings import DAILY_REPORTS
         demo=self.server.world_demo;demo.start(0,background=False,fresh=True,mode='simulation');demo.tick(1);demo.stop(1)
-        before=demo.status();events=self.lab.rows('SELECT id FROM financial_events');archives=self.lab.rows('SELECT * FROM demo_scene_archives')
-        with self.lab.db:self.lab.db.execute('UPDATE demo_daily_usage SET reports=? WHERE day=?',(DAILY_REPORTS,now()[:10]))
-        usage=self.server.demo_guard.status()['used'].copy()
-        with self.assertRaisesRegex(LabError,'scam-report allowance'):
-            self.server.demo_guard.allow('POST','/api/world/start',{'expected_run':1,'fresh':True,'mode':'demo'})
-        with self.assertRaisesRegex(LabError,'scam-report allowance'):
-            demo.start(1,background=False,fresh=True,mode='demo')
-        self.assertEqual(demo.status()['scene_id'],before['scene_id']);self.assertEqual(demo.status()['run_id'],1)
-        self.assertEqual(self.lab.rows('SELECT id FROM financial_events'),events)
-        self.assertEqual(self.lab.rows('SELECT * FROM demo_scene_archives'),archives)
-        self.assertEqual(self.server.demo_guard.status()['used'],usage)
+        with self.lab.db:self.lab.db.execute('UPDATE demo_daily_usage SET reports=?,starts=? WHERE day=?',(DAILY_REPORTS,DAILY_REPORTS,now()[:10]))
+        self.server.demo_guard.allow('POST','/api/world/start',{'expected_run':1,'fresh':True,'mode':'demo'})
+        state=demo.start(1,background=False,fresh=True,mode='demo')
+        for _ in range(6):demo.tick(state['run_id'])
+        self.assertTrue(demo.status()['focus_report_id'])
+        self.assertEqual(self.server.demo_guard.status()['used']['reports'],DAILY_REPORTS)
+        self.assertEqual(self.server.demo_guard.status()['used']['starts'],DAILY_REPORTS)
         self.assertEqual(self.lab.db.execute('SELECT count(*) FROM fraud_agent_turns').fetchone()[0],0)
 
-    def test_last_report_slot_is_reserved_before_reset_and_not_charged_twice(self):
+    def test_guided_complaint_does_not_consume_the_last_simulation_report_slot(self):
         from settings import DAILY_REPORTS
         demo=self.server.world_demo
         with self.lab.db:self.lab.db.execute('UPDATE demo_daily_usage SET reports=? WHERE day=?',(DAILY_REPORTS-1,now()[:10]))
         with patch('google.genai.Client.__init__',side_effect=AssertionError('No paid client')):
             state=demo.start(0,background=False,fresh=True,mode='demo')
-            self.assertEqual(self.server.demo_guard.status()['used']['reports'],DAILY_REPORTS)
+            self.assertEqual(self.server.demo_guard.status()['used']['reports'],DAILY_REPORTS-1)
             self.assertEqual(state['report_reserved'],1)
-            with self.assertRaisesRegex(LabError,'new-report'):
-                self.server.demo_guard.allow('POST','/api/fraud-desk/report',{'request_id':'competing-request'})
+            self.server.demo_guard.allow('POST','/api/fraud-desk/report',{'request_id':'competing-request'})
             for _ in range(6):demo.tick(state['run_id'])
             case=self.server.fraud_desk.detail(demo.status()['focus_report_id'])
             self.assertTrue(case['transactions']);self.assertEqual(case['preparation']['status'],'waiting')
@@ -94,7 +89,7 @@ class GuidedDemoChecks(unittest.TestCase):
             self.lab.db.execute('UPDATE demo_daily_usage SET reports=? WHERE day=?',(DAILY_REPORTS,now()[:10]))
         for _ in range(6):demo.tick(state['run_id'])
         result=demo.status();self.assertFalse(result['running']);self.assertIsNone(result['focus_report_id'])
-        self.assertIn('Daily scam-report allowance',result['scene_blocked_reason'])
+        self.assertIn('new-report limit',result['scene_blocked_reason'])
         self.assertEqual(result['incidents'][0]['status'],'budget_limited')
         self.assertEqual(result['incidents'][0]['event_ids'],'[]')
         self.assertEqual(self.lab.db.execute('SELECT count(*) FROM fraud_agent_turns').fetchone()[0],0)
@@ -271,12 +266,12 @@ class GuidedDemoChecks(unittest.TestCase):
             self.lab.db.execute("UPDATE fraud_live_control SET next_call_at=9999999999,blocked_reason='Retain this circuit' WHERE id=1")
         before=self.server.agents.budget();self.cloud.save(self.lab)
         demo=self.server.world_demo
-        for scene_number in range(2):
+        for _ in range(2):
             state=demo.start(demo.status()['run_id'],background=False,fresh=True);demo.stop(state['run_id'])
             after=self.server.agents.budget()
             self.assertEqual(after['committed_microusd_total'],before['committed_microusd_total']);self.assertEqual(after['calls_today'],before['calls_today'])
             self.assertEqual(self.cloud.daily_exports(self.lab),3)
-            self.assertEqual(self.server.demo_guard.status()['used']['reports'],6+scene_number)
+            self.assertEqual(self.server.demo_guard.status()['used']['reports'],5)
             self.assertEqual(self.server.demo_guard.status()['used']['starts'],2)
             self.assertEqual(self.lab.db.execute('SELECT queries FROM demo_usage_archive WHERE day=?',(day,)).fetchone()[0],4)
             self.assertEqual(self.lab.db.execute('SELECT blocked_reason FROM fraud_live_control').fetchone()[0],'Retain this circuit')
@@ -289,7 +284,7 @@ class GuidedDemoChecks(unittest.TestCase):
         try:
             self.assertEqual(restored.agents.budget()['committed_microusd_total'],before['committed_microusd_total'])
             self.assertEqual(restored.agents.budget()['calls_today'],before['calls_today'])
-            self.assertEqual(restored.demo_guard.status()['used']['reports'],7)
+            self.assertEqual(restored.demo_guard.status()['used']['reports'],5)
             self.assertEqual(restored_cloud.daily_exports(restored.lab),3)
         finally:restored.server_close();restored.lab.db.close()
 

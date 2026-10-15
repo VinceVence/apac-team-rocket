@@ -19,7 +19,7 @@ test('fast completed runs retain each tool, the specialist and judge rejection',
   const beats=demoBeats(demo,r);
   assert.equal(beats.find(b=>b.id==='turn-3').who,'Device & identity');
   assert.equal(beats.find(b=>b.id==='judges').title,'The judges withheld this draft');
-  assert.equal(beats.at(-1).id,'review');assert.equal(beats.at(-1).action,'review');
+  assert.equal(beats.at(-1).id,'stopped');assert.equal(beats.at(-1).action,'replay');
   assert.equal(beats.some(b=>b.id==='knowledge'),false);
 });
 
@@ -42,7 +42,7 @@ test('fresh scenes and foreign cases do not carry old investigation facts',()=>{
 
 test('rejected report admission explains the stop without promising a scam or investigation',()=>{
   const beats=demoBeats({...demo,focus_report_id:null,running:false,scene_blocked_reason:'Daily scam-report allowance reached.'},null);
-  assert.equal(beats.length,1);assert.equal(beats[0].exit,true);assert.match(beats[0].title,/could not open/);
+  assert.equal(beats.length,1);assert.equal(beats[0].action,'replay');assert.match(beats[0].title,/recorded Gemini/);
   assert.match(beats[0].copy,/allowance reached/);assert.equal(beats[0].done,undefined);
   assert.equal(beats[0].wait,'No investigation ran');
 });
@@ -77,9 +77,9 @@ test('Next from live activity visits unread tools instead of skipping to review'
   assert.equal(replied[1].target,'#agent-live-panel');assert.equal(nextGuideStep(replied,'reply'),'turn-3');
 });
 
-test('a rejected candidate stays inactive while Next can use reviewed-recipient protection',()=>{
+test('a rejected candidate stays inactive while Next opens a labelled Gemini recording',()=>{
   const beats=demoBeats(demo,{...report,status:'resolved',reviews:[{}],prevention:{status:'rejected',rule:{status:'rejected',replay:{passed:false}}}});
-  assert.equal(beats.at(-1).id,'prevention');assert.equal(beats.at(-1).action,'activate');assert.match(beats.at(-1).copy,/unapproved|unavailable|did not pass/);
+  assert.equal(beats.at(-1).id,'prevention');assert.equal(beats.at(-1).action,'replay');assert.match(beats.at(-1).copy,/unavailable|did not pass/);
 });
 
 

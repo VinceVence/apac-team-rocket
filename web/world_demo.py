@@ -69,9 +69,9 @@ class WorldDemo:
             if self.lab.db.execute("SELECT 1 FROM fraud_case_preparation WHERE status='running' LIMIT 1").fetchone():restart_blocked=True
             if self.environment_publisher and self.lab.db.execute("SELECT 1 FROM environment_publications WHERE status!='completed' LIMIT 1").fetchone():restart_blocked=True
             allowance=self.guard.status() if self.guard else None
-            start_blocked='Daily scam-report allowance reached. Existing cases remain available; new demos reopen at 00:00 UTC.' if allowance and allowance['used']['reports']>=allowance['limits']['new_reports_per_day'] else None
+            start_blocked='Live world allowance reached. The recorded Gemini demo remains available.' if allowance and allowance['used']['world_steps']>=allowance['limits']['world_steps_per_day'] else None
             failed_scene=bool(state['guided'] and not state['focus_report_id'] and any(i['id'].startswith('world-scam-'+str(state['run_id'])+'-') and i['status'] in ('budget_limited','no_funds') for i in incidents))
-            scene_blocked=(start_blocked or (state['note'] if state['note'] not in ('Paused','Running','Ready') else 'The scam report was not created. No investigation ran.')) if failed_scene else None
+            scene_blocked=(start_blocked or (state['note'] if state['note'] not in ('Paused','Running','Ready') else 'The scam report was not created. No investigation ran.')) if failed_scene or (state['guided'] and not state['focus_report_id'] and not state['running'] and state['steps']) else None
             return {**state,'mode':'simulation' if state['continuous'] else 'demo' if state['guided'] else 'episode',
                     'max_steps':None if state['continuous'] else RUN_STEPS,'provider':provider,'incidents':incidents,'blocked_payments':totals[0],
                     'protection':{'count':totals[0],'amount_minor':totals[1],'recent':protected},
@@ -94,13 +94,9 @@ class WorldDemo:
             resume=mode=='simulation' and current['continuous'] and not fresh
             run_id=current['run_id'] if resume else current['run_id']+1
             guided=mode=='demo' or mode is None and (fresh or current['guided'])
-            # Reserve the one guided complaint before replacing the scene. The
-            # durable daily counter survives reset; this is not extra allowance.
-            report_reserved=0
-            if guided and self.guard:
-                if current['start_blocked_reason']:raise LabError(current['start_blocked_reason'],429)
-                self.guard.allow('POST','/api/fraud-desk/report',{'request_id':'world-scam-'+str(run_id)+'-phishing-first'})
-                report_reserved=1
+            # A server-created guided complaint is local data, not a paid call.
+            # Only continuous/user-submitted reports consume report admission.
+            report_reserved=int(guided)
             if fresh:
                 if not self.resetter:raise LabError('Fresh demo reset is unavailable.',409)
                 self.resetter.reset(current['run_id']+1)

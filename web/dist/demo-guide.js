@@ -9,12 +9,13 @@ export function demoBeats(demo,report){
   if(!demo?.guided)return [];
   const beats=[],add=(id,view,target,title,copy,extra={})=>beats.push({id,view,target,title,copy,...extra});
   const stopped=!demo.focus_report_id&&demo.scene_blocked_reason;
-  add('world','world','.map-shell',stopped?'This demo could not open a scam case':'Everyday payments become evidence',stopped||'Start with zero transactions. Watch numbered residents make payments before someone calls for help.',{who:stopped?'Demo paused':'Live world',wait:stopped?'No investigation ran':'Waiting for a report',exit:!!stopped});
+  add('world','world','.map-shell',stopped?'Continue with the recorded Gemini case':'Everyday payments become evidence',stopped||(demo.replay?'This playback uses a saved Gemini case. Next reveals recorded payments; no new model call or cloud write is made.':'Start with zero transactions. Watch numbered residents make payments before someone calls for help.'),{who:stopped?'Recorded demo available':demo.replay?'Recorded world':'Live world',wait:stopped?'No investigation ran':'Waiting for a report',action:stopped?'replay':demo.replay&&demo.replay_stage==='empty'?'payments':null});
+  if(demo.replay&&demo.replay_stage!=='empty')add('payments','world','.map-shell','Residents make ordinary payments','These recorded payments become account history. Next shows the deceptive transfer and the resident’s complaint.',{who:'Recorded transactions',action:demo.replay_stage==='payments'?'scam':null});
   if(!demo.focus_report_id)return beats;
   add('complaint','world',(demo.incidents||[]).some(i=>i.report_id===demo.focus_report_id&&i.report_status!=='resolved')?'#fraud-sprite-focus':'#world-alert','A customer reports a scam','This resident is calling for help and has filed a scam report. Follow the investigation to see what the agent checks.',{who:'Customer',next:'Follow investigation'});
   if(report?.id!==demo.focus_report_id)return beats;
   const waitingForNext=!report.investigation&&report.preparation?.status==='waiting'&&report.preparation?.stage==='demo_investigation';
-  add('report','resolution','.report-details','Read the customer’s report',waitingForNext?'Next starts the resolution agent. Watch it choose tools and examine the returned evidence.':'This report is a claim to investigate. The agent must compare it with independent records.',{who:'Customer report',action:waitingForNext?'investigate':null});
+  add('report','resolution','.report-details','Read the customer’s report',waitingForNext?(demo.replay?'Next opens the original Gemini investigation: its actual tool choices, evidence and proposed resolution.':'Next starts the resolution agent. Watch it choose tools and examine the returned evidence.'):'This report is a claim to investigate. The agent must compare it with independent records.',{who:'Customer report',action:waitingForNext?'investigate':null});
   const trail=decisionTrail(report);
   for(const t of trail.filter(t=>t.tool&&t.status==='completed')){
     add('turn-'+t.number,'resolution',`#guide-turn-${t.number}`,toolLabels[t.tool]||pretty(t.tool),t.purpose||'No public decision summary was recorded.',{who:roleNames[t.role]||'Resolution agent',tool:t.tool,detail:short(t.finding)});
@@ -25,6 +26,7 @@ export function demoBeats(demo,report){
   const judged=checks.find(c=>c.judges?.some(j=>j.judge==='resolution'));
   if(judged)add('judges','resolution','.harness-judges',judged.passed?'The draft passed local checks':'The judges withheld this draft',judged.passed?'Evidence, model contracts and resolution claims passed the checks. An analyst still makes the decision.':'A contract or claim failed validation. The draft cannot proceed as an approved resolution.',{who:'Harness judges',detail:short(judged.judges.filter(j=>!j.passed).flatMap(j=>j.blockers||[]).join(' '))});
   if(run?.recommendation)add('proposal','resolution','#fraud-packet',manualInvestigation(run)?'Read the manual review proposal':'Read the proposed resolution','Review the suggested action, cited evidence and what remains uncertain.',{who:manualInvestigation(run)?'Demo analyst':'Resolution agent',next:'Show analyst review'});
+  if(!demo.replay&&activity.stage==='blocked'){add('stopped','resolution','#agent-live-panel','Continue with a completed Gemini investigation','The live attempt stopped. Next opens a labelled saved Gemini case, including its review and changed-recipient prevention check. No request is retried.',{who:'Recorded demo available',action:'replay'});return beats}
   const actions=demo.presentation_actions||{};
   if(report.status==='awaiting_customer')add('reply','resolution','#agent-live-panel','The customer provides more context','Next supplies the known answer from this synthetic customer so the agent can continue.',{who:'Demo customer',action:'answer'});
   else if(!waitingForNext&&!activity.active&&report.status!=='resolved')add('review','resolution','#human-review-stage','Assume the analyst approves','For this demo, approval is assumed after reviewing the recorded transfer and scam request. Next saves the resolution and publishes its lesson.',{who:'Demo analyst',action:'review',detail:activity.stage==='blocked'?'The model draft stopped. The saved evidence goes to the simulated analyst; no model retry.':''});
@@ -35,6 +37,7 @@ export function demoBeats(demo,report){
   const job=report.prevention,rule=job?.rule;
   if(actions.learn||job){
     const working=['ready','queued','running'].includes(job?.status),passed=rule?.replay?.passed;
+    if(!working&&!passed&&!demo.replay&&!actions.activate){add('prevention','resolution','#prevention-panel','Continue with a validated saved safeguard','This live candidate is unavailable or did not pass. Next opens the recorded Gemini case with a verified changed-recipient check; the failed candidate stays inactive.',{who:'Recorded demo available',action:'replay'});return beats}
     add('prevention','resolution','#prevention-panel',working?'The prevention agent tests the lesson':passed?'Prepare the next payment check':'Use the approved recipient watch',working?'The learner checks a narrow candidate against similar requests and legitimate controls.':passed?'The candidate passed synthetic replay. Next applies the assumed demo analyst activation.':'A broader candidate is unavailable or did not pass. The approved recipient watch still checks the next payment locally.',{who:'Prevention',live:working,action:!working&&!actions.activate?'activate':null});
   }
   if(actions.activate)add('repeat','world','.map-shell','A similar scam happens again','Another resident receives a suspicious request. Next sends the attempt through the actual payment check before any debit.',{who:'Next payment',action:demo.phase==='protected'?null:'prove'});
@@ -58,7 +61,7 @@ export function nextGuideStep(beats,current,seen=new Set()){
   return beats[i+1]?.id||null;
 }
 export const demoPhases=['World','Report','Investigate','Review','Learn','Protect'];
-export function demoPhase(id){return id==='world'?0:['complaint','report'].includes(id)?1:id==='review'?3:['knowledge','prevention'].includes(id)?4:['repeat','protected'].includes(id)?5:2}
+export function demoPhase(id){return ['world','payments'].includes(id)?0:['complaint','report'].includes(id)?1:id==='review'?3:['knowledge','prevention'].includes(id)?4:['repeat','protected'].includes(id)?5:2}
 export function investigationProgress(report,demo={}){
   const a=caseActivity(report,demo),rows=[],completed=a.completed,last=a.latest;
   if(!report?.investigation){rows.push({label:'Customer report saved',status:'done'});if(a.active)rows.push({label:a.title,status:'active',detail:a.detail})}
@@ -75,7 +78,7 @@ export function investigationProgress(report,demo={}){
     detail:ready?'The recorded checks are ready. Next reviews each result before analyst approval.':a.detail};
 }
 
-export function createDemoGuide({state,openCase,showWorld,error,demoAction,residentPosition}){
+export function createDemoGuide({state,openCase,showWorld,error,demoAction,residentPosition,onClose}){
   const root=document.createElement('div');root.id='demo-guide';root.hidden=true;root.setAttribute('role','dialog');root.setAttribute('aria-modal','true');root.setAttribute('aria-label','Guided fraud demo');
   root.innerHTML='<section class="demo-presentation"><header class="demo-stage-header"><span class="demo-stage-brand">Mint Town <small>Guided demo</small></span><nav class="demo-stage-track" aria-label="Demo flow"></nav><button type="button" class="guide-close" aria-label="Exit demo">×</button></header><div class="demo-stage-main"><section class="demo-visual" aria-label="Current demo scene"></section><aside class="guide-caption" role="region" aria-label="Demo guide"><span class="guide-who"></span><h2></h2><span class="guide-reason-label" hidden>Agent’s stated reason</span><p class="guide-copy"></p><p class="guide-detail"></p><p class="guide-error" role="alert" hidden></p><footer><span class="guide-progress"></span><button type="button" class="guide-back">Back</button><button type="button" class="primary-button guide-next">Next</button></footer><small class="guide-wait"></small></aside></div></section>';
   document.body.append(root);
@@ -84,7 +87,7 @@ export function createDemoGuide({state,openCase,showWorld,error,demoAction,resid
   const money=n=>'₱'+(n/100).toLocaleString('en-PH',{maximumFractionDigits:0});
   let scene=null,report=null,active=false,beats=[],current='world',busy=false,entering=false,priorFocus=null,canvasFrame=0,worldCanvas=null,lastPaint=0;
   const saved=(key,value)=>{try{if(value===undefined)return sessionStorage.getItem(key);sessionStorage.setItem(key,value)}catch{}return null};
-  function close(){active=false;root.hidden=true;app.inert=false;document.body.classList.remove('guide-open');cancelAnimationFrame(canvasFrame);worldCanvas=null;saved('minttown-guide-dismissed',scene);const focus=priorFocus?.isConnected&&!priorFocus.disabled?priorFocus:document.getElementById('play-world');focus?.focus();priorFocus=null}
+  function close(){const wasActive=active;active=false;root.hidden=true;app.inert=false;document.body.classList.remove('guide-open');cancelAnimationFrame(canvasFrame);worldCanvas=null;saved('minttown-guide-dismissed',scene);const focus=priorFocus?.isConnected&&!priorFocus.disabled?priorFocus:document.getElementById('play-world');focus?.focus();priorFocus=null;if(wasActive)onClose?.()}
   function sceneCanvas(){worldCanvas=el('canvas',undefined,'demo-world-canvas');worldCanvas.width=960;worldCanvas.height=600;worldCanvas.setAttribute('aria-label','Live Mint Town residents and recorded payment alerts');visual.append(worldCanvas);copyWorld()}
   function copyWorld(time=0){cancelAnimationFrame(canvasFrame);if(!active||!worldCanvas)return;if(time-lastPaint>32||!time){const source=document.getElementById('town-map'),ctx=worldCanvas.getContext('2d');ctx.drawImage(source,0,0,960,600);
     if(current==='repeat'&&state.data.demo.phase!=='protected'){
@@ -96,7 +99,7 @@ export function createDemoGuide({state,openCase,showWorld,error,demoAction,resid
   function paint(b){
     cancelAnimationFrame(canvasFrame);worldCanvas=null;visual.replaceChildren();
     const d=state.data.demo,run=report?.investigation,job=report?.prevention,rule=job?.rule,actions=d.presentation_actions||{},tx=report?.transactions||[],total=tx.reduce((s,t)=>s+t.amount_minor,0);
-    if(['world','complaint','repeat','protected'].includes(b.id)){
+    if(['world','payments','complaint','repeat','protected'].includes(b.id)){
       const heading=el('div',undefined,'demo-scene-label');heading.append(agentIcon(['repeat','protected'].includes(b.id)?'prevention':b.id==='complaint'?'human':'knowledge'),el('strong',b.id==='protected'?'The next payment was protected':b.id==='repeat'?'Resident 2 receives a suspicious request':b.id==='complaint'?'Resident '+Number((d.focus_customer_id||'C001').slice(1))+' asks for help':'Watch the town transact'));visual.append(heading);sceneCanvas();
       const results=el('div',undefined,'demo-world-results');
       if(b.id==='protected')facts(results,[['Suspicious payment','Held before debit'],['Legitimate payment','Completed'],['Check location','Local payment gateway']]);
@@ -125,10 +128,12 @@ export function createDemoGuide({state,openCase,showWorld,error,demoAction,resid
     if(!active||!beats.length)return;const i=beats.findIndex(b=>b.id===current);let b=beats[i];if(!b)return;
     if(b.id==='live'){const map=decisionMap(report),progress=investigationProgress(report,state.data.demo);b={...b,who:map.actor,title:map.phase==='choosing'?'The agent is choosing its next check':map.tool?map.toolLabel:progress.title,copy:map.tool?map.reason:progress.detail,detail:map.result.summary,live:map.live}}
     root.hidden=false;app.inert=true;document.body.classList.add('guide-open');
+    $('.demo-stage-brand small').textContent=state.data.demo.replay?'Recorded Gemini replay':'Guided demo';
     $('.guide-reason-label').hidden=!(b.tool||(b.id==='live'&&decisionMap(report).tool));
     $('.guide-who').textContent=b.who;$('.guide-caption h2').textContent=b.title;$('.guide-copy').textContent=b.copy;$('.guide-detail').textContent=b.detail||'';$('.guide-detail').hidden=!b.detail;
     const stage=demoPhase(b.id);$('.guide-progress').textContent=b.exit?'Paused':b.done?'Demo complete':demoPhases[stage];const next=nextGuideStep(beats,current,seen);$('.guide-next').textContent=busy?'Working…':b.exit?'Return to town':b.done?'Finish demo':'Next';$('.guide-next').disabled=busy||(!next&&!b.action&&!b.done&&!b.exit&&b.id!=='complaint');$('.guide-back').disabled=busy||i===0;
     $('.guide-wait').textContent=b.exit?'No model request was retried.':b.done?'Finish returns to the town.':$('.guide-next').disabled&&b.id==='world'?'World running · the first report will appear shortly.':b.live?'Live results continue here. Next is available when the next result is ready.':b.action==='review'?'Next records the assumed demo approval.':b.action==='activate'?'Next enables only the reviewed protection.':'Read at your pace. Click Next to continue.';
+    if(state.data.demo.replay)$('.guide-wait').textContent='Recorded Gemini case · demo analyst approval · no new calls or current-world changes.';
     $('.demo-stage-track').replaceChildren();demoPhases.forEach((label,n)=>{const done=n<stage||b.done,v=el('span',undefined,done?'complete':n===stage?'current':'');if(n===stage)v.setAttribute('aria-current','step');v.append(el('i',done?'✓':'','phase-mark'),el('span',label));$('.demo-stage-track').append(v)});
     paint(b);seen.add(current);if(!root.contains(document.activeElement))($('.guide-next').disabled?$('.guide-close'):$('.guide-next')).focus({preventScroll:true});
   }
