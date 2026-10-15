@@ -117,4 +117,31 @@ class LearningLoopChecks(unittest.TestCase):
         packet={'harness_version':'current','remaining_generations':2,'observations':[{'tool':'get_case_evidence','result':{}}]}
         self.assertEqual(available_tools(packet),('submit_case_resolution',))
 
+    def test_native_citations_allow_only_retrieved_memories_and_recorded_receipts(self):
+        from google.adk.tools import FunctionTool
+        from fraud_adk import tools_for
+        case=self.s.fraud_desk.demo('phishing','citation-boundaries');agent=self.s.fraud_agent
+        run=agent.start(case['id'],experiment_arm='single')
+        def schema():
+            fn=next(f for f in tools_for(agent,run['id']) if f.__name__=='submit_case_resolution')
+            return FunctionTool(fn)._get_declaration().parameters_json_schema['properties']
+        for field in ('memory_ids','receipt_ids'):self.assertEqual(schema()[field]['maxItems'],0)
+        run['context']['memories']=[{'id':'MEM-retrieved'}]
+        with self.s.lab.db:self.s.lab.db.execute('UPDATE fraud_investigations SET context=? WHERE id=?',(json.dumps(run['context']),run['id']))
+        memory=schema()['memory_ids']['items']
+        self.assertEqual(memory.get('const') or memory.get('enum'), 'MEM-retrieved' if 'const' in memory else ['MEM-retrieved'])
+        self.assertEqual(agent.packet(self.s.fraud_desk.run(run['id']))['citation_contract']['retrieved_memory_ids'],['MEM-retrieved'])
+
+    def test_withheld_knowledge_cannot_leak_through_recipient_alerts(self):
+        desk=self.s.fraud_desk;case=desk.demo('phishing','withheld-alert')
+        row=self.s.lab.db.execute('SELECT request_json FROM fraud_reports WHERE id=?',(case['id'],)).fetchone()
+        request=json.loads(row[0]);request['evaluation']={'knowledge_mode':'withheld'}
+        transaction=desk.transactions(case)[0];transaction['metadata']['review_flags']=[{'memory_id':'MEM-alert-only'}]
+        with self.s.lab.db:
+            self.s.lab.db.execute('UPDATE fraud_reports SET request_json=? WHERE id=?',(json.dumps(request),case['id']))
+            self.s.lab.db.execute('UPDATE financial_events SET metadata=? WHERE id=?',(json.dumps(transaction['metadata']),transaction['id']))
+        run=self.s.fraud_agent.start(case['id']);packet=self.s.fraud_agent.packet(run)
+        self.assertEqual(packet['ingestion_flags'],[]);self.assertEqual(packet['reviewed_memory_count'],0)
+        self.assertNotIn('MEM-alert-only',json.dumps(packet))
+
 if __name__=='__main__':unittest.main()

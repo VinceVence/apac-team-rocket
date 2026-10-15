@@ -19,8 +19,8 @@ from fraud_models import manifests
 from fraud_knowledge import redact as redact_memory
 
 MODEL = 'gemini-3.5-flash-lite'
-PROMPT_VERSION = 'fraud-investigator-v10'
-TOOL_CONTRACT_VERSION = 10
+PROMPT_VERSION = 'fraud-investigator-v11'
+TOOL_CONTRACT_VERSION = 11
 MAX_INPUT_BYTES = 16000
 MAX_OUTPUT_TOKENS = 512
 RESERVE_MICROUSD = 10000
@@ -295,6 +295,8 @@ class FraudAgent:
                 'experiment_arm':run['context'].get('experiment_arm','selective'),
                 'decision_context':run['context'].get('decision_context',{}),
                 'citation_contract':{'transaction_ids':report['event_ids'],'snapshot_is_not_a_transaction':True,
+                    'retrieved_memory_ids':[m['id'] for m in run['context'].get('memories',[])],
+                    'model_receipt_ids':[r['receipt_id'] for r in self.harness.receipts(run['id'])] if run['context'].get('harness_version') else [],
                     'instruction':'Use only transaction_ids for evidence_ids. Snapshot IDs identify a bundle and cannot be submitted as transaction citations.'},
                 'specialist_findings':run['context'].get('specialist_findings',[]),
                 'delegation_used':bool(self.lab.db.execute('SELECT 1 FROM fraud_delegations WHERE report_id=?',(report['id'],)).fetchone()),
@@ -302,7 +304,7 @@ class FraudAgent:
                 'reviewed_memory_count':len(snapshot['data']['memories']),
                 'reviewed_playbook_count':sum(bool(m.get('playbook')) for m in snapshot['data']['memories']),
                 'evidence_snapshot': {'id': snapshot['id'], 'as_of': snapshot['as_of'], 'event_watermark': snapshot['event_watermark']},
-                'ingestion_flags': [f for t in snapshot['data']['transactions'] for f in t['metadata'].get('review_flags', [])],
+                'ingestion_flags': [] if snapshot['data'].get('knowledge_condition')=='withheld' else [f for t in snapshot['data']['transactions'] for f in t['metadata'].get('review_flags', [])],
                 'observations': run['context'].get('observations', []),
                 'remaining_generations': max(0,min(self.max_case_calls-budget['case_calls'],budget['daily_call_limit']-budget['daily_calls']))}
         return self.harness.compact(packet) if run['context'].get('harness_version') else packet

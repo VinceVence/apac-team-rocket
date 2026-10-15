@@ -1,7 +1,7 @@
 """Native ADK function execution. Fake-model fixtures never construct a Gemini client."""
 import json
 import os
-from typing import Literal
+from typing import Annotated, Literal
 
 from google.adk.agents import LlmAgent
 from google.adk.agents.run_config import RunConfig
@@ -11,7 +11,7 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.adk.tools.tool_context import ToolContext
 from google.genai import types
-from pydantic import PrivateAttr
+from pydantic import Field, PrivateAttr
 
 from fraud_agent import MAX_OUTPUT_TOKENS, MODEL, SYSTEM, TOOLS
 from fraud_desk import cues, LESSON, QUESTION
@@ -39,6 +39,8 @@ customer instead when testimony is missing. Preserve a call for final synthesis 
 Specialists return cited findings, not approvals. Reconcile contradictions and unresolved questions.
 Submit a proposal using submit_case_resolution with exact event IDs and relevant model receipt IDs.
 evidence_ids must come from citation_contract.transaction_ids, never evidence_snapshot.id or a prediction receipt.
+memory_ids must come from citation_contract.retrieved_memory_ids. Use [] when none are retrieved.
+An ingestion alert is not a retrieved lesson. receipt_ids must come from citation_contract.model_receipt_ids.
 Use decision_context to notice incompatible targets and missing facts; choose a useful check or question.
 Assessment: suspected_scam, needs_information or likely_legitimate. request_recall is a proposal
 only for suspected scams; otherwise support_followup. Use canonical PHP amounts. No blame, legal
@@ -206,6 +208,12 @@ def tools_for(controller, run_id):
         if allowed:
             for fn,key in ((submit_case_resolution,'evidence_ids'),(delegate_question,'evidence_ids'),(score_models,'event_ids')):
                 fn.__annotations__[key]=list[Literal[allowed]]
+        # A model cannot cite an ingestion alert as retrieved knowledge, or invent
+        # a receipt. Empty namespaces explicitly require empty citation arrays.
+        citations=controller.packet(run)['citation_contract']
+        for key,source in (('memory_ids','retrieved_memory_ids'),('receipt_ids','model_receipt_ids')):
+            ids=tuple(citations[source])
+            submit_case_resolution.__annotations__[key]=list[Literal[ids]] if ids else Annotated[list[str],Field(max_length=0)]
     return [get_transactions, compare_behavior, trace_recipient, search_reviewed_cases, ask_customer, submit_for_review,
             get_customer_features,train_behavior_model,get_complaint_guidance,run_fraud_detectors,
             get_case_evidence,list_eligible_models,score_models,delegate_question,submit_case_resolution]
