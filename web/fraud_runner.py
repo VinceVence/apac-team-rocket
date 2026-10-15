@@ -20,6 +20,7 @@ class InvestigationRunner:
         self.stopping = threading.Event()
         self.prevention = None
         self.risk_lab = None
+        self.on_learning_complete = None
 
     def learn(self, report_id, mode='fake'):
         if not self.prevention:raise LabError('Prevention learning is unavailable.',409)
@@ -45,7 +46,10 @@ class InvestigationRunner:
         finally:
             with self.lab.lock,self.lab.db:
                 self.lab.db.execute("UPDATE prevention_jobs SET status='interrupted',error='Worker stopped; no retry was made.' WHERE id=? AND status IN ('queued','running')",(job_id,))
-                self.pending.discard(job_id)
+            try:
+                if self.on_learning_complete:self.on_learning_complete(self.prevention.job(job_id)['report_id'])
+            finally:
+                with self.lab.lock:self.pending.discard(job_id)
             self.agent.checkpoint()
 
     def execution(self, run_id, status):

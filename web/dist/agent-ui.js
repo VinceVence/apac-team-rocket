@@ -22,6 +22,11 @@ export function publicEvidence(value){
   if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).filter(([k])=>!/(?:cost|budget|usd|microusd|tokens|provider|model|manifest|artifact|calls|reservation)/i.test(k)).map(([k,v])=>[k,publicEvidence(v)]));
   return typeof value==='string'?cleanText(value):value;
 }
+export function demoAnalystState(report){
+  const a=report?.demo_analyst;
+  return {enabled:a?.eligible===true,label:a?.status==='learning'?'Testing safeguard…':a?.status==='activated'?'Demo approved':a?.status==='reviewed'?'Demo reviewed':'Auto-approve demo',
+    detail:cleanText(a?.detail||'Available for completed cases from the current simulation.')};
+}
 export function caseActivity(report,demo={}){
   const run=report?.investigation,prep=report?.preparation,execution=run?.context?.execution?.status;
   const trail=report?.decision_trail||[],completed=trail.filter(t=>t.status==='completed'&&t.tool),last=trail.at(-1);
@@ -73,19 +78,20 @@ export function renderPreventionFlow(job){
 export function caseProgress(report,demo={}){
   const run=report?.investigation,job=report?.prevention,reviewed=!!report?.reviews?.length&&report.status==='resolved';
   const stopped=['failed','interrupted','budget_exhausted'].includes(run?.status);
-  const attention=stopped||report?.status==='needs_review'||['blocked','interrupted'].includes(report?.preparation?.status);
+  const evidenceBlocked=['blocked','interrupted'].includes(report?.preparation?.status)&&!run?.snapshot;
+  const attention=stopped||report?.status==='needs_review'||evidenceBlocked;
   const current=reviewed?2:report?.status==='awaiting_review'||stopped||report?.status==='needs_review'?1:0;
   const working=caseActivity(report,demo).active;
   const learning=['queued','running'].includes(job?.status);
   const active=job?.rule?.status==='active',protectedCase=active&&demo.focus_report_id===report?.id&&demo.phase==='protected';
-  const statuses=[reviewed||report?.status==='awaiting_review'?'Investigation complete':attention?'Needs attention':report?.status==='awaiting_customer'?'Waiting for customer':working?(run?'Investigating':'Preparing evidence'):'Ready',
-    reviewed?'Reviewed':current===1?'Your decision':'Waiting for evidence',
+  const statuses=[reviewed||report?.status==='awaiting_review'?'Investigation complete':evidenceBlocked?'Evidence blocked':attention?'Needs attention':report?.status==='awaiting_customer'?'Waiting for customer':working?(run?'Investigating':'Preparing evidence'):'Ready',
+    reviewed?(report.demo_analyst?.assumption?'Demo-approved':'Reviewed'):evidenceBlocked?'Evidence unavailable':current===1?'Your decision':'Waiting for evidence',
     protectedCase?'Protection verified':active?'Safeguard active':job?.status==='rejected'?'Needs revision':learning?'Learning':job?.status==='awaiting_activation'?'Ready to enable':job&&['failed','interrupted','budget_exhausted'].includes(job.status)?'Needs attention':reviewed?'Ready to learn':'Waiting for review'];
   return {current,statuses,working:working||learning,protected:protectedCase};
 }
 export function renderCaseTracker(report,demo,onNavigate){
   const p=caseProgress(report,demo),root=document.getElementById('case-tracker');root.replaceChildren();
-  const stages=[['resolution','Resolution agent','resolution-stage'],['human','Human review','human-review-stage'],['prevention','Prevention agent','prevention-stage']];
+  const stages=[['resolution','Resolution agent','resolution-stage'],['human','Fraud Analyst','human-review-stage'],['prevention','Prevention agent','prevention-stage']];
   stages.forEach(([role,label,id],i)=>{
     const button=document.createElement('button');button.type='button';button.className='case-step '+(i<p.current||p.protected?'complete':i===p.current?'current':'waiting');if(i===p.current)button.setAttribute('aria-current','step');
     button.append(agentIcon(role));const text=document.createElement('span'),name=document.createElement('strong'),status=document.createElement('small');name.textContent=label;status.textContent=p.statuses[i];text.append(name,status);button.append(text);

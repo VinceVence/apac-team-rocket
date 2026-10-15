@@ -47,6 +47,7 @@ class FraudDesk:
         self.lab, self.world = lab, world
         self.agent = None
         self.prevention = None
+        self.demo_analyst = None
         fraud_knowledge.initialize(lab)
         lab.db.executescript('''
         CREATE TABLE IF NOT EXISTS fraud_reports(
@@ -144,6 +145,7 @@ class FraudDesk:
                 checks=report.get('harness',{}).get('checks',[])
                 if report['investigation']['status']=='awaiting_review' and checks and not checks[0]['passed']:
                     report['validation_warnings'] += [b for j in checks[0]['judges'] for b in j['blockers']]
+            if self.demo_analyst:report['demo_analyst']=self.demo_analyst.status(report)
             return report
 
     def dashboard(self):

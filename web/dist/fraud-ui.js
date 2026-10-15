@@ -1,5 +1,5 @@
 import {renderHarness,roleNames} from './harness-ui.js';
-import {agentIcon,pretty,toolLabels,cleanText,publicEvidence,renderCaseTracker,caseActivity,renderAgentActivity,renderPreventionFlow} from './agent-ui.js';
+import {agentIcon,pretty,toolLabels,cleanText,publicEvidence,renderCaseTracker,caseActivity,renderAgentActivity,renderPreventionFlow,demoAnalystState} from './agent-ui.js';
 export function createFraudUI({$,api,state,setPlaying,setBusy,refresh,error,focusCustomer,onRender=()=>{},onNavigate=()=>{}}){
   let dashboard=null,report=null,working=false,starting=false,pollTimer=null,pollKey='',pollDelay=1500,pollRun='',pollStarted=0,pollProblem='';
   const learning=()=>['queued','running'].includes(report?.prevention?.status);
@@ -76,6 +76,9 @@ export function createFraudUI({$,api,state,setPlaying,setBusy,refresh,error,focu
     let run=report.investigation;if(run?.report_revision!==report.revision)run=null;
     if(starting&&!run&&!report.preparation)report.preparation={status:'running',stage:'request',detail:'Sending the investigation request.'};
     const reviewed=report.status==='resolved';
+    const analyst=demoAnalystState(report);
+    $('demo-analyst-approve').disabled=!analyst.enabled;$('demo-analyst-approve').textContent=analyst.label;
+    $('demo-analyst-status').textContent=analyst.detail;
     const warnings=report.validation_warnings||[];$('fraud-unit-warning').hidden=!warnings.length;$('fraud-unit-warning').textContent=warnings.join(' ');$('fraud-approve').disabled=!!warnings.length;
     const resumable=report.harness?.can_resume===true;
     const stopped=run&&['failed','budget_exhausted','interrupted'].includes(run.status)&&!resumable;
@@ -140,7 +143,7 @@ export function createFraudUI({$,api,state,setPlaying,setBusy,refresh,error,focu
     }
     $('fraud-resolution').hidden=!report.reviews.length;
     $('human-review-empty').hidden=run?.status==='awaiting_review'||!!report.reviews.length;
-    if(report.reviews.length){const latest=report.reviews[0];$('fraud-resolution-copy').textContent=latest.resolution.customer_message;$('fraud-receipt').textContent=latest.resolution.action.replaceAll('_',' ')+' · '+latest.resolution.receipt_id+' · Simulated service receipt. No funds refunded.'}
+    if(report.reviews.length){const latest=report.reviews[0];$('fraud-resolution-copy').textContent=report.demo_analyst?.assumption?'Demo Fraud Analyst approval recorded. This simulates human review; no funds were recovered.':latest.resolution.customer_message;$('fraud-receipt').textContent=latest.resolution.action.replaceAll('_',' ')+' · '+latest.resolution.receipt_id+' · Simulated service receipt. No funds refunded.'}
     $('fraud-reply-form').hidden=report.status!=='awaiting_customer';
     const stage=reviewed?(dashboard.memories.some(m=>m.source_report_id===report.id)?4:3):report.status==='awaiting_review'?2:run?1:0;
     document.querySelectorAll('[data-fraud-stage]').forEach((node,i)=>{node.classList.toggle('done',i<stage);node.classList.toggle('current',i===stage);if(i===stage)node.setAttribute('aria-current','step');else node.removeAttribute('aria-current')});
@@ -194,6 +197,7 @@ export function createFraudUI({$,api,state,setPlaying,setBusy,refresh,error,focu
   $('fraud-refresh').onclick=async()=>{pollRun='';pollProblem='';try{await refresh();await load()}catch(e){error(e.message)}};
   $('fraud-disposition').onchange=actions;$('fraud-customer').onchange=transactions;
   $('fraud-agent-handoff').onclick=()=>perform(async()=>{report=await api('/api/fraud-agent/handoff',{run_id:report.investigation.id})});
+  $('demo-analyst-approve').onclick=()=>perform(async()=>{report=await api('/api/world/demo-approve',{expected_run:state.data.demo.run_id,report_id:report.id,investigation_id:report.investigation.id})});
   $('fraud-review-form').onsubmit=e=>{e.preventDefault();perform(async()=>{
     report=await api('/api/fraud-desk/review',{report_id:report.id,investigation_id:report.investigation.id,disposition:$('fraud-disposition').value,action:$('fraud-action').value,note:$('fraud-note').value,publish_memory:$('fraud-publish').checked,lesson:$('fraud-lesson').value,next_question:$('fraud-question').value});
   })};

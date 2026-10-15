@@ -70,3 +70,7 @@ The payment gate is local code: it only uses signals available before debit, ign
 Research examples, frozen studies, candidate artifacts and research-call receipts survive fresh scenes. Public case reviews do not automatically curate training data. Research writes require `MINTTOWN_RISK_OPERATOR_TOKEN`; see [risk-lab.md](risk-lab.md). Research results never change the active payment gate.
 
 Do not roll back to a release whose spend meter predates `risk_agent_turns` after paid research has run. Use a compatible release or reconcile those receipts into the rollback version’s durable accounting first.
+
+## Demo Fraud Analyst
+
+In **Agent activity → Fraud Analyst**, **Auto-approve demo** replaces the two manual approvals for one completed, current-world synthetic case. It records an explicit demo assumption, uses the normal review judges, and runs prevention through the existing shared meter. Only a replay-passed, unchanged safeguard is activated. Missing evidence, manual handoffs, submitted reports and validation failures remain blocked. Duplicate clicks and restarts never retry learning. Normal manual review and revocation remain available; this shortcut does not claim real human verification.

@@ -1,6 +1,17 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {caseProgress,publicEvidence,cleanText,caseActivity} from './dist/agent-ui.js';
+import {caseProgress,publicEvidence,cleanText,caseActivity,demoAnalystState} from './dist/agent-ui.js';
+
+test('demo analyst requires server eligibility and distinguishes blocked evidence from approval',()=>{
+  const blocked={status:'reported',preparation:{status:'blocked'},demo_analyst:{eligible:false,detail:'Evidence is blocked.'}};
+  assert.equal(demoAnalystState(blocked).enabled,false);
+  assert.equal(caseProgress(blocked).statuses[0],'Evidence blocked');
+  assert.equal(caseProgress(blocked).statuses[1],'Evidence unavailable');
+  assert.equal(demoAnalystState({demo_analyst:{eligible:true}}).enabled,true);
+  const approved={status:'resolved',reviews:[{}],demo_analyst:{status:'activated',assumption:true}};
+  assert.equal(demoAnalystState(approved).label,'Demo approved');
+  assert.equal(caseProgress(approved).statuses[1],'Demo-approved');
+});
 
 test('UI receipt projection removes provider and spending details without changing the record',()=>{
   const receipt={model:'gemini-3.5-flash-lite',budget:{total_usd:8},cost_usd:.01,source:'snapshot',result:{model_version:'v1',receipt_id:'r1',signal_score:0,missing_inputs:['device']}};

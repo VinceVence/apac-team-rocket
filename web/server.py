@@ -23,6 +23,7 @@ from fraud_agent import FraudAgent
 from fraud_runner import InvestigationRunner
 from demo_guard import DemoGuard
 from world_demo import WorldDemo
+from demo_analyst import DemoAnalyst
 from settings import MAX_CUSTOMERS
 from warehouse import Warehouse
 from prevention import PreventionAgent, TABLES as PREVENTION_TABLES
@@ -63,6 +64,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
     prevention=PreventionAgent(fraud_agent);fraud_runner.prevention=prevention;world.prevention=prevention
     guard=DemoGuard(lab,checkpoint,live_enabled=cloud_live) if cloud else None
     world_demo=WorldDemo(world,fraud_desk,fraud_runner,checkpoint,guard,warehouse)
+    demo_analyst=DemoAnalyst(world_demo)
     def baseline():
         from cloud_data import CloudData
         with tempfile.TemporaryDirectory(prefix='pallet-baseline-') as folder:
@@ -189,6 +191,9 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                 if path=='/api/world/demo-action':
                     if set(body)!={'expected_run','report_id','action'}:raise LabError('Use the current guided demo step.')
                     return self.reply(200,world_demo.demo_action(**body))
+                if path=='/api/world/demo-approve':
+                    if set(body)!={'expected_run','report_id','investigation_id'}:raise LabError('Choose one completed simulation case.')
+                    return self.reply(200,demo_analyst.approve(**body))
                 if path=='/api/world/stop':
                     if set(body)!={'expected_run'}:raise LabError('Invalid world stop.')
                     return self.reply(200,world_demo.stop(**body))
