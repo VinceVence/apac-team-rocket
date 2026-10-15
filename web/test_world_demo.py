@@ -1,6 +1,7 @@
 """Headless world -> ADK -> analyst -> KB -> pre-settlement hold."""
 import os
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -108,6 +109,49 @@ class WorldDemoChecks(unittest.TestCase):
         self.assertEqual(self.demo.status()['incidents'][0]['status'],'blocked')
         self.assertEqual(before,self.lab.rows('SELECT id,balance_minor FROM accounts ORDER BY id'))
         self.assertEqual(calls,self.lab.db.execute('SELECT count(*) FROM fraud_agent_turns').fetchone()[0])
+        protection=self.demo.status()['protection']
+        self.assertEqual(protection['count'],1)
+        self.assertEqual(protection['recent'][0]['source_report_id'],report['id'])
+        self.assertGreater(protection['amount_minor'],0)
+
+    def test_continuous_world_keeps_paying_during_intake_and_resumes_same_scene(self):
+        entered=threading.Event();release=threading.Event()
+        class Publisher:
+            def publish(inner):
+                entered.set()
+                if not release.wait(10):raise RuntimeError('Test intake timed out')
+        with patch('google.genai.Client.__init__',side_effect=AssertionError('No paid client')) as client:
+            state=self.demo.start(0,background=False,fresh=True,mode='simulation');self.demo.environment_publisher=Publisher()
+            self.assertFalse(state['guided']);self.assertTrue(state['continuous'])
+            self.assertEqual(self.lab.db.execute('SELECT count(*) FROM financial_events').fetchone()[0],0)
+            try:
+                for _ in range(6):self.demo.tick(state['run_id'])
+                self.assertTrue(entered.wait(2));self.assertTrue(self.demo.status()['running'])
+                report_id=self.demo.status()['incidents'][0]['report_id']
+                self.assertIsNone(self.server.fraud_desk.detail(report_id)['investigation'])
+                before=self.lab.db.execute('SELECT count(*) FROM financial_events').fetchone()[0]
+                for _ in range(RUN_STEPS):self.demo.tick(state['run_id'])
+                current=self.demo.status();self.assertGreater(current['steps'],RUN_STEPS);self.assertTrue(current['running'])
+                self.assertGreater(self.lab.db.execute('SELECT count(*) FROM financial_events').fetchone()[0],before)
+                self.assertEqual(len([i for i in current['incidents'] if i['report_id']]),1)
+                self.demo.stop(state['run_id']);resumed=self.demo.start(state['run_id'],background=False,mode='simulation')
+                self.assertEqual(resumed['scene_id'],state['scene_id']);self.assertEqual(resumed['run_id'],state['run_id']);self.assertEqual(resumed['steps'],current['steps'])
+                from lab import LabError
+                self.demo.stop(state['run_id'])
+                with self.assertRaises(LabError):self.demo.start(state['run_id'],background=False,fresh=True,mode='demo')
+            finally:release.set();self.demo.intake.join(10)
+            case=self.wait(report_id);self.assertEqual(case['status'],'awaiting_review');client.assert_not_called()
+
+    def test_continuous_world_retains_the_hosted_step_limit(self):
+        from demo_guard import DemoGuard
+        from lab import LabError
+        self.demo.guard=DemoGuard(self.lab,lambda:None)
+        state=self.demo.start(0,background=False,fresh=True,mode='simulation')
+        with patch('demo_guard.DAILY_WORLD_STEPS',2):
+            for _ in range(2):self.demo.tick(state['run_id'])
+            with self.assertRaisesRegex(LabError,'world-step'):self.demo.tick(state['run_id'])
+        self.assertEqual(self.demo.status()['steps'],2)
+        self.assertEqual(self.lab.db.execute('SELECT count(*) FROM fraud_agent_turns').fetchone()[0],0)
 
     def test_episode_is_idempotent_bounded_and_does_not_resume_after_restart(self):
         self.server.fraud_agent.agents.config=Config(daily_calls=1)

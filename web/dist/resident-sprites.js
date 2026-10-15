@@ -8,6 +8,18 @@ export function alarmMotion(elapsed,reduced=false){
   const active=elapsed>=0&&elapsed<8000;
   return {active,jump:active&&!reduced?Math.max(0,Math.sin(elapsed/160))*15:0};
 }
+export function protectionMotion(elapsed,reduced=false){
+  const active=elapsed>=0&&elapsed<6500;
+  return {active,lift:active&&!reduced?4+Math.sin(elapsed/230)*3:0};
+}
+export function residentAlerts(demo){
+  const reports=(demo.incidents||[]).filter(i=>i.report_id&&i.report_status!=='resolved').map(i=>({...i,mark:'!'}));
+  const held=(demo.protection?.recent||[]).map(i=>({...i,mark:'✓'}));
+  const legacy=(demo.incidents||[]).filter(i=>i.status==='blocked').map(i=>({...i,mark:'✓'}));
+  const alerts=new Map();
+  for(const i of [...reports,...held,...legacy].sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||'')))if(!alerts.has(i.customer_id))alerts.set(i.customer_id,{customer_id:i.customer_id,mark:i.mark,id:i.id});
+  return [...alerts.values()];
+}
 
 export function appearance(id){
   const n=hash(id),role=Number(id.slice(1))>=98?'merchant':id==='C097'?'cashier':'resident';

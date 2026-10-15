@@ -1,4 +1,5 @@
 """Bounded background town: payments -> scam report -> ADK -> reviewed prevention."""
+import json
 import random
 import threading
 
@@ -13,7 +14,7 @@ class WorldDemo:
         self.world,self.lab,self.desk,self.runner=world,world.lab,desk,runner
         self.checkpoint=checkpoint or (lambda:None);self.guard=guard
         self.warehouse=warehouse;self.environment_publisher=None
-        self.thread=None;self.stopping=threading.Event();self.closed=False;self.resetter=None
+        self.thread=None;self.intake=None;self.stopping=threading.Event();self.closed=False;self.resetter=None
         self.lab.db.executescript('''
         CREATE TABLE IF NOT EXISTS world_demo_state(
           id INTEGER PRIMARY KEY CHECK(id=1), run_id INTEGER NOT NULL DEFAULT 0,
@@ -29,7 +30,7 @@ class WorldDemo:
         ''')
         with self.lab.db:
             columns={r['name'] for r in self.lab.rows('PRAGMA table_info(world_demo_state)')}
-            for name,definition in {'guided':'INTEGER NOT NULL DEFAULT 0','focus_report_id':'TEXT','event_start':'INTEGER NOT NULL DEFAULT 0'}.items():
+            for name,definition in {'guided':'INTEGER NOT NULL DEFAULT 0','continuous':'INTEGER NOT NULL DEFAULT 0','focus_report_id':'TEXT','event_start':'INTEGER NOT NULL DEFAULT 0'}.items():
                 if name not in columns:self.lab.db.execute('ALTER TABLE world_demo_state ADD COLUMN '+name+' '+definition)
             self.lab.db.execute("UPDATE world_demo_state SET running=0,note='Paused after server restart' WHERE running=1")
 
@@ -40,7 +41,15 @@ class WorldDemo:
                 LEFT JOIN fraud_reports r ON r.id=w.report_id ORDER BY w.rowid DESC LIMIT 20''')
             provider='gemini' if self.runner.agent.live_enabled() else 'fake'
             budget=self.runner.agent.budget('',provider)
-            blocked=self.lab.db.execute("SELECT count(*) FROM financial_events WHERE kind='payment_blocked' AND json_extract(metadata,'$.prevention_tool')='payments.hold_transfer'").fetchone()[0]
+            condition="kind='payment_blocked' AND json_extract(metadata,'$.prevention_tool')='payments.hold_transfer'"
+            totals=self.lab.db.execute('SELECT count(*),coalesce(sum(amount_minor),0) FROM financial_events WHERE '+condition).fetchone()
+            protected=self.lab.rows('SELECT id,customer_id,amount_minor,occurred_at,metadata FROM financial_events WHERE '+condition+' ORDER BY rowid DESC LIMIT 6')
+            for item in protected:
+                metadata=json.loads(item.pop('metadata'));flags=metadata.get('review_flags',[])
+                memory_ids=[f['memory_id'] for f in flags if f.get('memory_id')]
+                lesson=self.lab.db.execute('SELECT source_report_id FROM scam_memories WHERE id=?',(memory_ids[0],)).fetchone() if memory_ids else None
+                item.update(source_report_id=lesson[0] if lesson else None,reason=metadata.get('prevention_reason'),
+                    rule_ids=metadata.get('prevention_rule_ids',[]),memory_ids=memory_ids,created_at=metadata.get('risk_recorded_at',item['occurred_at']))
             phase='world';focus=None
             if state['guided'] and state['focus_report_id']:
                 focus=self.desk.detail(state['focus_report_id']);job=focus.get('prevention');rule=job.get('rule') if job else None
@@ -53,12 +62,14 @@ class WorldDemo:
             restart_blocked=bool(self.runner.pending or self.lab.db.execute("SELECT 1 FROM fraud_agent_turns WHERE status IN ('reserved','responded') LIMIT 1").fetchone())
             if self.lab.db.execute("SELECT 1 FROM fraud_case_preparation WHERE status='running' LIMIT 1").fetchone():restart_blocked=True
             if self.environment_publisher and self.lab.db.execute("SELECT 1 FROM environment_publications WHERE status!='completed' LIMIT 1").fetchone():restart_blocked=True
-            return {**state,'max_steps':RUN_STEPS,'provider':provider,'incidents':incidents,'blocked_payments':blocked,
+            return {**state,'mode':'simulation' if state['continuous'] else 'demo' if state['guided'] else 'episode',
+                    'max_steps':None if state['continuous'] else RUN_STEPS,'provider':provider,'incidents':incidents,'blocked_payments':totals[0],
+                    'protection':{'count':totals[0],'amount_minor':totals[1],'recent':protected},
                     'knowledge_count':len(self.desk.memories()),'calls_remaining':max(0,budget['daily_call_limit']-budget['daily_calls']),
                     'phase':phase,'scene_id':scene,'focus_customer_id':focus['customer_id'] if focus else None,
-                    'restart_blocked':restart_blocked,'agent_busy':bool(self.runner.pending)}
+                    'restart_blocked':restart_blocked,'agent_busy':bool(self.runner.pending or (self.intake and self.intake.is_alive()))}
 
-    def start(self, expected_run, activity=2, speed=1, background=True, fresh=False):
+    def start(self, expected_run, activity=2, speed=1, background=True, fresh=False, mode=None):
         if type(expected_run) is not int or type(activity) is not int or activity not in range(1,5) or type(speed) is not int or speed not in (1,2,4):
             raise LabError('Invalid world controls.')
         with self.lab.lock:
@@ -67,12 +78,16 @@ class WorldDemo:
             if current['running'] or expected_run!=current['run_id']:return current
             if self.thread and self.thread.is_alive():raise LabError('The previous world run is stopping.',409)
             if type(fresh) is not bool:raise LabError('Fresh must be true or false.')
+            if mode is not None and mode not in ('demo','simulation'):raise LabError('Choose demo or simulation.')
+            resume=mode=='simulation' and current['continuous'] and not fresh
             if fresh:
                 if not self.resetter:raise LabError('Fresh demo reset is unavailable.',409)
                 self.resetter.reset(current['run_id']+1)
             with self.lab.db:
-                self.lab.db.execute("UPDATE world_demo_state SET run_id=?,running=1,steps=0,activity=?,speed=?,note='Running' WHERE id=1",(current['run_id']+1,activity,speed))
-            self.checkpoint();self.stopping.clear();run_id=current['run_id']+1
+                run_id=current['run_id'] if resume else current['run_id']+1
+                self.lab.db.execute("UPDATE world_demo_state SET run_id=?,running=1,steps=?,activity=?,speed=?,note='Running' WHERE id=1",(run_id,current['steps'] if resume else 0,activity,speed))
+                if mode:self.lab.db.execute('UPDATE world_demo_state SET guided=?,continuous=?,focus_report_id=CASE WHEN ? THEN focus_report_id ELSE NULL END WHERE id=1',(int(mode=='demo'),int(mode=='simulation'),int(mode=='demo')))
+            self.checkpoint();self.stopping.clear()
             if background:
                 self.thread=threading.Thread(target=self.work,args=(run_id,),daemon=True,name='town-world');self.thread.start()
             return self.status()
@@ -85,13 +100,15 @@ class WorldDemo:
             self.lab.db.execute("UPDATE world_demo_state SET running=0,note='Paused' WHERE id=1")
         self.checkpoint();return self.status()
 
-    def incident(self, run_id, kind, repeat=False):
+    def incident(self, run_id, kind, repeat=False, cycle=0, background=False):
         """A scoped simulator event; observed payments are the investigator's evidence."""
         spec=dict(SCAMS[kind])
         learned=bool(repeat and self.world.prevention and any(r['family']==kind for r in self.world.prevention.active()))
         if learned:spec['payee']='external:variant-'+str(run_id)+'-'+kind
-        identifier='world-scam-%s-%s-%s'%(run_id,kind,'variant' if learned else 'repeat' if repeat else 'first')
+        identifier='world-scam-%s-%s-%s'%(run_id,kind,'variant' if learned else 'repeat' if repeat else 'first')+('-cycle'+str(cycle) if cycle else '')
         with self.lab.lock:
+            # One intake and one existing model worker; never accumulate an unbounded queue.
+            if background and not repeat and (self.runner.pending or (self.intake and self.intake.is_alive())):return None
             if self.lab.db.execute('SELECT 1 FROM world_incidents WHERE id=?',(identifier,)).fetchone():return None
             cid='C002' if repeat and kind=='phishing' else 'C005' if repeat else spec['customer']
             metadata={'rail':'Wallet','device_known':spec['device_known'],'authorization_verified':spec['authorization_verified'],
@@ -161,28 +178,32 @@ class WorldDemo:
                      encoded(events),total,self.world.state()['tick'],now()))
             self.checkpoint()
         if report_id:
-            try:
-                if self.environment_publisher:
-                    self.desk.prepare(report_id,'running','simulation_data','Saving the simulation tables for this case.')
-                    self.environment_publisher.publish()
-                if self.warehouse:
-                    self.desk.prepare(report_id,'running','evidence_snapshot','Freezing customer history and transactions for the investigator.')
-                    self.warehouse.publish()
-                self.desk.prepare(report_id,'running','dispatch','Handing the saved evidence to the resolution agent.')
-                self.runner.start(report_id,provider)
-                self.desk.prepare(report_id,'completed','dispatched','Evidence is ready. The investigation has been handed to the agent.')
-            except LabError as exc:
-                self.desk.prepare(report_id,'blocked','preparation',str(exc))
-                with self.lab.lock,self.lab.db:
-                    self.lab.db.execute("UPDATE world_incidents SET status='needs_review' WHERE id=?",(identifier,))
-                    self.lab.db.execute('UPDATE world_demo_state SET note=? WHERE id=1',(str(exc),))
-                self.checkpoint()
-            except Exception:
-                self.desk.prepare(report_id,'blocked','preparation','Evidence preparation failed. The case is saved; no task was retried.')
-                with self.lab.lock,self.lab.db:self.lab.db.execute("UPDATE world_incidents SET status='needs_review' WHERE id=?",(identifier,))
-                self.checkpoint()
-                raise
+            if background:
+                self.intake=threading.Thread(target=self.prepare,args=(report_id,identifier,provider),daemon=True,name='case-intake');self.intake.start()
+            else:self.prepare(report_id,identifier,provider)
         return identifier
+
+    def prepare(self,report_id,identifier,provider):
+        try:
+            if self.environment_publisher:
+                self.desk.prepare(report_id,'running','simulation_data','Saving the simulation tables for this case.')
+                self.environment_publisher.publish()
+            if self.warehouse:
+                self.desk.prepare(report_id,'running','evidence_snapshot','Freezing customer history and transactions for the investigator.')
+                self.warehouse.publish()
+            self.desk.prepare(report_id,'running','dispatch','Handing the saved evidence to the resolution agent.')
+            self.runner.start(report_id,provider)
+            self.desk.prepare(report_id,'completed','dispatched','Evidence is ready. The investigation has been handed to the agent.')
+        except LabError as exc:
+            self.desk.prepare(report_id,'blocked','preparation',str(exc))
+            with self.lab.lock,self.lab.db:
+                self.lab.db.execute("UPDATE world_incidents SET status='needs_review' WHERE id=?",(identifier,))
+                self.lab.db.execute('UPDATE world_demo_state SET note=? WHERE id=1',(str(exc),))
+            self.checkpoint()
+        except Exception:
+            self.desk.prepare(report_id,'blocked','preparation','Evidence preparation failed. The case is saved; no task was retried.')
+            with self.lab.lock,self.lab.db:self.lab.db.execute("UPDATE world_incidents SET status='needs_review' WHERE id=?",(identifier,))
+            self.checkpoint()
 
     def tick(self, run_id):
         with self.lab.lock:
@@ -199,12 +220,16 @@ class WorldDemo:
         first_at=rng.randint(4,6);burst_at=rng.randint(12,14)
         if state['guided']:
             if step==first_at:self.incident(run_id,'phishing')
+            if step>=RUN_STEPS:
+                with self.lab.db:self.lab.db.execute("UPDATE world_demo_state SET running=0,note='Demo finished without an admitted report.' WHERE id=1")
+                self.checkpoint()
             return self.status()
-        kinds=tuple(SCAMS);first=kinds[((run_id-1)*2)%len(kinds)];second=kinds[((run_id-1)*2+1)%len(kinds)]
-        if step==first_at:self.incident(run_id,first)
-        if step==burst_at:self.incident(run_id,second)
-        if step>=first_at+4:
-            for kind in SCAMS:self.incident(run_id,kind,repeat=True)
+        cycle=(step-1)//RUN_STEPS if state['continuous'] else 0;episode=(step-1)%RUN_STEPS+1 if state['continuous'] else step
+        kinds=tuple(SCAMS);first=kinds[((run_id-1+cycle)*2)%len(kinds)];second=kinds[((run_id-1+cycle)*2+1)%len(kinds)]
+        if episode==first_at:self.incident(run_id,first,cycle=cycle,background=bool(state['continuous']))
+        if episode==burst_at:self.incident(run_id,second,cycle=cycle,background=bool(state['continuous']))
+        if episode>=first_at+4:
+            for kind in SCAMS:self.incident(run_id,kind,repeat=True,cycle=cycle)
         # Only the simulator's own customers answer. Never invent answers for submitted user reports.
         with self.lab.lock:
             waiting=self.lab.rows("""SELECT r.id,r.revision,w.kind FROM world_incidents w JOIN fraud_reports r
@@ -216,7 +241,7 @@ class WorldDemo:
                 self.runner.reply(report_id=report['id'],answer=answer,expected_revision=report['revision'])
             except LabError:pass
         with self.lab.lock,self.lab.db:
-            if step>=RUN_STEPS:self.lab.db.execute("UPDATE world_demo_state SET running=0,note='24-hour episode complete' WHERE id=1")
+            if step>=RUN_STEPS and not state['continuous']:self.lab.db.execute("UPDATE world_demo_state SET running=0,note='24-hour episode complete' WHERE id=1")
         self.checkpoint();return self.status()
 
     def prove(self,expected_run):
@@ -240,7 +265,7 @@ class WorldDemo:
 
     def work(self, run_id):
         try:
-            for _ in range(RUN_STEPS):
+            while not self.closed:
                 state=self.status()
                 if not state['running'] or state['run_id']!=run_id:break
                 if self.stopping.wait(max(1.1,3/state['speed'])):break
@@ -255,6 +280,7 @@ class WorldDemo:
     def close(self):
         self.closed=True;self.stopping.set()
         if self.thread:self.thread.join()
+        if self.intake:self.intake.join()
         with self.lab.lock,self.lab.db:self.lab.db.execute("UPDATE world_demo_state SET running=0,note='Paused' WHERE running=1")
         try:self.checkpoint()
         except LabError:pass

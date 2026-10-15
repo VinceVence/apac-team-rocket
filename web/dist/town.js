@@ -1,4 +1,4 @@
-import {drawResident,appearance,alarmMotion} from './resident-sprites.js';
+import {drawResident,appearance,alarmMotion,protectionMotion} from './resident-sprites.js';
 import {WIDTH,HEIGHT,PLACES,NODES,EDGES,paintTown,paintWater} from './town-art.js';
 
 // Route residents along the street graph, including the path around the fountain.
@@ -19,11 +19,11 @@ export function streetRoute(from,to){
 
 export function createTown(canvas){
   canvas.width=WIDTH;canvas.height=HEIGHT;
-  const ctx=canvas.getContext('2d'),actors=new Map(),seen=new Set(),alarmStarts=new Map();
+  const ctx=canvas.getContext('2d'),actors=new Map(),seen=new Set(),alarmStarts=new Map(),safetyStarts=new Map(),alertIds=new Map();
   const media=matchMedia('(prefers-reduced-motion: reduce)');let reduced=media.matches;
   let people=[],population=[],recent=[],selected=null,hovered=null,alerts=new Map(),running=false,speed=1,raf=0,last=0,background=null,fx=[],expiryTimer=null;
   let hour=9,centered=null,visible=true;
-  const animating=()=>visible&&!reduced&&(running||[...alarmStarts.values()].some(t=>performance.now()-t<8000)||fx.some(f=>performance.now()-f.start<2200));
+  const animating=()=>visible&&!reduced&&(running||[...alarmStarts.values()].some(t=>performance.now()-t<8000)||[...safetyStarts.values()].some(t=>performance.now()-t<6500)||fx.some(f=>performance.now()-f.start<2200));
   function syncAnimation(){if(animating()){if(!raf){last=0;raf=requestAnimationFrame(frame)}}else{cancelAnimationFrame(raf);raf=0;last=0}}
   function scenery(){background=document.createElement('canvas');background.width=WIDTH;background.height=HEIGHT;paintTown(background.getContext('2d'))}
   function capsule(text,x,y,color='#395d50',fill='#fff9e7'){
@@ -48,11 +48,12 @@ export function createTown(canvas){
     for(const p of people){
       const a=actors.get(p.id),mark=alerts.get(p.id);
       if(mark){
-        const motion=alarmMotion(time-(alarmStarts.get(p.id)??-Infinity),reduced),y=a.y-58-motion.jump;
+        const motion=alarmMotion(time-(alarmStarts.get(p.id)??-Infinity),reduced),safe=protectionMotion(time-(safetyStarts.get(p.id)??-Infinity),reduced),y=a.y-58-(mark==='!'?motion.jump:safe.lift);
         ctx.fillStyle=mark==='!'?'#b95135':'#397b5b';ctx.strokeStyle='#fff5d9';ctx.lineWidth=2.5;
-        ctx.beginPath();ctx.arc(a.x,y,12,0,Math.PI*2);ctx.fill();ctx.stroke();
+        ctx.beginPath();if(mark==='!')ctx.arc(a.x,y,12,0,Math.PI*2);else{ctx.moveTo(a.x-13,y-11);ctx.lineTo(a.x+13,y-11);ctx.lineTo(a.x+11,y+6);ctx.lineTo(a.x,y+16);ctx.lineTo(a.x-11,y+6);ctx.closePath()}ctx.fill();ctx.stroke();
         ctx.fillStyle='#fff9e8';ctx.font='700 19px "DM Sans",sans-serif';ctx.textAlign='center';ctx.fillText(mark,a.x,y+7);
         if(mark==='!')capsule(motion.active?'HELP! My money!':'Scam report filed',a.x,a.y-91-motion.jump,'#8c3c29','#fff0cf');
+        else{capsule(safe.active?'SAFE! Scam stopped':'Payment protected',a.x,a.y-94-safe.lift,'#245c40','#dff5d4');if(safe.active){ctx.strokeStyle='#86c58c';ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(a.x,a.y+2,18+safe.lift,6+safe.lift/2,0,0,Math.PI*2);ctx.stroke()}}
       }else if(a.payment&&a.until>time)capsule(a.payment,a.x,a.y-49);
     }
     fx=fx.filter(f=>time-f.start<2200);
@@ -117,9 +118,9 @@ export function createTown(canvas){
   draw.setRunning=on=>{running=on;syncAnimation();paint()};
   draw.setVisible=on=>{visible=on;syncAnimation()};
   draw.setSpeed=value=>{speed=value};draw.setHour=value=>{hour=value;paint()};
-  draw.setAlerts=value=>{const next=new Map(value.map(v=>[v.customer_id,v.mark]));for(const [id,mark] of next)if(mark==='!'&&alerts.get(id)!=='!')alarmStarts.set(id,performance.now());for(const id of alarmStarts.keys())if(next.get(id)!=='!')alarmStarts.delete(id);alerts=next;draw(population,selected);syncAnimation()};
+  draw.setAlerts=value=>{const next=new Map(value.map(v=>[v.customer_id,v.mark]));for(const v of value){const id=v.customer_id;if(alertIds.get(id)!==(v.id||v.mark)){if(v.mark==='!')alarmStarts.set(id,performance.now());else safetyStarts.set(id,performance.now());alertIds.set(id,v.id||v.mark)}}for(const id of alarmStarts.keys())if(next.get(id)!=='!')alarmStarts.delete(id);for(const id of safetyStarts.keys())if(next.get(id)!=='✓')safetyStarts.delete(id);for(const id of alertIds.keys())if(!next.has(id))alertIds.delete(id);alerts=next;draw(population,selected);syncAnimation()};
   draw.alertBounds=()=>{const id=[...alerts].find(([,mark])=>mark==='!')?.[0],a=actors.get(id);return a?{x:Math.max(0,a.x-102),y:Math.max(0,a.y-142),width:204,height:155}:null};
-  draw.reset=()=>{clearTimeout(expiryTimer);cancelAnimationFrame(raf);raf=0;running=false;actors.clear();alerts.clear();alarmStarts.clear();seen.clear();recent=[];people=[];selected=hovered=centered=null;fx=[];last=0;paint()};
+  draw.reset=()=>{clearTimeout(expiryTimer);cancelAnimationFrame(raf);raf=0;running=false;actors.clear();alerts.clear();alarmStarts.clear();safetyStarts.clear();alertIds.clear();seen.clear();recent=[];people=[];selected=hovered=centered=null;fx=[];last=0;paint()};
   const personAt=event=>{
     const bounds=canvas.getBoundingClientRect(),x=(event.clientX-bounds.left)/bounds.width*WIDTH,y=(event.clientY-bounds.top)/bounds.height*HEIGHT;
     return [...people].reverse().find(p=>{const a=actors.get(p.id);return Math.abs(x-a.x)<17&&y>a.y-40&&y<a.y+6})?.id||null;

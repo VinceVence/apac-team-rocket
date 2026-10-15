@@ -181,7 +181,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                     if set(body)!={'request_id','source','provider'}:raise LabError('Choose a fixed dataset source and allowed provider.')
                     return self.reply(202,risk_lab.start(**body))
                 if path=='/api/world/start':
-                    if set(body)-{'expected_run','activity','speed','fresh'} or not {'expected_run','activity','speed'}<=set(body):raise LabError('Invalid world start.')
+                    if set(body)-{'expected_run','activity','speed','fresh','mode'} or not {'expected_run','activity','speed'}<=set(body):raise LabError('Invalid world start.')
                     return self.reply(200,world_demo.start(**{**body,'fresh':body.get('fresh',True)}))
                 if path=='/api/world/prove':
                     if set(body)!={'expected_run'}:raise LabError('Use the current demo run.')

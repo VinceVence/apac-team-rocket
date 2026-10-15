@@ -31,6 +31,8 @@ class DemoReset:
         with self.lab.lock:
             if self.runner.pending or self.lab.db.execute("SELECT 1 FROM fraud_agent_turns WHERE status IN ('reserved','responded')").fetchone():
                 raise LabError('An agent is still working. Finish or stop that investigation before starting a fresh demo.',409)
+            if self.lab.db.execute("SELECT 1 FROM fraud_case_preparation WHERE status='running' LIMIT 1").fetchone():
+                raise LabError('Case evidence is still being prepared. Wait before starting a fresh scene.',409)
             if self.lab.db.execute("SELECT 1 FROM sqlite_master WHERE name='environment_publications'").fetchone() and self.lab.db.execute("SELECT 1 FROM environment_publications WHERE status!='completed'").fetchone():
                 raise LabError('A simulator publication needs operator reconciliation before a fresh scene.',409)
             if self.lab.db.in_transaction:raise RuntimeError('Fresh scenes require a committed checkpoint.')

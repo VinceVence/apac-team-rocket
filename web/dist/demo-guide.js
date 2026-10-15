@@ -120,7 +120,7 @@ export function createDemoGuide({state,openCase,showWorld,error,startInvestigati
     seen.add(current);layout();scheduleAdvance();
   }
   function update(nextReport){
-    const demo=state.data?.demo;if(!demo?.guided)return;
+    const demo=state.data?.demo;if(!demo?.guided){if(active)close();toggle.hidden=true;return;}
     const key=demo.scene_id+':'+demo.run_id;
     if(scene!==key){scene=key;report=null;current='world';autoWorld=true;following=true;seen.clear();stopTimer();followButton();active=!!demo.running&&saved('minttown-guide-dismissed')!==scene;root.dataset.beat=''}
     if(nextReport){report=nextReport;if(report.id!==demo.focus_report_id&&!entering){close();report=null;return}}
