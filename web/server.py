@@ -149,7 +149,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                     with lab.lock: run=agents.public_run(path.rsplit('/',1)[-1])
                     return self.reply(200,run)
                 if path.startswith('/api/'): return self.reply(404,{'error':'Endpoint not found.'})
-                if path not in ('/','/index.html','/app.js','/mesh-ui.js','/customer-ui.js','/fraud-ui.js','/harness-ui.js','/demo-guide.js','/risk-ui.js','/town.js','/town-art.js','/resident-sprites.js','/styles.css','/mark.svg','/favicon.svg') and not path.startswith('/fonts/'):
+                if path not in ('/','/index.html','/app.js','/mesh-ui.js','/customer-ui.js','/fraud-ui.js','/harness-ui.js','/demo-guide.js','/agent-ui.js','/risk-ui.js','/town.js','/town-art.js','/resident-sprites.js','/styles.css','/mark.svg','/favicon.svg') and not path.startswith('/fonts/'):
                     return self.reply(404,{'error':'File not found.'})
                 if '..' in path or '%' in path: return self.reply(404,{'error':'File not found.'})
                 return super().do_GET()

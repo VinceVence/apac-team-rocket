@@ -37,6 +37,10 @@ class GuidedDemoChecks(unittest.TestCase):
             demo=self.server.world_demo;before=demo.status()['run_id']
             state=demo.start(before,background=False,fresh=True)
             self.assertTrue(state['guided']);self.assertEqual(self.server.world.state()['tick'],0)
+            residents=self.lab.rows('SELECT id,name FROM customers ORDER BY id')
+            self.assertEqual(len(residents),100);self.assertEqual(len({r['name'] for r in residents}),100)
+            self.assertEqual(residents[0],{'id':'C001','name':'Ari Reyes'})
+            self.assertGreater(len({r['name'].split()[-1] for r in residents}),25)
             self.assertEqual(self.lab.db.execute('SELECT count(*) FROM fraud_reports').fetchone()[0],0)
             for _ in range(6):demo.tick(state['run_id'])
             state=demo.status();self.assertFalse(state['running']);self.assertTrue(state['focus_report_id'])

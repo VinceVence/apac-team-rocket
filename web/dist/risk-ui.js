@@ -1,3 +1,4 @@
+import {cleanText,publicEvidence} from './agent-ui.js';
 export function createRiskUI({$,state,error,onCases}){
   let data=null,study=null,token='',busy=false,timer=null,selected='',visible=false,polls=0,initialized=false;
   const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n};
@@ -21,8 +22,8 @@ export function createRiskUI({$,state,error,onCases}){
     $('risk-case').replaceChildren();for(const c of data.reviewed_cases)$('risk-case').add(new Option(`${c.id} · ${c.disposition.replaceAll('_',' ')}`,c.id));
     $('risk-study-select').replaceChildren();for(const s of data.studies)$('risk-study-select').add(new Option(`${s.id} · ${names[s.status]||s.status}`,s.id));
     if(study)$('risk-study-select').value=study.id;
-    $('risk-mode').textContent=study?.model||(data.live_available?'Gemini available':'Fake-model rehearsal');
-    $('risk-study-status').textContent=study?(names[study.status]||study.status)+' · '+(study.source==='benchmark'?'synthetic benchmark':'curated cases')+(study.error?' — '+study.error:''):'No saved experiments yet.';
+    $('risk-mode').textContent=study?.provider==='fake'?'Offline rehearsal':'Research workspace';
+    $('risk-study-status').textContent=study?(names[study.status]||study.status)+' · '+(study.source==='benchmark'?'synthetic benchmark':'curated cases')+(study.error?' — '+cleanText(study.error):''):'No saved experiments yet.';
     $('risk-hypothesis').textContent=study?.plan?.hypothesis||'The scientist chooses a hypothesis and model recipes after the dataset passes its checks.';
     $('risk-trail').replaceChildren();
     for(const t of study?.trace||[]){const row=el('li');row.append(el('strong',t.role.replaceAll('_',' ')+' · '+t.tool.replaceAll('_',' ')),el('p',t.purpose));$('risk-trail').append(row)}
@@ -44,7 +45,7 @@ export function createRiskUI({$,state,error,onCases}){
     $('risk-verdict').hidden=!study?.verdict;$('risk-verdict').replaceChildren();
     if(study?.verdict){$('risk-verdict').append(el('h3','Validator decision'),el('p',study.verdict.summary||study.verdict.reason));for(const risk of study.verdict.risks||[])$('risk-verdict').append(el('p',risk,'surface-note'));$('risk-verdict').append(el('strong','Current payment protection is unchanged.'))}
     $('risk-run-details').hidden=!study;
-    $('risk-run-json').textContent=study?JSON.stringify({study_id:study.id,dataset_hash:study.dataset_hash,manifest:study.manifest,model:study.model,budget:study.budget,notice:data.notice},null,2):'';
+    $('risk-run-json').textContent=study?JSON.stringify(publicEvidence({study_id:study.id,dataset_hash:study.dataset_hash,validation:study.manifest,notice:data.notice}),null,2):'';
     $('risk-access').textContent=token?'Operator token held in this page only. Requests are validated by the server.':data.operator_configured?'Operator access is configured.':'Configure MINTTOWN_RISK_OPERATOR_TOKEN on the server to enable research writes.';
     $('risk-seed').disabled=busy||!token;$('risk-start').disabled=busy||!token||!!active();$('risk-curate-submit').disabled=busy||!token||!data.reviewed_cases.length;
     $('risk-provider').querySelector('[value=gemini]').disabled=!data.live_available;
@@ -63,7 +64,7 @@ export function createRiskUI({$,state,error,onCases}){
     catch(e){error(e.message)}finally{busy=false;render()}
   }
   async function show(on){
-    visible=on;clearTimeout(timer);document.querySelector('.demo-story').hidden=on;history.replaceState(null,'',on?'#models':'#agent');$('case-workspace').hidden=on;$('risk-view').hidden=!on;
+    if(visible!==on)window.scrollTo({top:0,behavior:'instant'});visible=on;clearTimeout(timer);document.querySelector('.demo-story').hidden=on;history.replaceState(null,'',on?'#models':'#agent');$('case-workspace').hidden=on;$('risk-view').hidden=!on;
     $('fraud-view').querySelector('.page-heading').hidden=on;
     $('risk-cases-tab').setAttribute('aria-pressed',String(!on));$('risk-models-tab').setAttribute('aria-pressed',String(on));
     if(on){polls=0;await load()}else if(onCases)await onCases();

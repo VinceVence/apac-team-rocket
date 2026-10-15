@@ -6,6 +6,7 @@ Synthetic Philippine fintech demo: world transactions → complaint → Gemini t
 
 - Working: AE-dictionary generation and isolated `minttown_world` publishing (`web/environment_data.py`, `environment_cloud.py`); updated resident sprites; resolution/prevention agents; optional risk scientist/validator; versioned BigQuery evidence; reviewed memory and payment safeguards.
 - New cases use the [investigation harness](docs/harness-runtime.md): case lead, 0–1 scoped specialist/critic, versioned model receipts and local judges before human review. Legacy saved cases keep their original traces. Research rationale: [mesh](docs/fraud-agent-mesh.md), [harness design](docs/agent-harness-design.md).
+- UI: one case flow (resolution → human review → prevention), actor icons, state tracker and guided spotlight. `web/dist/agent-ui.js` hides provider/cost metadata for display only; never remove durable accounting. New scenes use varied fictional names; keep saved evidence unchanged.
 - AE owns source data; DS owns trained model artifacts/evaluation; agent work owns routing, scoped tools, checkpoints and review. Start with the AE’s four tables (`customers`, `wallets`, `devices`, `wallet_transactions`); the dictionary is synced from Gab’s `f03a384`; his generator/loader are not merged. Validate ownership, chronology and label leakage before importing it.
 
 ## Next implementation

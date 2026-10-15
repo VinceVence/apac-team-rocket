@@ -10,6 +10,20 @@ from pathlib import Path
 
 AS_OF = '2026-10-06'
 TABLES = ('customers', 'accounts', 'financial_events', 'ledger_entries', 'cases', 'agent_runs')
+RESIDENT_FIRST_NAMES = ('Ari','Bea','Carlo','Dani','Eli','Faye','Gab','Hana','Ivo','Jules','Kai','Lia',
+                        'Mika','Nico','Oli','Pia','Quinn','Rafi','Sage','Toni','Uma','Vince','Wren','Yani',
+                        'Amara','Benjie','Celine','Diego','Enzo','Frances','Gia','Hugo','Isabel','Jessa','Kiko','Luna',
+                        'Marco','Nina','Paolo','Rina','Sofia','Theo','Maya','Luis','Clara','Noel','Andi','Rosa','Emil','Zia')
+RESIDENT_SURNAMES = ('Reyes','Dela Cruz','Bautista','Garcia','Ramos','Mendoza','Aquino','Navarro',
+                    'Torres','Castillo','Villanueva','Flores','Santos','Rivera','Fernandez','Lim',
+                    'Mercado','Valdez','Soriano','Aguilar','Castro','Domingo','Pascual','Tan',
+                    'Salazar','Manalo','Gonzales','Rosales','Santiago','Alvarez','De Leon','Cruz')
+
+
+def resident_name(index):
+    """Stable fictional names for new worlds; never rewrite saved case evidence."""
+    offset=index-1
+    return RESIDENT_FIRST_NAMES[offset%len(RESIDENT_FIRST_NAMES)]+' '+RESIDENT_SURNAMES[(offset*7+offset//len(RESIDENT_FIRST_NAMES))%len(RESIDENT_SURNAMES)]
 
 
 def encoded(value):
@@ -108,7 +122,7 @@ class Lab:
                 account('m%d' % i, None, name, 'merchant', 2000000)
             for i, name in enumerate(names, 1):
                 cid = 'C%03d' % i
-                self.db.execute('INSERT INTO customers VALUES(?,?,?)', (cid, name+' Santos', 350000+i*9000))
+                self.db.execute('INSERT INTO customers VALUES(?,?,?)', (cid, resident_name(i), 350000+i*9000))
                 account(cid+':wallet', cid, name+' · wallet', 'wallet', 1500000)
                 account(cid+':savings', cid, name+' · savings', 'savings', 200000)
                 for day_index in range(28):

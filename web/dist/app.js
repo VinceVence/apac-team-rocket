@@ -2,6 +2,8 @@ import {createTown} from './town.js';
 import {createFraudUI} from './fraud-ui.js';
 import {createRiskUI} from './risk-ui.js';
 import {createDemoGuide} from './demo-guide.js';
+import {mountAgentIcons,cleanText} from './agent-ui.js';
+mountAgentIcons();
 const $=id=>document.getElementById(id),drawTown=createTown($('town-map'));
 const state={data:null,view:'world',busy:false,playing:false,speed:1,stepping:false,customerId:null,hosted:false};
 const money=n=>'₱'+(n/100).toLocaleString('en-PH',{maximumFractionDigits:0});
@@ -11,7 +13,7 @@ async function api(path,body){
   const response=await fetch(path,body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-MintTown-Token':state.data.csrf_token},body:JSON.stringify(body)});
   const result=await response.json();if(!response.ok)throw Error(result.error||'Request could not be completed.');return result;
 }
-function error(message){$('app-error').textContent=message||'';$('app-error').hidden=!message}
+function error(message){$('app-error').textContent=cleanText(message||'');$('app-error').hidden=!message}
 function setBusy(on){state.busy=on;document.querySelectorAll('[data-view],#play-world').forEach(b=>b.disabled=on)}
 function setMenu(open){$('mint-town').classList.toggle('parameters-open',open);$('sidebar-backdrop').hidden=!open;$('open-menu').setAttribute('aria-expanded',String(open))}
 function incidentCopy(i){return i.status==='passed'?'Legitimate payment completed · no model call':i.status==='blocked'?(i.title.includes('changed recipient')?'New recipient · held for verification':'Held by approved knowledge'):i.status==='budget_limited'?'Investigation allowance reached':i.report_status==='resolved'?'Analyst reviewed':i.report_status==='awaiting_review'?'Ready for analyst review':i.report_status==='awaiting_customer'?'Waiting for a customer reply':i.report_status==='needs_review'?'Needs manual review':'Agent investigating'}
@@ -43,7 +45,7 @@ function renderWorld(){
   $('running-label').textContent=state.playing?'● Running':'Paused';$('play-world').textContent=state.playing?'Ⅱ Pause world':phase==='ready'?'Test protection →':['complaint','investigation','followup','review','prevention','activate','attention'].includes(phase)?'Follow the case →':phase==='protected'?'▶ Run new world':'▶ Run world';
   $('world-time').textContent=w.day+' · '+String(w.hour).padStart(2,'0')+':00';$('map-date').textContent=String(w.hour).padStart(2,'0')+':00';
   $('ledger-health').textContent=d.ledger_balanced?'Ledger balanced':'Ledger needs review';
-  $('provider-label').textContent=d.budget.live_enabled?'Gemini · live':'Gemini off';
+  $('provider-label').textContent=d.budget.live_enabled?'Live agents':'Local rehearsal';
   $('protected-count').textContent=demo.blocked_payments;$('knowledge-total').textContent=demo.knowledge_count;
   const pending=demo.incidents.filter(i=>i.report_id&&i.report_status!=='resolved').length;
   $('agent-badge').textContent=pending;$('agent-badge').hidden=!pending;
@@ -90,11 +92,11 @@ $('resident-picker').onchange=event=>followResident(event.target.value);
 $('resident-close').onclick=()=>followResident(null);
 async function refresh(){state.data=await api('/api/state');renderWorld();schedulePoll()}
 function schedulePoll(){clearTimeout(pollTimer);if(document.hidden||(!state.data?.demo.running&&!['complaint','investigation','prevention'].includes(state.data?.demo.phase)))return;pollTimer=setTimeout(async()=>{try{await refresh();const latest=state.data.demo.incidents[0]?.id;if(latest!==lastIncident&&state.view==='resolution')await fraudUI.load();lastIncident=latest}catch(e){error(e.message)}},3000)}
-async function cloudStatus(){const c=await api('/api/cloud');state.hosted=!!c.enabled;$('cloud-data-panel').hidden=!c.enabled;if(c.enabled){$('deployment-label').textContent=c.execution==='local'?'Local · Vertex AI':'Cloud simulation';$('cloud-data-status').textContent=`${c.daily_exports}/${c.daily_export_limit} exports today`;const pending=!!sessionStorage.getItem('minttown-export-request');$('cloud-export').textContent=pending?'Check export status':'Export next batch';$('cloud-export').disabled=!c.healthy||(c.daily_exports>=c.daily_export_limit&&!pending)}}
-const fraudUI=createFraudUI({$,api,state,setPlaying:()=>{},setBusy,refresh,error,focusCustomer:cid=>{state.customerId=cid;renderWorld()},onRender:report=>guide?.update(report)});
+async function cloudStatus(){const c=await api('/api/cloud');state.hosted=!!c.enabled;$('cloud-data-panel').hidden=!c.enabled;if(c.enabled){$('deployment-label').textContent=c.execution==='local'?'Local simulation':'Cloud simulation';$('cloud-data-status').textContent=`${c.daily_exports}/${c.daily_export_limit} exports today`;const pending=!!sessionStorage.getItem('minttown-export-request');$('cloud-export').textContent=pending?'Check export status':'Export next batch';$('cloud-export').disabled=!c.healthy||(c.daily_exports>=c.daily_export_limit&&!pending)}}
+const fraudUI=createFraudUI({$,api,state,setPlaying:()=>{},setBusy,refresh,error,focusCustomer:cid=>{state.customerId=cid;renderWorld()},onRender:report=>guide?.update(report),onNavigate:()=>guide?.close()});
 const riskUI=createRiskUI({$,state,error,onCases:()=>fraudUI.load(true)});
 guide=createDemoGuide({state,error,showWorld:()=>showView('world'),openCase:()=>openIncident({report_id:state.data.demo.focus_report_id})});
-async function showView(view){state.view=['world','resolution','agents'].includes(view)?view:'world';setMenu(false);error('');$('mint-town').dataset.view=state.view;history.replaceState(null,'',state.view==='world'?location.pathname:state.view==='agents'?'#agents':location.hash==='#models'?'#models':'#agent');document.title='Mint Town · '+({world:'Environment',resolution:'Agent activity',agents:'Agents'}[state.view]);document.querySelectorAll('[data-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===state.view)));$('case-view').hidden=state.view!=='world';$('fraud-view').hidden=state.view!=='resolution';$('agents-view').hidden=state.view!=='agents';renderWorld();document.querySelector('.demo-story').hidden=false;if(state.view==='resolution'){if(location.hash==='#models'||!$('risk-view').hidden)await riskUI.show(true);else await fraudUI.load(true)}else riskUI.pause()}
+async function showView(view){if(state.view!==view)window.scrollTo({top:0,behavior:'instant'});state.view=['world','resolution','agents'].includes(view)?view:'world';setMenu(false);error('');$('mint-town').dataset.view=state.view;history.replaceState(null,'',state.view==='world'?location.pathname:state.view==='agents'?'#agents':location.hash==='#models'?'#models':'#agent');document.title='Mint Town · '+({world:'Environment',resolution:'Agent activity',agents:'Agents'}[state.view]);document.querySelectorAll('[data-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===state.view)));$('case-view').hidden=state.view!=='world';$('fraud-view').hidden=state.view!=='resolution';$('agents-view').hidden=state.view!=='agents';renderWorld();document.querySelector('.demo-story').hidden=state.view!=='world';if(state.view==='resolution'){if(location.hash==='#models'||!$('risk-view').hidden)await riskUI.show(true);else await fraudUI.load(true)}else riskUI.pause()}
 async function openIncident(i){try{await riskUI.show(false);await showView('resolution');if(i.report_id||state.data.demo.focus_report_id)await fraudUI.open(i.report_id||state.data.demo.focus_report_id);if(i.status==='blocked')$('fraud-memory-panel').open=true}catch(e){error(e.message)}}
 $('open-menu').onclick=()=>setMenu(true);$('close-menu').onclick=()=>setMenu(false);$('sidebar-backdrop').onclick=()=>setMenu(false);window.addEventListener('keydown',e=>{if(e.key==='Escape')setMenu(false)});
 for(const b of document.querySelectorAll('[data-view]'))b.onclick=()=>{guide.close();showView(b.dataset.view).catch(e=>error(e.message))};

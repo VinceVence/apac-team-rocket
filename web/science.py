@@ -6,7 +6,7 @@ import math
 import random
 import time
 from collections import defaultdict
-from lab import AS_OF, encoded, now
+from lab import AS_OF, encoded, now, resident_name
 from settings import MAX_CUSTOMERS
 
 FEATURES=['purchases_14d','spend_14d','activity_change','days_since_purchase','deposits_14d','payroll_14d']
@@ -64,7 +64,7 @@ class Science:
                                 ('cohort-treasury','Historical cohort treasury','treasury',5000000000,5000000000))
             for i in range(25,MAX_CUSTOMERS+1):
                 cid='C%03d'%i;income=280000+(i%11)*16000;rng=random.Random(700+i)
-                self.lab.db.execute('INSERT INTO customers VALUES(?,?,?)',(cid,'Resident '+str(i),income))
+                self.lab.db.execute('INSERT INTO customers VALUES(?,?,?)',(cid,resident_name(i),income))
                 for kind,amount in [('wallet',1000000),('savings',100000)]:
                     self.lab.db.execute('INSERT INTO accounts(id,customer_id,label,kind,opening_minor,balance_minor) VALUES(?,?,?,?,?,?)',
                                         (cid+':'+kind,cid,cid+' · '+kind,kind,amount,amount))

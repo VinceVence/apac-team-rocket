@@ -1,4 +1,5 @@
 import {roleNames} from './harness-ui.js';
+import {cleanText,toolLabels} from './agent-ui.js';
 
 const toolCopy={
   get_case_evidence:['Check the case records','The agent retrieves this customer’s recorded payments and frozen evidence.'],
@@ -10,13 +11,13 @@ const toolCopy={
   score_models:['Test the relevant signals','Chosen detectors return versioned results. Missing evidence stays unavailable; rule scores are not fraud probabilities.'],
   run_fraud_detectors:['Test the relevant signals','The agent calls registered detectors. Their signals support investigation, not a final verdict.'],
   search_reviewed_cases:['Look for an approved lesson','The agent checks applicable knowledge from earlier analyst-reviewed cases.'],
-  delegate_question:['Ask a specialist','The lead sends one scoped question and its evidence to a specialist. Both share the same case budget.'],
+  delegate_question:['Ask a specialist','The lead sends one scoped question and its evidence to a specialist. The finding returns to the lead.'],
   return_finding:['Bring the finding back','The specialist returns its evidence and uncertainty to the case lead.'],
   ask_customer:['Ask for missing information','The agent chose a customer follow-up instead of guessing.'],
   submit_case_resolution:['Propose a resolution','The lead submits its findings to local judges before human review.'],
   submit_for_review:['Propose a resolution','The agent proposes an action with evidence and uncertainty for the analyst.'],
 };
-const short=text=>typeof text==='string'?text.slice(0,240):'';
+const short=text=>typeof text==='string'?cleanText(text).slice(0,180):'';
 
 // Presentation of saved facts only. No fixed tool route, requests or mutations.
 export function demoBeats(demo,report){
@@ -30,12 +31,12 @@ export function demoBeats(demo,report){
   const trail=report.decision_trail?.length?report.decision_trail:(report.investigation?.trace||[]).map(t=>({...t,number:t.step,status:'completed',purpose:t.summary,result:t.output}));
   for(const t of trail.filter(t=>t.tool&&t.status==='completed')){
     const [title,copy]=toolCopy[t.tool]||['Inspect the tool result','The recorded tool receipt shows what the agent requested and what it found.'];
-    add('turn-'+t.number,'resolution',`#guide-turn-${t.number}`,title,copy,{who:roleNames[t.role]||'Case lead',tool:t.tool,detail:short(t.purpose)});
+    add('turn-'+t.number,'resolution',`#guide-turn-${t.number}`,title,copy,{who:roleNames[t.role]||'Resolution agent',tool:t.tool,detail:short(t.purpose)});
   }
   const run=report.investigation,checks=report.harness?.checks||[];
   const judged=checks.find(c=>c.judges?.some(j=>j.judge==='resolution'));
   if(judged)add('judges','resolution','.harness-judges',judged.passed?'The draft passed local checks':'The judges withheld this draft',judged.passed?'Evidence, model contracts and resolution claims passed the checks. An analyst still makes the decision.':'A contract or claim failed validation. The draft cannot proceed as an approved resolution.',{who:'Harness judges',detail:short(judged.judges.filter(j=>!j.passed).flatMap(j=>j.blockers||[]).join(' '))});
-  if(run?.recommendation)add('proposal','resolution','#fraud-packet','Read the proposed resolution','Review the suggested action, cited evidence and what remains uncertain.',{who:'Case lead',next:'Show analyst review'});
+  if(run?.recommendation)add('proposal','resolution','#fraud-packet','Read the proposed resolution','Review the suggested action, cited evidence and what remains uncertain.',{who:'Resolution agent',next:'Show analyst review'});
   if(report.status==='awaiting_customer')add('reply','resolution','#fraud-reply-form','The customer needs to answer',short(run?.context?.pending_question)||'A missing fact prevents the agent from continuing.',{who:'Customer follow-up',wait:'Waiting for a reply'});
   if(['failed','budget_exhausted','interrupted'].includes(run?.status))add('stopped','resolution','#fraud-agent-stop','The investigation paused safely','Check the saved evidence and stop reason. The guide does not retry model calls or bypass limits.',{who:'Manual attention',wait:'Use the case controls'});
   if(report.status==='awaiting_review')add('review','resolution','#fraud-review-form','Now the risk analyst decides','Check the proposal, choose a decision, then use Approve & learn if justified. The guide cannot approve for you.',{who:'Human decision',wait:'Waiting for your review'});
@@ -45,11 +46,11 @@ export function demoBeats(demo,report){
   }
   const job=report.prevention,rule=job?.rule;
   if(job){
-    add('prevention','resolution','#prevention-panel',rule?'A candidate safeguard was tested':'Learn a safeguard from the case',rule?'Replay checks the proposed signals against a changed recipient and legitimate controls. It does not prove real-world accuracy.':'The prevention agent uses the approved case to propose a safeguard within the same call allowance.',{who:'Prevention agent',wait:['failed','budget_exhausted'].includes(job.status)?'Use the case controls':'Waiting for a safeguard'});
+    add('prevention','resolution','#prevention-panel',rule?'A candidate safeguard was tested':'Learn a safeguard from the case',rule?'Replay checks the proposed signals against a changed recipient and legitimate controls. It does not prove real-world accuracy.':'The prevention agent uses the approved case to propose a safeguard for future payments.',{who:'Prevention agent',wait:['failed','budget_exhausted'].includes(job.status)?'Use the case controls':'Waiting for a safeguard'});
     if(rule?.status==='proposed'&&rule.replay?.passed)add('activate','resolution','#prevention-rule','Activation is a separate decision','Inspect the signals and replay. Enable the safeguard only if those checks justify it.',{who:'Human decision',wait:'Waiting for activation'});
-    if(rule?.status==='active')add('protect','resolution','#prevention-rule','Try the next suspicious payment','Use Test a similar payment. The local safeguard checks before debit; it makes no Gemini call.',{who:'Payment safeguard',wait:'Use Test a similar payment'});
+    if(rule?.status==='active')add('protect','resolution','#prevention-rule','Try the next suspicious payment','Use Test a similar payment. The local safeguard checks before debit; the check runs locally.',{who:'Payment safeguard',wait:'Use Test a similar payment'});
   }
-  if(demo.phase==='protected')add('protected','world','#world-alert','The later scam was held','The changed-recipient attempt was held before debit. The legitimate control payment passed. No model call per payment.',{who:'Protection verified',done:true});
+  if(demo.phase==='protected')add('protected','world','#world-alert','The later scam was held','The changed-recipient attempt was held before debit. The legitimate control payment passed. The check runs locally.',{who:'Protection verified',done:true});
   return beats;
 }
 
@@ -92,14 +93,14 @@ export function createDemoGuide({state,openCase,showWorld,error}){
     const identity=[b.id,b.title,b.copy,b.detail,b.wait,beats.length].join('|'),changed=root.dataset.beat!==identity;
     if(changed){
       root.dataset.beat=identity;$('.guide-who').textContent=b.who;$('.guide-caption h2').textContent=b.title;$('.guide-copy').textContent=b.copy;
-      $('.guide-detail').textContent=b.tool?`Tool: ${b.tool}${b.detail?' · '+b.detail:''}`:b.detail||'';$('.guide-detail').hidden=!b.tool&&!b.detail;
+      $('.guide-detail').textContent=b.tool?`${toolLabels[b.tool]||b.tool}${b.detail?' · '+b.detail:''}`:b.detail||'';$('.guide-detail').hidden=!b.tool&&!b.detail;
       $('.guide-progress').textContent=`${index+1} / ${beats.length}${!['protected'].includes(state.data.demo.phase)?' so far':''}`;
       $('.guide-back').disabled=index===0;const next=$('.guide-next');next.textContent=b.done?'Finish guide':b.next||'Next';next.disabled=index===beats.length-1&&!b.done&&b.id!=='complaint';
       $('.guide-wait').textContent=next.disabled?b.wait||'Waiting for the next recorded action':'Esc to close · approvals stay manual';
     }
     if(navigate){
       const r=target.getBoundingClientRect();
-      if(r.top<100||r.bottom>innerHeight-card.offsetHeight-36){const top=scrollY+r.top-110;window.scrollTo({top:Math.max(0,top),behavior:'instant'})}
+      if(r.top<100||r.bottom>innerHeight-card.offsetHeight-36){const top=scrollY+r.top-(innerWidth<1200?24:110);window.scrollTo({top:Math.max(0,top),behavior:'instant'})}
       if(priorFocus&&root.contains(document.activeElement)||!priorFocus){$('.guide-close').focus({preventScroll:true})}
     }
     layout();
@@ -132,7 +133,7 @@ export function createDemoGuide({state,openCase,showWorld,error}){
   document.getElementById('fraud-select').addEventListener('change',close);
   document.getElementById('risk-models-tab').addEventListener('click',close);
   window.addEventListener('keydown',e=>{if(e.key==='Escape'&&active){close();if(priorFocus?.isConnected)priorFocus.focus({preventScroll:true})}});
-  window.addEventListener('scroll',layout,{passive:true});window.addEventListener('resize',layout);
+  window.addEventListener('scroll',layout,{passive:true});window.addEventListener('resize',()=>active?render(true):layout());
   new ResizeObserver(layout).observe(card);
   return {update,start,close};
 }
