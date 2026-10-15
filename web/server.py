@@ -186,6 +186,9 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                 if path=='/api/world/prove':
                     if set(body)!={'expected_run'}:raise LabError('Use the current demo run.')
                     return self.reply(200,world_demo.prove(**body))
+                if path=='/api/world/demo-action':
+                    if set(body)!={'expected_run','report_id','action'}:raise LabError('Use the current guided demo step.')
+                    return self.reply(200,world_demo.demo_action(**body))
                 if path=='/api/world/stop':
                     if set(body)!={'expected_run'}:raise LabError('Invalid world stop.')
                     return self.reply(200,world_demo.stop(**body))

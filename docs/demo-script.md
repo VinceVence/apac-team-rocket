@@ -22,27 +22,27 @@ The registered detector scores are rule signals, not calibrated fraud probabilit
 
 ## 1:25–1:55 — Analyst review
 
-Read the expected resolution, evidence and uncertainty. Review the lesson and click **Approve & learn** only if supported.
+Read the expected resolution, evidence and uncertainty. Click **Next**. The guided demo assumes the synthetic risk analyst has approved the case; the server records this as a demo assumption. Normal simulation still requires explicit analyst review.
 
-> The agent recommends; the risk analyst verifies. Approval publishes the reviewed case. This is a synthetic recall request, not a promise that money has been recovered.
+> The agent recommends; this demo assumes the synthetic risk analyst verified the case. Approval publishes the reviewed case. This is a synthetic recall request, not a promise that money has been recovered.
 
 The prevention learner may consume one remaining model call from the same six-call allowance.
 
 ## 1:55–2:25 — Learn a safeguard
 
-Show the **Prevention agent** panel, its selected signals and replay results. Click **Enable safeguard** after inspecting the source and controls.
+Show the prevention signals and replay results. Click **Next** to apply the assumed demo activation. If no candidate passed, the demo explicitly uses only the approved recipient watch.
 
 > A second role converts the approved resolution into a narrow, versioned safeguard. It can also decline. The proposal must catch the changed-recipient example and avoid the legitimate replay controls, then a human decides whether to activate it. These are synthetic checks, not production accuracy measurements.
 
 ## 2:25–3:00 — Prove future prevention
 
-Click **Test a similar payment**. Show the green protection marker and the two outcomes.
+Click **Next** to test the similar payment. Show the green protection marker and the two outcomes.
 
-> The scam now uses a different recipient. The local payment gate requests verification before any debit, while the normal payment passes. Neither payment makes a Gemini call.
+> When a behavioral safeguard passed, the scam now uses a different recipient. If it did not, the demo uses the previously reviewed recipient and labels that narrower protection. The local payment gate requests verification before any debit, while the normal payment passes. Neither payment makes a Gemini call.
 >
 > The contribution is the complete feedback loop: evidence-driven investigation, human-reviewed knowledge, a tested prevention proposal, and an observable effect on the next transaction—all within one shared cost budget.
 
-Leave the completed scene visible. **Run new world** archives it and clears its active lessons, but never resets spend or daily counters. To replay without paid calls, inspect the saved trace and use the already-completed payment proof; do not start a new world or new learner.
+Leave the completed scene visible. **Run demo** archives it and clears its active lessons, but never resets spend or daily counters. To replay without paid calls, inspect the saved trace and use the already-completed payment proof; do not start a new world or new learner.
 
 ## Optional extension — the risk data science team
 

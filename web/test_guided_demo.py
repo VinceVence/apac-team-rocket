@@ -80,6 +80,66 @@ class GuidedDemoChecks(unittest.TestCase):
             self.assertEqual(self.lab.db.execute('SELECT count(*) FROM fraud_agent_turns').fetchone()[0],paid)
             self.assertTrue(self.lab.integrity());client.assert_not_called()
 
+    def test_next_only_review_learning_activation_and_payment_proof(self):
+        with patch('google.genai.Client.__init__',side_effect=AssertionError('No paid SDK')):
+            demo=self.server.world_demo;state=demo.start(0,background=False,fresh=True,mode='demo')
+            for _ in range(6):demo.tick(state['run_id'])
+            case=self.wait(demo.status()['focus_report_id']);rid=case['id']
+            reviewed=demo.demo_action(state['run_id'],rid,'review')
+            self.assertEqual(reviewed['report']['status'],'resolved');self.assertTrue(reviewed['receipt']['assumption'])
+            self.assertTrue(demo.demo_action(state['run_id'],rid,'review')['replayed'])
+            demo.demo_action(state['run_id'],rid,'learn');self.wait(rid,True)
+            activated=demo.demo_action(state['run_id'],rid,'activate');self.assertEqual(activated['receipt']['mode'],'behavioral_safeguard')
+            count=self.lab.db.execute('SELECT count(*) FROM fraud_agent_turns').fetchone()[0]
+            proof=demo.demo_action(state['run_id'],rid,'prove');self.assertEqual(proof['demo']['phase'],'protected')
+            self.assertTrue(demo.demo_action(state['run_id'],rid,'prove')['replayed'])
+            self.assertEqual(count,self.lab.db.execute('SELECT count(*) FROM fraud_agent_turns').fetchone()[0]);self.assertLessEqual(count,6)
+            self.assertEqual(len(self.server.fraud_desk.memories()),1);self.assertTrue(self.lab.integrity())
+
+    def test_failed_agent_can_finish_demo_without_retrying_or_activating_rejected_rule(self):
+        from fraud_adk import FakeInvestigator
+        self.server.fraud_agent.model_factory=lambda:FakeInvestigator(chooser=lambda p:('not_a_tool',{}))
+        demo=self.server.world_demo;state=demo.start(0,background=False,fresh=True,mode='demo')
+        for _ in range(6):demo.tick(state['run_id'])
+        rid=demo.status()['focus_report_id'];case=self.wait(rid);self.assertEqual(case['investigation']['status'],'failed')
+        count=self.lab.db.execute('SELECT count(*) FROM fraud_agent_turns').fetchone()[0]
+        demo.demo_action(state['run_id'],rid,'review')
+        with self.lab.db:self.lab.db.execute("UPDATE fraud_live_control SET blocked_reason='Offline test fence' WHERE id=1")
+        learned=demo.demo_action(state['run_id'],rid,'learn');self.assertEqual(learned['receipt']['mode'],'reviewed_recipient')
+        demo.demo_action(state['run_id'],rid,'activate');result=demo.demo_action(state['run_id'],rid,'prove')
+        self.assertEqual(result['demo']['phase'],'protected');self.assertFalse(self.server.prevention.active())
+        self.assertEqual(count,self.lab.db.execute('SELECT count(*) FROM fraud_agent_turns').fetchone()[0]);self.assertTrue(self.lab.integrity())
+        with self.assertRaises(LabError):demo.demo_action(state['run_id']+1,rid,'review')
+        with self.assertRaises(LabError):demo.demo_action(state['run_id'],'another-case','review')
+
+    def test_rejected_prevention_candidate_stays_rejected_in_the_demo(self):
+        from fraud_adk import FakeInvestigator
+        self.server.prevention.model_factory=lambda:FakeInvestigator(chooser=lambda p:('propose_prevention_rule',{'name':'Too broad urgency rule','signals':['urgent_request'],'explanation':'Deliberately invalid single-signal rule for this offline check.','purpose':'Verify that failed validation cannot become active.'}))
+        demo=self.server.world_demo;state=demo.start(0,background=False,fresh=True,mode='demo')
+        for _ in range(6):demo.tick(state['run_id'])
+        rid=demo.status()['focus_report_id'];self.wait(rid)
+        demo.demo_action(state['run_id'],rid,'review');demo.demo_action(state['run_id'],rid,'learn')
+        job=self.wait(rid,True)['prevention'];self.assertEqual(job['status'],'rejected')
+        activation=demo.demo_action(state['run_id'],rid,'activate');self.assertEqual(activation['receipt']['mode'],'reviewed_recipient')
+        self.assertFalse(self.server.prevention.active())
+        demo.demo_action(state['run_id'],rid,'prove')
+        self.assertEqual(self.server.prevention.for_report(rid)['status'],'rejected')
+        self.assertEqual(demo.status()['phase'],'protected')
+
+    def test_demo_fence_still_allows_scoped_local_story_but_not_model_calls(self):
+        demo=self.server.world_demo;state=demo.start(0,background=False,fresh=True,mode='demo')
+        self.server.fraud_agent.agents.config.daily_calls=0
+        for _ in range(6):demo.tick(state['run_id'])
+        rid=demo.status()['focus_report_id'];self.assertTrue(rid)
+        for action in ('review','learn','activate','prove'):
+            # Keep learning local as well: no paid or fake model generation.
+            with self.lab.db:self.lab.db.execute("UPDATE fraud_live_control SET blocked_reason='Test allowance exhausted' WHERE id=1")
+            demo.demo_action(state['run_id'],rid,action)
+        self.assertEqual(demo.status()['phase'],'protected')
+        self.assertEqual(self.lab.db.execute('SELECT count(*) FROM fraud_agent_turns').fetchone()[0],0)
+        with self.lab.db:self.lab.db.execute('UPDATE world_demo_state SET guided=0 WHERE id=1')
+        with self.assertRaisesRegex(LabError,'guided demo'):demo.demo_action(state['run_id'],rid,'review')
+
     def test_empty_scene_stays_empty_after_restart_without_backfilling_history(self):
         state=self.server.world_demo.start(0,background=False,fresh=True);self.server.world_demo.stop(state['run_id'])
         self.server.server_close();self.lab.db.close()

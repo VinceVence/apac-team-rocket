@@ -5,6 +5,7 @@ import threading
 
 from lab import LabError, encoded, now
 from fraud_scenarios import SCENARIOS as SCAMS
+from fraud_desk import LESSON, QUESTION
 
 RUN_STEPS = 24
 
@@ -27,6 +28,9 @@ class WorldDemo:
           customer_id TEXT NOT NULL, report_id TEXT, memory_ids TEXT NOT NULL,
           event_ids TEXT NOT NULL, amount_minor INTEGER NOT NULL, tick INTEGER NOT NULL,
           created_at TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS world_demo_actions(
+          run_id INTEGER NOT NULL,report_id TEXT NOT NULL,action TEXT NOT NULL,
+          receipt TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(run_id,action));
         ''')
         with self.lab.db:
             columns={r['name'] for r in self.lab.rows('PRAGMA table_info(world_demo_state)')}
@@ -65,6 +69,7 @@ class WorldDemo:
             return {**state,'mode':'simulation' if state['continuous'] else 'demo' if state['guided'] else 'episode',
                     'max_steps':None if state['continuous'] else RUN_STEPS,'provider':provider,'incidents':incidents,'blocked_payments':totals[0],
                     'protection':{'count':totals[0],'amount_minor':totals[1],'recent':protected},
+                    'presentation_actions':{r['action']:json.loads(r['receipt']) for r in self.lab.rows('SELECT action,receipt FROM world_demo_actions WHERE run_id=?',(state['run_id'],))},
                     'knowledge_count':len(self.desk.memories()),'calls_remaining':max(0,budget['daily_call_limit']-budget['daily_calls']),
                     'phase':phase,'scene_id':scene,'focus_customer_id':focus['customer_id'] if focus else None,
                     'restart_blocked':restart_blocked,'agent_busy':bool(self.runner.pending or (self.intake and self.intake.is_alive()))}
@@ -127,7 +132,7 @@ class WorldDemo:
                         spec['payee']=pattern['recipient_accounts'][0]
                         flags=self.desk.screen(cid,spec['payee']);break
             if repeat and not flags:return None
-            status='blocked' if flags else 'investigating';report_id=None;events=[];settled=[];total=0;memory_ids={f['memory_id'] for f in flags}
+            status='blocked' if flags else 'investigating';report_id=None;events=[];settled=[];total=0;memory_ids={f['memory_id'] for f in flags};manual_only=False
             provider='gemini' if self.runner.agent.live_enabled() else 'fake'
             if not flags:
                 budget=self.runner.agent.budget('',provider)
@@ -136,6 +141,8 @@ class WorldDemo:
                     budget['total_committed_microusd']+10000>budget['total_limit_microusd'] or
                     (provider=='gemini' and self.runner.agent.runtime()['live_circuit_open'])):
                     status='budget_limited'
+                if status=='budget_limited' and metadata['guided_demo']:
+                    manual_only=True;status='needs_review'
                 if status!='budget_limited' and self.guard:
                     try:self.guard.allow('POST','/api/fraud-desk/report',{'request_id':identifier})
                     except LabError:status='budget_limited'
@@ -178,7 +185,9 @@ class WorldDemo:
                      encoded(events),total,self.world.state()['tick'],now()))
             self.checkpoint()
         if report_id:
-            if background:
+            if manual_only:
+                self.desk.prepare(report_id,'blocked','admission','Live investigation is unavailable. The demo can continue with an assumed analyst review of the recorded payment; no model request was made.');self.checkpoint()
+            elif background:
                 self.intake=threading.Thread(target=self.prepare,args=(report_id,identifier,provider),daemon=True,name='case-intake');self.intake.start()
             else:self.prepare(report_id,identifier,provider)
         return identifier
@@ -244,14 +253,87 @@ class WorldDemo:
             if step>=RUN_STEPS and not state['continuous']:self.lab.db.execute("UPDATE world_demo_state SET running=0,note='24-hour episode complete' WHERE id=1")
         self.checkpoint();return self.status()
 
-    def prove(self,expected_run):
+    def demo_action(self,expected_run,report_id,action):
+        """Viewer-authorized demo assumptions, scoped to the current synthetic scene.
+
+        Never exposed as a model tool. Normal simulation keeps explicit review and
+        activation. Failed models stay failed; the reviewed recipient watch is
+        the honest, local fallback when a broader candidate cannot be activated.
+        """
+        if action not in ('answer','review','learn','activate','prove'):raise LabError('Unknown demo action.')
+        with self.lab.lock:
+            state=self.status()
+            if type(expected_run) is not int or expected_run!=state['run_id'] or not state['guided'] or report_id!=state['focus_report_id']:
+                raise LabError('This action belongs only to the current guided demo.',409)
+            report=self.desk.detail(report_id);tx=report['transactions']
+            if not tx or any(t['metadata'].get('source')!='world_demo' or not t['metadata'].get('guided_demo') for t in tx):
+                raise LabError('Demo assumptions cannot be used for submitted customer reports.',403)
+            prior=self.lab.db.execute('SELECT receipt FROM world_demo_actions WHERE run_id=? AND action=?',(expected_run,action)).fetchone()
+            if prior:return {'demo':state,'report':report,'receipt':json.loads(prior[0]),'replayed':True}
+            run=report['investigation']
+            if (run and run['status'] in ('running','stepping')) or (report.get('preparation') or {}).get('status')=='running':raise LabError('The current check is still being recorded.',409)
+            receipt={'actor':'simulated_analyst','assumption':True,'action':action,'report_id':report_id}
+            if action=='answer':
+                if report['status']!='awaiting_customer':raise LabError('No customer reply is pending.',409)
+                self.runner.reply(report_id=report_id,answer=SCAMS['phishing']['reply'],expected_revision=report['revision'])
+                receipt['actor']='simulated_customer'
+            elif action=='review':
+                if report['status']!='resolved':
+                    # This scripted review is permitted only for the demonstrated
+                    # impersonation evidence, never from a synthetic truth label.
+                    observed=[t['metadata'].get('prevention_features',{}) for t in tx]
+                    if not any(v.get('safe_account_request') and v.get('secrecy_request') for v in observed):
+                        raise LabError('The demo review requires the recorded impersonation and secrecy signals.',409)
+                    if not run:
+                        run=self.desk.start(report_id)
+                        for _ in range(5):run=self.desk.step(run['id'],run['step'])
+                        receipt['fallback']='Local evidence review; no model investigation was completed.'
+                    elif run['status'] in ('failed','budget_exhausted','interrupted'):
+                        receipt['fallback']='Investigation stopped: '+run['context'].get('stop_reason','No further request was made.')
+                        self.runner.agent.handoff(run['id']);run=self.desk.detail(report_id)['investigation']
+                    if run['status']!='awaiting_review':raise LabError('Wait for the current investigation result.',409)
+                    self.desk.review(report_id,run['id'],'confirmed_scam','request_recall',
+                        'DEMO ASSUMPTION: the simulated risk analyst verified this synthetic transfer and its recorded impersonation request. No real customer decision.',
+                        True,LESSON,QUESTION)
+                receipt['review_id']=self.desk.detail(report_id)['reviews'][-1]['id']
+                receipt['memory_id']=self.world.prevention.basis(report_id)['memory']['id']
+            else:
+                basis=self.world.prevention.basis(report_id)
+                receipt['memory_id']=basis['memory']['id']
+                job=self.world.prevention.for_report(report_id)
+                if action=='learn':
+                    if not job and not self.runner.agent.runtime()['live_circuit_open']:
+                        try:job=self.runner.learn(report_id,'gemini' if self.runner.agent.live_enabled() else 'fake')
+                        except LabError as exc:receipt['fallback']=str(exc)
+                    elif not job:receipt['fallback']='The model circuit is paused. The approved recipient watch remains available; no model request was retried.'
+                    receipt.update(actor='prevention',mode='candidate' if job else 'reviewed_recipient',job_id=job['id'] if job else None)
+                elif action=='activate':
+                    if not self.lab.db.execute("SELECT 1 FROM world_demo_actions WHERE run_id=? AND action='learn'",(expected_run,)).fetchone():raise LabError('Load the reviewed lesson first.',409)
+                    rule=job.get('rule') if job else None
+                    if job and job['status'] in ('ready','queued','running'):raise LabError('The prevention check is still running.',409)
+                    if rule and rule['replay']['passed']:
+                        self.world.prevention.activate(rule['id'],True);receipt.update(mode='behavioral_safeguard',rule_id=rule['id'])
+                    else:receipt.update(mode='reviewed_recipient',fallback='The broader candidate is inactive. Only the analyst-approved recipient watch is used.')
+                else:
+                    if not self.lab.db.execute("SELECT 1 FROM world_demo_actions WHERE run_id=? AND action='activate'",(expected_run,)).fetchone():raise LabError('Confirm the demo protection step first.',409)
+                    self.prove(expected_run,allow_watch=True)
+                    receipt.update(actor='payment_gateway',blocked=True,legitimate_payment_passed=True)
+            with self.lab.db:self.lab.db.execute('INSERT INTO world_demo_actions VALUES(?,?,?,?,?)',(expected_run,report_id,action,encoded(receipt),now()))
+            self.checkpoint()
+            return {'demo':self.status(),'report':self.desk.detail(report_id),'receipt':receipt,'replayed':False}
+
+    def prove(self,expected_run,allow_watch=False):
         with self.lab.lock:
             state=self.status()
             if type(expected_run) is not int or state['run_id']!=expected_run:raise LabError('The demo changed. Refresh its state.',409)
             if state['phase']=='protected':return state
-            if state['phase']!='ready':raise LabError('Activate the reviewed prevention safeguard before testing it.',409)
+            if state['phase']!='ready':
+                if not allow_watch:raise LabError('Activate the reviewed prevention safeguard before testing it.',409)
+                self.world.prevention.basis(state['focus_report_id'])
             self.incident(expected_run,'phishing',repeat=True)
-            held=self.lab.db.execute("SELECT id FROM world_incidents WHERE id=? AND status='blocked'",('world-scam-'+str(expected_run)+'-phishing-variant',)).fetchone()
+            suffix='variant' if any(r['family']=='phishing' for r in self.world.prevention.active()) else 'repeat'
+            if suffix=='repeat' and not allow_watch:raise LabError('The reviewed behavioral safeguard is no longer active.',409)
+            held=self.lab.db.execute("SELECT id FROM world_incidents WHERE id=? AND status='blocked'",('world-scam-'+str(expected_run)+'-phishing-'+suffix,)).fetchone()
             if not held:raise LabError('This safeguard did not match the changed-recipient request. Review its replay.',409)
             with self.lab.db:
                 eid='world-proof-payment-'+str(expected_run)

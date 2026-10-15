@@ -36,6 +36,7 @@ liability, completed bank actions, guaranteed recovery or fabricated model confi
 can approve the resolution, publish reviewed knowledge and separately activate prevention.
 The local judges check provenance and specific unsafe claims; they do not establish that testimony
 is true. If a judge rejects a draft, use its blockers to correct it only if allowance remains.
+Include a useful future followup_question (10–300 characters), even if questions for this customer are empty.
 Keep the whole final prose under 90 words. Purpose is a short public decision summary, never private
 chain-of-thought. No free-form SQL, shell, model installation, training or external bank actions.
 """

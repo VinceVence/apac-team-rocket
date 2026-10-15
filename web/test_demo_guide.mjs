@@ -10,7 +10,7 @@ test('guide follows actual tool order and does not invent a specialist',()=>{
   const r={...report,decision_trail:[turn(1,'get_case_evidence'),turn(2,'ask_customer')],status:'awaiting_customer',investigation:{status:'awaiting_customer',context:{pending_question:'Did you verify the caller?'}}};
   const beats=demoBeats(demo,r);
   assert.deepEqual(beats.map(b=>b.id),['world','complaint','report','turn-1','turn-2','reply']);
-  assert.equal(beats.at(-1).copy,'Did you verify the caller?');
+  assert.equal(beats.at(-1).action,'answer');
   assert.equal(beats.some(b=>b.id==='review'),false);
 });
 
@@ -19,16 +19,16 @@ test('fast completed runs retain each tool, the specialist and judge rejection',
   const beats=demoBeats(demo,r);
   assert.equal(beats.find(b=>b.id==='turn-3').who,'Device & identity');
   assert.equal(beats.find(b=>b.id==='judges').title,'The judges withheld this draft');
-  assert.equal(beats.at(-1).id,'stopped');
-  assert.equal(beats.some(b=>b.id==='review'||b.id==='knowledge'),false);
+  assert.equal(beats.at(-1).id,'review');assert.equal(beats.at(-1).action,'review');
+  assert.equal(beats.some(b=>b.id==='knowledge'),false);
 });
 
 test('knowledge and protection require observed review and backend state',()=>{
   const r={...report,status:'resolved',reviews:[{id:'human-review'}],approved_lesson:{id:'memory'},prevention:{status:'awaiting_activation',rule:{status:'proposed',replay:{passed:true}}}};
   const beats=demoBeats(demo,r);
-  assert.deepEqual(beats.slice(-4).map(b=>b.id),['review','knowledge','prevention','activate']);
+  assert.deepEqual(beats.slice(-3).map(b=>b.id),['review','knowledge','prevention']);assert.equal(beats.at(-1).action,'activate');
   r.prevention.rule.status='active';
-  assert.equal(demoBeats(demo,r).at(-1).id,'protect');
+  assert.equal(demoBeats({...demo,presentation_actions:{learn:{},activate:{}}},r).at(-1).id,'repeat');
   assert.equal(demoBeats({...demo,phase:'protected'},r).at(-1).id,'protected');
   assert.equal(demoBeats(demo,{...report,status:'resolved',reviews:[{}]}).some(b=>b.id==='knowledge'),false);
   assert.equal(demoBeats(demo,{...r,approved_lesson:{lifecycle:{active:false}}}).some(b=>b.id==='knowledge'),false);
@@ -70,7 +70,7 @@ test('Next from live activity visits unread tools instead of skipping to review'
   assert.equal(replied[1].target,'#agent-live-panel');assert.equal(nextGuideStep(replied,'reply'),'turn-3');
 });
 
-test('a rejected safeguard ends with a visible result, never an indefinite wait',()=>{
+test('a rejected candidate stays inactive while Next can use reviewed-recipient protection',()=>{
   const beats=demoBeats(demo,{...report,status:'resolved',reviews:[{}],prevention:{status:'rejected',rule:{status:'rejected',replay:{passed:false}}}});
-  assert.equal(beats.at(-1).id,'prevention');assert.equal(beats.at(-1).done,true);assert.equal(beats.at(-1).manual,true);
+  assert.equal(beats.at(-1).id,'prevention');assert.equal(beats.at(-1).action,'activate');assert.match(beats.at(-1).copy,/unapproved|unavailable|did not pass/);
 });

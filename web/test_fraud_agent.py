@@ -67,6 +67,18 @@ class AgentChecks(unittest.TestCase):
         return self.desk.review(report['id'], run['id'], 'confirmed_scam', 'request_recall',
             'The analyst verified the reported impersonation and transfer.', True, LESSON, QUESTION)
 
+    def test_blank_future_question_uses_a_declared_template_without_retry(self):
+        def blank(packet):
+            name,args=fixture_choice(packet)
+            if name=='submit_for_review':args['followup_question']=''
+            return name,args
+        self.agent.model_factory=lambda:FakeInvestigator(chooser=blank)
+        _,run=self.start('benign');run=self.finish(run)
+        self.assertEqual(run['status'],'awaiting_review')
+        self.assertEqual(run['recommendation']['suggested_question'],QUESTION)
+        self.assertEqual(run['recommendation']['future_question_origin'],'review_template')
+        self.assertEqual(run['budget']['case_calls'],2)
+
     def test_native_tool_choice_differs_and_uses_actual_results(self):
         first, run = self.start(); run = self.finish(run)
         self.assertEqual(run['status'], 'awaiting_review')

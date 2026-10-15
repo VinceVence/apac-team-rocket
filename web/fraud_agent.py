@@ -516,7 +516,8 @@ class FraudAgent:
                     'uncertainties': args['uncertainties'] or ['The report has not been independently confirmed by an analyst.'],
                     'questions': args['questions'], 'suggested_action': args['action'],
                     'suggested_lesson':text(args['lesson'],'Proposed lesson',10,500),
-                    'suggested_question':text(args['followup_question'],'Future question',10,300),
+                    'suggested_question':text(args['followup_question'] if not isinstance(args['followup_question'],str) or args['followup_question'].strip() else QUESTION,'Future question',10,300),
+                    'future_question_origin':'model' if isinstance(args['followup_question'],str) and args['followup_question'].strip() else 'review_template',
                     'customer_message': text(args['customer_message'], 'Draft customer response', 10, 600)}
                 warnings=self.amount_warnings(run['recommendation'],context)
                 if warnings:raise LabError('; '.join(warnings),422)
