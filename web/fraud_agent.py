@@ -511,13 +511,14 @@ class FraudAgent:
                 if set(ids) != set(report['event_ids']) or not set(ids) <= seen: raise LabError('Verify and cite every reported transaction before submitting.', 422)
                 if not set(memory_ids) <= {m['id'] for m in context.get('memories', [])}: raise LabError('Memory citation was not retrieved.', 422)
                 if context.get('evidence_hash') != self.lab.fingerprint(self.desk.transactions(report)): raise LabError('Transaction evidence changed. Start a fresh investigation.', 409)
+                default_question=isinstance(args['followup_question'],str) and args['followup_question'].strip().lower() in ('','none','n/a','not applicable')
                 run['recommendation'] = {'disposition': args['assessment'], 'summary': text(args['summary'], 'Summary', 20, 900),
                     'facts': ['Verified %d reported transaction(s).' % len(ids)], 'evidence_ids': ids, 'memory_ids': memory_ids,
                     'uncertainties': args['uncertainties'] or ['The report has not been independently confirmed by an analyst.'],
                     'questions': args['questions'], 'suggested_action': args['action'],
                     'suggested_lesson':text(args['lesson'],'Proposed lesson',10,500),
-                    'suggested_question':text(args['followup_question'] if not isinstance(args['followup_question'],str) or args['followup_question'].strip() else QUESTION,'Future question',10,300),
-                    'future_question_origin':'model' if isinstance(args['followup_question'],str) and args['followup_question'].strip() else 'review_template',
+                    'suggested_question':text(QUESTION if default_question else args['followup_question'],'Future question',10,300),
+                    'future_question_origin':'review_template' if default_question else 'model',
                     'customer_message': text(args['customer_message'], 'Draft customer response', 10, 600)}
                 warnings=self.amount_warnings(run['recommendation'],context)
                 if warnings:raise LabError('; '.join(warnings),422)
