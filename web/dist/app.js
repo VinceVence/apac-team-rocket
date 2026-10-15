@@ -24,7 +24,25 @@ function renderRunControls(){
   $('play-world').title=demo.running?'Pause payments; active investigations can finish.':demo.continuous?'Resume this world with its cases and safeguards.':'Start an empty world. Payments continue while agents investigate.';
   $('run-demo').title='Start a fresh guided case, from payments to reviewed protection.';
 }
-function setMenu(open){$('mint-town').classList.toggle('parameters-open',open);$('sidebar-backdrop').hidden=!open;$('open-menu').setAttribute('aria-expanded',String(open))}
+const sidebarMobile=matchMedia('(max-width:1000px)');let menuOpen=false,sidebarCollapsed=false;
+try{sidebarCollapsed=localStorage.getItem('minttown-sidebar-collapsed')==='true'}catch{}
+function renderSidebar(){
+  const mobile=sidebarMobile.matches,open=mobile?menuOpen:!sidebarCollapsed;
+  $('mint-town').classList.toggle('parameters-open',mobile&&open);
+  $('mint-town').classList.toggle('sidebar-collapsed',!mobile&&sidebarCollapsed);
+  $('sidebar-backdrop').hidden=!(mobile&&open);
+  $('open-menu').setAttribute('aria-expanded',String(open));
+  const label=open?'Collapse sidebar':'Expand sidebar';$('open-menu').setAttribute('aria-label',label);$('open-menu').title=label;
+  $('sidebar-chevron').setAttribute('d',open?'m17 9-3 3 3 3':'m14 9 3 3-3 3');
+  requestAnimationFrame(positionFraudAlert);
+}
+function setMenu(open){menuOpen=open;renderSidebar()}
+function toggleSidebar(){
+  if(sidebarMobile.matches)menuOpen=!menuOpen;
+  else{sidebarCollapsed=!sidebarCollapsed;try{localStorage.setItem('minttown-sidebar-collapsed',String(sidebarCollapsed))}catch{}}
+  renderSidebar();
+}
+sidebarMobile.addEventListener('change',()=>{menuOpen=false;renderSidebar()});renderSidebar();
 function incidentCopy(i){return i.status==='passed'?'Legitimate payment completed':i.status==='blocked'?'Held before debit by approved knowledge':i.status==='budget_limited'?'Investigation allowance reached':i.report_status==='resolved'?'Analyst reviewed':i.report_status==='awaiting_review'?'Ready for analyst review':i.report_status==='awaiting_customer'?'Waiting for a customer reply':i.status==='needs_review'||i.report_status==='needs_review'?'Needs manual review':i.report_status==='reported'?'Preparing case evidence':'Agent investigating'}
 function renderWorld(){
   const d=state.data,w=d.world,demo=d.demo;
@@ -126,10 +144,10 @@ function schedulePoll(){clearTimeout(pollTimer);if(document.hidden||(!state.data
 async function cloudStatus(){const c=await api('/api/cloud');state.hosted=!!c.enabled;$('cloud-data-panel').hidden=!c.enabled;if(c.enabled){$('deployment-label').textContent=c.execution==='local'?'Local simulation':'Cloud simulation';$('cloud-data-status').textContent=`${c.daily_exports}/${c.daily_export_limit} exports today`;const pending=!!sessionStorage.getItem('minttown-export-request');$('cloud-export').textContent=pending?'Check export status':'Export next batch';$('cloud-export').disabled=!c.healthy||(c.daily_exports>=c.daily_export_limit&&!pending)}}
 const fraudUI=createFraudUI({$,api,state,setPlaying:()=>{},setBusy,refresh,error,focusCustomer:cid=>{state.customerId=cid;renderWorld()},onRender:report=>guide?.update(report),onNavigate:()=>guide?.close()});
 const riskUI=createRiskUI({$,state,error,onCases:()=>fraudUI.load(true)});
-guide=createDemoGuide({state,error,showWorld:()=>showView('world'),openCase:async()=>{if(!await openIncident({report_id:state.data.demo.focus_report_id}))throw Error('The saved case could not be opened. Refresh its status.');},demoAction:async action=>{await api('/api/world/demo-action',{expected_run:state.data.demo.run_id,report_id:state.data.demo.focus_report_id,action});await refresh();await fraudUI.load()}});
+guide=createDemoGuide({state,error,showWorld:customerId=>{if(customerId)state.customerId=customerId;return showView('world')},residentPosition:id=>drawTown.residentPosition(id),openCase:async()=>{if(!await openIncident({report_id:state.data.demo.focus_report_id}))throw Error('The saved case could not be opened. Refresh its status.');},demoAction:async action=>{await api('/api/world/demo-action',{expected_run:state.data.demo.run_id,report_id:state.data.demo.focus_report_id,action});await refresh();await fraudUI.load()}});
 async function showView(view){if(state.view!==view)window.scrollTo({top:0,behavior:'instant'});state.view=['world','resolution','agents'].includes(view)?view:'world';setMenu(false);error('');$('mint-town').dataset.view=state.view;history.replaceState(null,'',state.view==='world'?location.pathname:state.view==='agents'?'#agents':location.hash==='#models'?'#models':'#agent');document.title='Mint Town · '+({world:'Environment',resolution:'Agent activity',agents:'Agents'}[state.view]);document.querySelectorAll('[data-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===state.view)));$('case-view').hidden=state.view!=='world';$('fraud-view').hidden=state.view!=='resolution';$('agents-view').hidden=state.view!=='agents';renderWorld();document.querySelector('.demo-story').hidden=state.view!=='world'||!state.data.demo.guided;if(state.view==='resolution'){if(location.hash==='#models'||!$('risk-view').hidden)await riskUI.show(true);else await fraudUI.load(true)}else riskUI.pause()}
 async function openIncident(i){try{await riskUI.show(false);await showView('resolution');if(i.report_id||state.data.demo.focus_report_id)await fraudUI.open(i.report_id||state.data.demo.focus_report_id);if(i.status==='blocked'){$('fraud-memory-panel').open=true;document.getElementById(i.report_id?'prevention-stage':'fraud-memory-panel').scrollIntoView({behavior:'smooth',block:'start'})}return true}catch(e){error(e.message);return false}}
-$('open-menu').onclick=()=>setMenu(true);$('close-menu').onclick=()=>setMenu(false);$('sidebar-backdrop').onclick=()=>setMenu(false);window.addEventListener('keydown',e=>{if(e.key==='Escape')setMenu(false)});
+$('open-menu').onclick=toggleSidebar;$('close-menu').onclick=()=>{setMenu(false);$('open-menu').focus()};$('sidebar-backdrop').onclick=()=>setMenu(false);window.addEventListener('keydown',e=>{if(e.key==='Escape')setMenu(false)});
 for(const b of document.querySelectorAll('[data-view]'))b.onclick=()=>{guide.close();showView(b.dataset.view).catch(e=>error(e.message))};
 for(const b of document.querySelectorAll('[data-speed]'))b.onclick=()=>{state.speed=Number(b.dataset.speed);$('speed-label').textContent=state.speed+'×';document.querySelectorAll('[data-speed]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)))};
 $('activity').oninput=()=>{$('activity-value').textContent=$('activity').value};

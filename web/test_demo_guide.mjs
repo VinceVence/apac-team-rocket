@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {demoBeats,keepReadingStep,nextGuideStep} from './dist/demo-guide.js';
+import {demoBeats,keepReadingStep,nextGuideStep,demoPhase,demoPhases,investigationProgress} from './dist/demo-guide.js';
 
 const demo={guided:true,run_id:1,scene_id:'first',focus_report_id:'case',phase:'investigation'};
 const report={id:'case',status:'investigating',reviews:[],decision_trail:[],investigation:{status:'running'}};
@@ -73,4 +73,36 @@ test('Next from live activity visits unread tools instead of skipping to review'
 test('a rejected candidate stays inactive while Next can use reviewed-recipient protection',()=>{
   const beats=demoBeats(demo,{...report,status:'resolved',reviews:[{}],prevention:{status:'rejected',rule:{status:'rejected',replay:{passed:false}}}});
   assert.equal(beats.at(-1).id,'prevention');assert.equal(beats.at(-1).action,'activate');assert.match(beats.at(-1).copy,/unapproved|unavailable|did not pass/);
+});
+
+
+test('phase progress is stable even when new tool steps arrive',()=>{
+  assert.deepEqual(demoPhases,['World','Report','Investigate','Review','Learn','Protect']);
+  for(const id of ['live','turn-1','turn-5','judges','proposal'])assert.equal(demoPhase(id),2);
+  assert.equal(demoPhase('repeat'),5);assert.equal(demoPhase('protected'),5);
+});
+
+test('live progress reports real completed tools and the pending choice separately',()=>{
+  const r={...report,investigation:{status:'running',context:{execution:{status:'running'}}},decision_trail:[turn(1,'get_case_evidence'),turn(2,'score_models'),{number:3,status:'reserved'}]};
+  const p=investigationProgress(r,demo);
+  assert.equal(p.completedCount,2);assert.equal(p.rows.at(-1).status,'active');
+  assert.equal(p.rows.at(-1).label,'Choosing the next check');
+  const done=investigationProgress({...r,status:'awaiting_review',decision_trail:[...r.decision_trail.slice(0,2),turn(3,'submit_case_resolution')]},demo);
+  assert.equal(done.active,false);assert.equal(done.title,'Investigation complete');
+  assert.equal(done.rows.at(-1).label,'Resolution ready for review');
+});
+
+test('completed live progress never skips unread checks that arrived before it',()=>{
+  const previous=[{id:'report'},{id:'turn-1'},{id:'turn-2'},{id:'live',live:true}];
+  const latest=[{id:'report'},{id:'turn-1'},{id:'turn-2'},{id:'turn-3'},{id:'review'}];
+  const beats=keepReadingStep(previous,latest,'live');
+  assert.equal(nextGuideStep(beats,'live',new Set(['report','live'])),'turn-1');
+  assert.equal(nextGuideStep(beats,'live',new Set(['report','live','turn-1','turn-2'])),'turn-3');
+});
+
+test('the similar attempt and blocked outcome use the environment view',()=>{
+  const r={...report,status:'resolved',reviews:[{}],approved_lesson:{id:'lesson'}};
+  const beats=demoBeats({...demo,phase:'protected',presentation_actions:{learn:{},activate:{mode:'behavioral_safeguard'}}},r);
+  assert.equal(beats.find(b=>b.id==='repeat').view,'world');
+  assert.equal(beats.at(-1).view,'world');
 });

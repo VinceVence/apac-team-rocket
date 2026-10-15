@@ -118,6 +118,7 @@ export function createTown(canvas){
   draw.setRunning=on=>{running=on;syncAnimation();paint()};
   draw.setVisible=on=>{visible=on;syncAnimation()};
   draw.setSpeed=value=>{speed=value};draw.setHour=value=>{hour=value;paint()};
+  draw.residentPosition=id=>{const a=actors.get(id);return a?{x:a.x,y:a.y}:null};
   draw.setAlerts=value=>{const next=new Map(value.map(v=>[v.customer_id,v.mark]));for(const v of value){const id=v.customer_id;if(alertIds.get(id)!==(v.id||v.mark)){if(v.mark==='!')alarmStarts.set(id,performance.now());else safetyStarts.set(id,performance.now());alertIds.set(id,v.id||v.mark)}}for(const id of alarmStarts.keys())if(next.get(id)!=='!')alarmStarts.delete(id);for(const id of safetyStarts.keys())if(next.get(id)!=='✓')safetyStarts.delete(id);for(const id of alertIds.keys())if(!next.has(id))alertIds.delete(id);alerts=next;draw(population,selected);syncAnimation()};
   draw.alertBounds=()=>{const id=[...alerts].find(([,mark])=>mark==='!')?.[0],a=actors.get(id);return a?{x:Math.max(0,a.x-102),y:Math.max(0,a.y-142),width:204,height:155}:null};
   draw.reset=()=>{clearTimeout(expiryTimer);cancelAnimationFrame(raf);raf=0;running=false;actors.clear();alerts.clear();alarmStarts.clear();safetyStarts.clear();alertIds.clear();seen.clear();recent=[];people=[];selected=hovered=centered=null;fx=[];last=0;paint()};
