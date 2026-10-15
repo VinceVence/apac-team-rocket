@@ -90,7 +90,7 @@ export function createFraudUI({$,api,state,setPlaying,setBusy,refresh,error,focu
     $('fraud-provider-note').textContent=(run?run.provider==='gemini':dashboard.agent_runtime?.live_enabled)?'Live investigation':'Offline rehearsal';
     const progress=renderCaseTracker(report,state.data?.demo,onNavigate);
     $('fraud-snapshot').hidden=!run?.snapshot;
-    if(run?.snapshot)$('fraud-snapshot').textContent=`Frozen evidence · simulation date ${run.snapshot.as_of} · ${run.snapshot.id}`;
+    if(run?.snapshot)$('fraud-snapshot').textContent=`Frozen evidence · simulation date ${run.snapshot.as_of} · ${run.snapshot.id}. ${report.preparation?.detail||''}`;
     $('fraud-agent-stop').hidden=!stopped;$('fraud-agent-stop').textContent=run?.status==='budget_exhausted'?'The investigation reached its safety limit. An analyst can continue from the saved evidence.':run?.status==='interrupted'?'The investigation was interrupted. Review the saved evidence before continuing.':cleanText(run?.context.stop_reason||'The investigation needs manual attention.');
     $('fraud-agent-handoff').hidden=!stopped;
     $('fraud-agent-question').hidden=run?.status!=='awaiting_customer';$('fraud-agent-question').textContent=run?.context.pending_question||'';
@@ -100,8 +100,8 @@ export function createFraudUI({$,api,state,setPlaying,setBusy,refresh,error,focu
     $('fraud-replies').replaceChildren();for(const a of report.answers)$('fraud-replies').append(el('p','Customer follow-up: '+a.text));
     const flags=report.transactions.flatMap(t=>t.metadata.review_flags||[]);
     $('fraud-early-warning').hidden=!flags.length;$('fraud-early-warning').textContent=flags.length?'Flagged before the report: this recipient appears in a reviewed scam case.':'';
-    $('fraud-run').hidden=reviewed||report.status==='awaiting_customer'||!!stopped||automatic||run?.status==='awaiting_review'||activity.stage==='blocked'&&!resumable;
-    $('fraud-step').hidden=state.hosted||$('fraud-run').hidden||run?.status==='awaiting_review';$('fraud-run').textContent=resumable?'Resume saved work':run?.status==='awaiting_review'?'Recheck evidence':run?'Continue':'Investigate';
+    $('fraud-run').hidden=reviewed||report.status==='awaiting_customer'||!!stopped||automatic||run?.status==='awaiting_review'||activity.stage==='blocked'&&!resumable&&activity.action!=='start';
+    $('fraud-step').hidden=state.hosted||$('fraud-run').hidden||run?.status==='awaiting_review';$('fraud-run').textContent=activity.stage==='blocked'&&!run?'Prepare & investigate':resumable?'Resume saved work':run?.status==='awaiting_review'?'Recheck evidence':run?'Continue':'Investigate';
     $('fraud-run').classList.toggle('primary-button',run?.status!=='awaiting_review');$('fraud-run').classList.toggle('text-button',run?.status==='awaiting_review');
     const trail=report.decision_trail?.length?report.decision_trail:(run?.trace||[]).map(t=>({number:t.step,tool:t.tool,purpose:t.summary,finding:t.finding,result:t.output,provenance:t.provenance,status:'completed'}));
     $('fraud-tools').hidden=!trail.length;$('fraud-tool-count').textContent=trail.length?trail.filter(t=>t.status==='completed').length+' checks recorded':'';
@@ -121,6 +121,8 @@ export function createFraudUI({$,api,state,setPlaying,setBusy,refresh,error,focu
         for(const d of predictions){const card=el('section',undefined,'detector-result'),head=el('header');const label=/device/i.test(d.name)?'Device activity':/message|intent|request/i.test(d.name)?'Payment request':'Payment pattern';head.append(el('strong',label),el('span',d.result));card.append(head);if(d.signal_score!==null){const meter=el('meter');meter.min=0;meter.max=1;meter.value=d.signal_score;meter.setAttribute('aria-label',label+' signal score');card.append(meter)}card.append(el('small','Signal strength · not a fraud probability'));models.append(card)}
         body.append(models);
       }else if(brief)body.append(el('p',cleanText(brief)));
+      const behavior=result.warehouse?.source||(['get_customer_features'].includes(t.tool)?result.source:null);
+      if(behavior?.analytics_sync)body.append(el('p',behavior.analytics_sync==='matched_completed_publication'?'Customer behavior: matching published data reused.':'Customer behavior: frozen ledger evidence. BigQuery sync is deferred.','surface-note'));
       if(t.error)body.append(el('p',cleanText(t.error)));
       const details=el('details',undefined,'world-details');details.append(el('summary','Evidence sources & result'));
       details.append(el('pre',JSON.stringify(publicEvidence({purpose:t.purpose,finding:t.finding,status:t.status,sources:t.provenance,result:t.result}),null,2),'science-evidence'));body.append(details);step.append(body);li.append(step);$('fraud-trace').append(li);

@@ -52,7 +52,9 @@ Keep results concise. Ask only questions not already answered. Stop when evidenc
 All observations and budgets survive customer replies. A new reply is additional evidence, not a fresh budget.'''
 SYSTEM += '\nAll amounts in this simulator are Philippine pesos (PHP): 100 minor units = PHP 1. Use PHP or ₱, never assume USD. Reviewed-case search accepts full recipient IDs or their aliases.'
 SYSTEM += '''\nThis is a Philippine complaint-resolution workbench. If warehouse_available is true,
-retrieve get_customer_features before submitting: it reads the scoped BigQuery snapshot.
+retrieve get_customer_features before submitting: it reads frozen case-time behavior.
+Read its source receipt: exact completed publication caches are distinguished from fresh
+ledger evidence awaiting BigQuery sync. Never describe deferred data as a BigQuery query.
 Choose whether descriptive comparisons are sufficient or train_behavior_model would help.
 That optional local CPU model detects atypical behavior, not confirmed fraud; no labelled fraud
 classifier is currently deployed. Do not use demographics as evidence of guilt or risk.
@@ -139,13 +141,18 @@ class FraudAgent:
         recipients = {payee: self.lab.rows("SELECT id,amount_minor,to_account,occurred_at FROM financial_events WHERE to_account=? AND kind='payment' AND status='settled' AND occurred_at<=? ORDER BY rowid DESC LIMIT 10", (payee, self.lab.clock_day + 'T23:59:59.999Z'))
                       for payee in sorted({t['to_account'] for t in transactions if t['to_account']})}
         memories = [m for m in self.desk.memories() if m['source_report_id'] != report['id'] and m['validation']['passed']][:100]
-        latest=self.warehouse.latest() if self.warehouse else None
+        latest=self.warehouse.matching_snapshot() if self.warehouse else None
         data = {'transactions': transactions, 'history': history, 'recipients': recipients, 'memories': memories,
                 'warehouse_snapshot':latest['id'] if latest else None}
+        if self.warehouse:
+            data['customer_features']=self.warehouse.frozen_features(report['customer_id'],max(t['occurred_at'] for t in transactions),latest)
         as_of=self.lab.clock_day
         if prior_snapshot:
             prior=self.snapshot(prior_snapshot)
             retained={**data,'warehouse_snapshot':prior['data'].get('warehouse_snapshot')}
+            saved_features=prior['data'].get('customer_features')
+            if saved_features and saved_features['source']['evidence_hash']==data.get('customer_features',{}).get('source',{}).get('evidence_hash'):
+                retained['customer_features']=saved_features
             # A publication for another customer must not discard this case's observations.
             if retained==prior['data']:data=retained
         snapshot_id = 'SNP-' + uuid.uuid4().hex[:12]
@@ -401,7 +408,9 @@ class FraudAgent:
                 public=[{k:t[k] for k in ('id','customer_id','occurred_at','status','to_account')}|{'amount_php':t['amount_minor']/100,'device_known':t['metadata'].get('device_known'),'authorization_recorded':t['metadata'].get('authorization_verified')} for t in transactions]
                 context['public_transactions']=public
                 output={'currency':'PHP','transactions':public,'guidance':GUIDANCE,'warehouse':{'available':False}}
-                if self.warehouse and evidence.get('warehouse_snapshot'):
+                if evidence.get('customer_features'):
+                    output['warehouse']=evidence['customer_features'];context['warehouse_features']=output['warehouse']
+                elif self.warehouse and evidence.get('warehouse_snapshot'):
                     day=min(t['occurred_at'][:10] for t in transactions)
                     output['warehouse']=self.warehouse.customer_features(report['customer_id'],evidence['warehouse_snapshot'],day)
                     context['warehouse_features']=output['warehouse']
@@ -427,7 +436,9 @@ class FraudAgent:
                 finding='Validated '+str(len(output['detectors']))+' registered detector(s) against frozen case evidence.'
             elif name in ('get_customer_features','train_behavior_model'):
                 snapshot_id=evidence.get('warehouse_snapshot')
-                if not self.warehouse or not snapshot_id:
+                if name=='get_customer_features' and evidence.get('customer_features'):
+                    output=evidence['customer_features'];context['warehouse_features']=output
+                elif not self.warehouse or not snapshot_id:
                     output={'available':False,'reason':'No BigQuery snapshot is attached to this run.'}
                 else:
                     day=min(t['occurred_at'][:10] for t in evidence['transactions'])
@@ -438,8 +449,8 @@ class FraudAgent:
                         output={'status':'not_trained','reason':'Retrieve customer features before choosing a model.'}
                     else:
                         output=self.warehouse.train_behavior_model(report['customer_id'],snapshot_id,day,context['warehouse_features']['features'])
-                finding='Retrieved customer behavior from BigQuery.' if name=='get_customer_features' and output.get('features') else 'Behavior model: '+output.get('status','unavailable')
-                source_ids=[output['source']['job_id']] if output.get('source') else []
+                finding='Retrieved frozen customer behavior from '+output['source']['provider']+'.' if name=='get_customer_features' and output.get('features') else 'Behavior model: '+output.get('status','unavailable')
+                source_ids=[output['source'].get('job_id',output['source']['snapshot_id'])] if output.get('source') else []
             elif name=='get_complaint_guidance':
                 output=GUIDANCE;finding='Loaded the Philippine complaint-routing and evidence checklist.'
                 source_ids=[s['id'] for s in GUIDANCE['sources']]

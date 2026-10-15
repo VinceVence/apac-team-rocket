@@ -108,6 +108,57 @@ class Warehouse:
         row=self.lab.db.execute("SELECT * FROM warehouse_snapshots WHERE status='completed' ORDER BY rowid DESC LIMIT 1").fetchone()
         return dict(row) if row else None
 
+    def identity(self,tables):
+        # Case workflow state is not a change to the published financial evidence.
+        return self.lab.fingerprint({k:rows if k!='pallet_complaints' else
+            [{a:b for a,b in r.items() if a!='status'} for r in rows] for k,rows in tables.items()})
+
+    def matching_snapshot(self):
+        """Reuse only the exact completed payload, within its seven-day retention."""
+        identifier=self.identity(self.tables())
+        row=self.lab.db.execute("SELECT * FROM warehouse_snapshots WHERE id=? AND status='completed'",(identifier,)).fetchone()
+        if not row:return None
+        return dict(row) if self.fresh(row) else None
+
+    @staticmethod
+    def fresh(row):
+        created=dt.datetime.fromisoformat(row['created_at'].replace('Z','+00:00'))
+        if created.tzinfo is None:created=created.replace(tzinfo=dt.timezone.utc)
+        return dt.timedelta(0)<=dt.datetime.now(dt.timezone.utc)-created<dt.timedelta(days=7)
+
+    def frozen_features(self,cid,cutoff,published=None):
+        """Fresh case-time features; an analytics mirror is never the admission gate."""
+        if cid not in {r['id'] for r in self.lab.rows('SELECT id FROM customers ORDER BY id LIMIT ?',(MAX_CUSTOMERS,))}:
+            raise LabError('Customer is outside the simulator evidence scope.',403)
+        day=dt.date.fromisoformat(cutoff[:10]);since=day-dt.timedelta(days=28)
+        if not self.lab.seed_history:since=max(since,dt.date.fromisoformat(AS_OF))
+        raw=self.lab.rows("""SELECT id,occurred_at,kind,status,amount_minor,to_account,metadata
+            FROM financial_events WHERE customer_id=? AND occurred_at>=? AND occurred_at<=?
+            ORDER BY occurred_at,id LIMIT ?""",(cid,since.isoformat(),cutoff,MAX_EXPORT_ROWS+1))
+        if len(raw)>MAX_EXPORT_ROWS:raise LabError('Case feature evidence exceeds the row cap.',413)
+        rows=[{k:v for k,v in r.items() if k!='metadata'}|{'device_known':json.loads(r['metadata']).get('device_known')} for r in raw]
+        if len(encoded(rows).encode())>MAX_EXPORT_BYTES:raise LabError('Case feature evidence exceeds the byte cap.',413)
+        payments=[r for r in rows if r['kind']=='payment' and r['status']=='settled']
+        current=[r for r in payments if r['occurred_at'][:10]==day.isoformat()]
+        prior=[r for r in payments if r['occurred_at'][:10]<day.isoformat()]
+        days=max(0,(day-since).days);amount=sum(r['amount_minor'] for r in current)
+        values={'customer_id':cid,'payment_count':len(current),'spend_php':amount/100,
+            'average_payment_php':amount/100/len(current) if current else 0,
+            'merchant_count':len({r['to_account'] for r in current}),
+            'unknown_device_count':sum(r['device_known'] is False for r in current),
+            'max_burst_minute':max(Counter(r['occurred_at'][:16] for r in current if 'T' in r['occurred_at']).values(),default=0),
+            'prior_daily_payment_count':len(prior)/days if days else None,
+            'prior_daily_spend_php':sum(r['amount_minor'] for r in prior)/100/days if days else None,'baseline_days':days}
+        digest=self.lab.fingerprint({'recipe':'case-time-features-v1','customer_id':cid,'since':str(since),'cutoff':cutoff,'rows':rows})
+        return {'available':True,'features':values,'currency':'PHP','source':{
+            'provider':'Published snapshot cache' if published else 'Simulation ledger',
+            'snapshot_id':published['id'] if published else 'LEDGER-'+digest[:20],
+            'feature_version':'case-time-features-v1','evidence_hash':digest,'cutoff':cutoff,
+            'record_count':len(rows),
+            'analytics_sync':'matched_completed_publication' if published else 'deferred',
+            'computation':'Frozen from the canonical ledger; only records at or before the reported transfers. No BigQuery query.'},
+            'scope':'Case-time behavioral features. Demographics and synthetic truth labels are excluded.'}
+
     def status(self):
         latest=self.latest()
         return {'enabled':True,'table_count':len(SCHEMAS),'tables':list(SCHEMAS),'customer_limit':MAX_CUSTOMERS,
@@ -121,11 +172,10 @@ class Warehouse:
         with self.lab.lock:
             tables=self.tables()
             # Workflow status changes do not make a new financial feature snapshot.
-            identity={k:rows if k!='pallet_complaints' else [{a:b for a,b in r.items() if a!='status'} for r in rows] for k,rows in tables.items()}
-            snapshot=self.lab.fingerprint(identity)
+            snapshot=self.identity(tables)
             prior=self.lab.db.execute('SELECT * FROM warehouse_snapshots WHERE id=?',(snapshot,)).fetchone()
             if prior:
-                if prior['status']=='completed':return snapshot
+                if prior['status']=='completed' and self.fresh(prior):return snapshot
                 raise LabError('An earlier warehouse publication needs operator reconciliation. No load was retried.',409)
             count=sum(map(len,tables.values()));size=sum(len(encoded(r).encode())+90 for rows in tables.values() for r in rows)
             if count>MAX_EXPORT_ROWS or size>MAX_EXPORT_BYTES:raise LabError('Warehouse snapshot exceeds its row or byte cap.',413)

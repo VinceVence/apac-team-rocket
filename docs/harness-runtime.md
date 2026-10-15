@@ -10,7 +10,7 @@ A delegated question pins the case revision, snapshot, evidence IDs and model re
 
 A five-generation example is `case evidence → chosen predictors → delegate → specialist finding → submit`. Prevention can then use the sixth generation after approval. This is an allowance example, not a compulsory order. Questions and additional checks consume the same allowance; insufficient evidence or budget ends in human review.
 
-`get_case_evidence` reads verified payments, the existing pinned BigQuery behavior snapshot when enabled, and the complaint checklist. The raw AE-shaped `minttown_world` mirror remains separate; it is not an unrestricted SQL tool. Predictors use frozen prepayment inputs. Historical event IDs are replaced by opaque case-bound aliases in model prompts so simulator IDs cannot reveal scenario names.
+`get_case_evidence` reads verified payments, immutable case-time behavior, and the complaint checklist. Source receipts distinguish an exact completed publication cache from fresh ledger evidence awaiting the next BigQuery batch; no new query is claimed for either cached computation. The raw AE-shaped `minttown_world` mirror remains separate; it is not an unrestricted SQL tool. Predictors use frozen prepayment inputs. Historical event IDs are replaced by opaque case-bound aliases in model prompts so simulator IDs cannot reveal scenario names.
 
 ## Judges
 

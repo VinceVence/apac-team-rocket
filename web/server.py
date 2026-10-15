@@ -212,10 +212,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                     if case['investigation'] is None:
                         if (case.get('preparation') or {}).get('status')=='running':raise LabError('Case evidence is already being prepared. Follow its saved progress.',409)
                         try:
-                            fraud_desk.prepare(body['report_id'],'running','simulation_data','Saving the simulation tables for this case.')
-                            if environment_publisher:environment_publisher.publish()
-                            fraud_desk.prepare(body['report_id'],'running','evidence_snapshot','Freezing customer history and transactions for the investigator.')
-                            if warehouse:warehouse.publish()
+                            notice=world_demo.prepare_evidence(body['report_id'])
                         except Exception:
                             fraud_desk.prepare(body['report_id'],'blocked','preparation','Evidence preparation stopped. Review the saved state; no task was retried.')
                             raise
@@ -223,7 +220,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                     except Exception:
                         if case['investigation'] is None:fraud_desk.prepare(body['report_id'],'blocked','dispatch','The investigation could not be started. Review the saved status; no request was retried.')
                         raise
-                    if case['investigation'] is None:fraud_desk.prepare(body['report_id'],'completed','dispatched','Evidence is ready. The investigation is assigned to the agent.')
+                    if case['investigation'] is None:fraud_desk.prepare(body['report_id'],'completed','dispatched',notice)
                     queued=run['context'].get('execution',{}).get('status') in ('queued','running')
                     return self.reply(202 if queued else 200,run)
                 if path=='/api/prevention/learn':
@@ -256,12 +253,10 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                     if set(body)!=fields:raise LabError('Invalid fraud-desk command fields.')
                     result=handler(**body)
                     if path=='/api/fraud-desk/revoke-memory' and environment_publisher:
-                        try:result['publication']=environment_publisher.publish()
-                        except LabError as exc:result['publication_notice']=str(exc)
+                        result['publication_notice']='Revocation is saved immediately. The analytics mirror updates in the next shared batch.'
                     if path=='/api/fraud-desk/review' and body['publish_memory'] and body['disposition']=='confirmed_scam':
                         if environment_publisher:
-                            try:result['publication']=environment_publisher.publish()
-                            except LabError as exc:result['publication_notice']=str(exc)
+                            result['publication_notice']='The reviewed lesson is saved. The analytics mirror updates in the next shared batch.'
                         try:fraud_runner.learn(body['report_id'],'gemini' if fraud_agent.live_enabled() else 'fake')
                         except LabError as exc:result['prevention_notice']=str(exc)
                         result.update(prevention=prevention.for_report(body['report_id']))

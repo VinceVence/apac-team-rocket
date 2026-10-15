@@ -46,7 +46,7 @@ test('watch the reported case before the worker or investigation exists',()=>{
 test('a preparation failure is visible and never starts or retries a model automatically',()=>{
   const report={id:'case',status:'reported',preparation:{status:'blocked',detail:'Snapshot needs operator review.'}};
   const a=caseActivity(report,{focus_report_id:'case'});
-  assert.equal(a.active,false);assert.equal(a.poll,false);assert.equal(a.stage,'blocked');assert.equal(a.action,'refresh');
+  assert.equal(a.active,false);assert.equal(a.poll,false);assert.equal(a.stage,'blocked');assert.equal(a.action,'start');
 });
 
 test('watch transitions from handoff to reserved generation and then human review',()=>{

@@ -138,7 +138,7 @@ def tools_for(controller, run_id):
         return invoke('ask_customer', {'question': question}, purpose, tool_context)
 
     def get_customer_features(purpose: str, tool_context: ToolContext) -> dict:
-        """Read this case customer's spending, frequency, merchants and device indicators from its pinned BigQuery snapshot. Required before submission when warehouse_available is true."""
+        """Read this customer's frozen case-time behavior. Receipts distinguish a matched published snapshot from fresh ledger evidence awaiting analytics sync."""
         return invoke('get_customer_features',{},purpose,tool_context)
 
     def train_behavior_model(purpose: str, tool_context: ToolContext) -> dict:
@@ -165,7 +165,7 @@ def tools_for(controller, run_id):
                       customer_message=customer_message,lesson=lesson,followup_question=followup_question), purpose, tool_context)
 
     def get_case_evidence(purpose:str,tool_context:ToolContext)->dict:
-        """Verify this case's payments, read pinned BigQuery behavior when available, and load complaint guidance. Scope and cutoff are injected by the server."""
+        """Verify case payments, read frozen behavior and complaint guidance. Source receipts identify published-cache or fresh-ledger evidence. Scope and cutoff are server-bound."""
         return invoke('get_case_evidence',{},purpose,tool_context)
 
     def list_eligible_models(question:str,purpose:str,tool_context:ToolContext)->dict:

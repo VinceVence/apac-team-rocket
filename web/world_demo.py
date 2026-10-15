@@ -6,8 +6,10 @@ import threading
 from lab import LabError, encoded, now
 from fraud_scenarios import SCENARIOS as SCAMS
 from fraud_desk import LESSON, QUESTION
+from cloud_data import DAILY_EXPORTS
 
 RUN_STEPS = 24
+REPORTS_PER_ANALYTICS_BATCH = 5
 
 
 class WorldDemo:
@@ -192,17 +194,48 @@ class WorldDemo:
             else:self.prepare(report_id,identifier,provider)
         return identifier
 
+    def sync_analytics(self):
+        """Coalesce reports; never make an analytics quota the case-evidence gate."""
+        cloud=self.warehouse.cloud if self.warehouse else self.environment_publisher.cloud if self.environment_publisher else None
+        if not cloud:return 'Local ledger evidence is ready.'
+        with self.lab.lock:
+            if not cloud.healthy:raise LabError('Cloud state is unavailable.',503)
+            if self.warehouse and self.warehouse.matching_snapshot():
+                return 'Reusing the matching completed publication; no new BigQuery write.'
+            latest=self.warehouse.latest() if self.warehouse else None
+            published_reports=json.loads(latest['counts']).get('pallet_complaints',0) if latest else 0
+            reports=self.lab.db.execute('SELECT count(*) FROM fraud_reports').fetchone()[0]
+            if latest and reports-published_reports<REPORTS_PER_ANALYTICS_BATCH:
+                return 'Fresh ledger evidence is ready. Analytics sync waits for the shared five-report batch.'
+            for table in ('warehouse_snapshots','environment_publications'):
+                if self.lab.db.execute("SELECT 1 FROM sqlite_master WHERE name=?",(table,)).fetchone() and self.lab.db.execute("SELECT 1 FROM "+table+" WHERE status!='completed'").fetchone():
+                    return 'Fresh ledger evidence is ready. An uncertain analytics publication needs reconciliation; no load was retried.'
+            needed=int(self.warehouse is not None)+int(self.environment_publisher is not None)
+            if cloud.daily_exports(self.lab)+needed>DAILY_EXPORTS:
+                return 'Fresh ledger evidence is ready. BigQuery sync is deferred until publication allowance is available.'
+        try:
+            # Each existing publisher retains its own durable allowance and job receipts.
+            if self.warehouse:self.warehouse.publish()
+            if self.environment_publisher:self.environment_publisher.publish()
+            return 'The shared analytics batch is saved. Case evidence is ready.'
+        except LabError:
+            if not cloud.healthy:raise
+            return 'Fresh ledger evidence is ready. Analytics sync stopped; no load was retried.'
+
+    def prepare_evidence(self,report_id):
+        report=self.desk.report(report_id)
+        if not self.desk.transactions(report):raise LabError('The reported payment evidence is missing.',409)
+        self.desk.prepare(report_id,'running','ledger_snapshot','Freezing the recorded payments and case-time behavior.')
+        notice=self.sync_analytics()
+        self.desk.prepare(report_id,'running','dispatch',notice)
+        return notice
+
     def prepare(self,report_id,identifier,provider):
         try:
-            if self.environment_publisher:
-                self.desk.prepare(report_id,'running','simulation_data','Saving the simulation tables for this case.')
-                self.environment_publisher.publish()
-            if self.warehouse:
-                self.desk.prepare(report_id,'running','evidence_snapshot','Freezing customer history and transactions for the investigator.')
-                self.warehouse.publish()
+            notice=self.prepare_evidence(report_id)
             self.desk.prepare(report_id,'running','dispatch','Handing the saved evidence to the resolution agent.')
             self.runner.start(report_id,provider)
-            self.desk.prepare(report_id,'completed','dispatched','Evidence is ready. The investigation has been handed to the agent.')
+            self.desk.prepare(report_id,'completed','dispatched',notice)
         except LabError as exc:
             self.desk.prepare(report_id,'blocked','preparation',str(exc))
             with self.lab.lock,self.lab.db:

@@ -91,7 +91,7 @@ class WarehouseChecks(unittest.TestCase):
                 run=agent.step(run['id'],run['step'])
         self.assertEqual(run['status'],'awaiting_review',run['context'].get('stop_reason'))
         self.assertEqual(run['budget']['case_calls'],6)
-        self.assertEqual(run['context']['warehouse_features']['source']['provider'],'BigQuery')
+        self.assertEqual(run['context']['warehouse_features']['source']['provider'],'Published snapshot cache')
 
 
 if __name__=='__main__':unittest.main()

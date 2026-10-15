@@ -74,3 +74,11 @@ Do not roll back to a release whose spend meter predates `risk_agent_turns` afte
 ## Demo Fraud Analyst
 
 In **Agent activity → Fraud Analyst**, **Auto-approve demo** replaces the two manual approvals for one completed, current-world synthetic case. It records an explicit demo assumption, uses the normal review judges, and runs prevention through the existing shared meter. Only a replay-passed, unchanged safeguard is activated. Missing evidence, manual handoffs, submitted reports and validation failures remain blocked. Duplicate clicks and restarts never retry learning. Normal manual review and revocation remain available; this shortcut does not claim real human verification.
+
+## Evidence and shared analytics batches
+
+Case intake no longer requires a new BigQuery export. A completed publication is reusable only when its payload exactly matches the current export and is less than seven days old. Otherwise, the investigator receives fresh, immutable ledger features with an explicit `Simulation ledger` / `analytics_sync: deferred` receipt. Features stop at the last reported transaction timestamp, exclude labels and demographics, and survive in the normal generation-checked GCS checkpoint. A cache receipt is not a claim that a new BigQuery query ran.
+
+The first report triggers a shared warehouse + six-table AE batch; the next batch waits for five additional reports. Both publications still count against the existing 25/day allowance, and both slots must be available before starting a new pair. Uncertain loads are not retried. Reviews and revocations apply locally and durably immediately; their analytics copies wait for the next batch or an explicit export. When the publication quota is exhausted, investigation continues from valid ledger evidence while analytics remains deferred. A new intake after allowance returns can flush the backlog. Missing transactions or a failed canonical checkpoint still stop work.
+
+For a report blocked before any investigation began, **Prepare & investigate** explicitly freezes its saved evidence and starts its first investigation. This does not retry a failed model or grant new allowance. Existing completed cases retain their original traces.

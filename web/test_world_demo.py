@@ -117,6 +117,8 @@ class WorldDemoChecks(unittest.TestCase):
     def test_continuous_world_keeps_paying_during_intake_and_resumes_same_scene(self):
         entered=threading.Event();release=threading.Event()
         class Publisher:
+            from types import SimpleNamespace
+            cloud=SimpleNamespace(healthy=True,daily_exports=lambda lab:0)
             def publish(inner):
                 entered.set()
                 if not release.wait(10):raise RuntimeError('Test intake timed out')

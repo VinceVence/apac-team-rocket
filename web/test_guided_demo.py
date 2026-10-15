@@ -165,7 +165,7 @@ class GuidedDemoChecks(unittest.TestCase):
             thread=threading.Thread(target=lambda:demo.incident(state['run_id'],'phishing'));thread.start()
             try:
                 self.assertTrue(entered.wait(5));rid=demo.status()['focus_report_id'];case=self.server.fraud_desk.detail(rid)
-                self.assertIsNone(case['investigation']);self.assertEqual(case['preparation']['stage'],'simulation_data')
+                self.assertIsNone(case['investigation']);self.assertEqual(case['preparation']['stage'],'ledger_snapshot')
                 self.assertEqual(case['preparation']['status'],'running');self.assertTrue(demo.status()['restart_blocked'])
                 self.assertEqual(self.lab.db.execute('SELECT count(*) FROM fraud_agent_turns').fetchone()[0],0)
             finally:released.set();thread.join(10)
@@ -173,17 +173,17 @@ class GuidedDemoChecks(unittest.TestCase):
             self.assertEqual(case['preparation']['status'],'completed');self.assertEqual(case['status'],'awaiting_review')
             self.assertEqual(publisher.calls,1);self.assertEqual(case['investigation']['budget']['case_calls'],5)
 
-    def test_preparation_failure_is_a_visible_blocker_without_model_calls_or_retries(self):
+    def test_analytics_failure_does_not_block_durable_ledger_evidence(self):
         class Publisher:
             calls=0
             def publish(inner):inner.calls+=1;raise LabError('Snapshot needs operator review.',503)
         publisher=Publisher();demo=self.server.world_demo
         state=demo.start(0,background=False,fresh=True);demo.environment_publisher=publisher
-        demo.incident(state['run_id'],'phishing');rid=demo.status()['focus_report_id'];case=self.server.fraud_desk.detail(rid)
-        self.assertEqual(case['preparation']['status'],'blocked');self.assertIsNone(case['investigation'])
-        self.assertEqual(demo.status()['phase'],'attention')
+        demo.incident(state['run_id'],'phishing');rid=demo.status()['focus_report_id'];case=self.wait(rid)
+        self.assertEqual(case['preparation']['status'],'completed');self.assertEqual(case['status'],'awaiting_review')
+        self.assertIn('no load was retried',case['preparation']['detail'])
         demo.incident(state['run_id'],'phishing');self.assertEqual(publisher.calls,1)
-        self.assertEqual(self.lab.db.execute('SELECT count(*) FROM fraud_agent_turns').fetchone()[0],0)
+        self.assertEqual(self.lab.db.execute('SELECT count(*) FROM fraud_agent_turns').fetchone()[0],5)
 
     def test_restart_marks_unfinished_preparation_interrupted_without_restarting_it(self):
         report=self.server.fraud_desk.demo('phishing','unfinished-preparation')
