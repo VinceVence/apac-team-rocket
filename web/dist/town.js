@@ -1,4 +1,4 @@
-import {drawResident,appearance} from './resident-sprites.js';
+import {drawResident,appearance,alarmMotion} from './resident-sprites.js';
 import {WIDTH,HEIGHT,PLACES,NODES,EDGES,paintTown,paintWater} from './town-art.js';
 
 // Route residents along the street graph, including the path around the fountain.
@@ -19,10 +19,12 @@ export function streetRoute(from,to){
 
 export function createTown(canvas){
   canvas.width=WIDTH;canvas.height=HEIGHT;
-  const ctx=canvas.getContext('2d'),actors=new Map(),seen=new Set();
+  const ctx=canvas.getContext('2d'),actors=new Map(),seen=new Set(),alarmStarts=new Map();
   const media=matchMedia('(prefers-reduced-motion: reduce)');let reduced=media.matches;
   let people=[],population=[],recent=[],selected=null,hovered=null,alerts=new Map(),running=false,speed=1,raf=0,last=0,background=null,fx=[],expiryTimer=null;
-  let hour=9,centered=null;
+  let hour=9,centered=null,visible=true;
+  const animating=()=>visible&&!reduced&&(running||[...alarmStarts.values()].some(t=>performance.now()-t<8000)||fx.some(f=>performance.now()-f.start<2200));
+  function syncAnimation(){if(animating()){if(!raf){last=0;raf=requestAnimationFrame(frame)}}else{cancelAnimationFrame(raf);raf=0;last=0}}
   function scenery(){background=document.createElement('canvas');background.width=WIDTH;background.height=HEIGHT;paintTown(background.getContext('2d'))}
   function capsule(text,x,y,color='#395d50',fill='#fff9e7'){
     ctx.font='700 12px "DM Sans",sans-serif';const width=ctx.measureText(text).width+20;
@@ -37,17 +39,20 @@ export function createTown(canvas){
       const a=actors.get(p.id);if(!a)continue;
       if(selected===p.id||hovered===p.id){ctx.strokeStyle=selected===p.id?'#f8f4c4':'#e9f2c49c';ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(a.x,a.y+1,15,6,0,0,Math.PI*2);ctx.stroke()}
       const moving=running&&a.path.length&&!reduced,frame=moving?Math.floor(time/140+Number(p.id.slice(1)))%4:0;
-      drawResident(ctx,a.x,a.y-25,p.id,a.direction,frame,!!a.payment&&a.until>time);
+      const alarm=alerts.get(p.id)==='!',motion=alarmMotion(time-(alarmStarts.get(p.id)??-Infinity),reduced);
+      if(alarm){ctx.fillStyle='#5d694b55';ctx.beginPath();ctx.ellipse(a.x,a.y+1,11,4,0,0,Math.PI*2);ctx.fill()}
+      drawResident(ctx,a.x,a.y-25-(alarm?motion.jump:0),p.id,alarm?'down':a.direction,frame,!!a.payment&&a.until>time,alarm);
     }
     // Simulated afternoon light; time is the world's clock, not the viewer's clock.
     if(hour>=17||hour<7){ctx.fillStyle=hour>=19||hour<6?'#27395b42':'#d9a57818';ctx.fillRect(0,0,WIDTH,HEIGHT)}
     for(const p of people){
       const a=actors.get(p.id),mark=alerts.get(p.id);
       if(mark){
-        const bounce=running&&!reduced?Math.sin(time/200)*2:0,y=a.y-54+bounce;
+        const motion=alarmMotion(time-(alarmStarts.get(p.id)??-Infinity),reduced),y=a.y-58-motion.jump;
         ctx.fillStyle=mark==='!'?'#b95135':'#397b5b';ctx.strokeStyle='#fff5d9';ctx.lineWidth=2.5;
         ctx.beginPath();ctx.arc(a.x,y,12,0,Math.PI*2);ctx.fill();ctx.stroke();
         ctx.fillStyle='#fff9e8';ctx.font='700 19px "DM Sans",sans-serif';ctx.textAlign='center';ctx.fillText(mark,a.x,y+7);
+        if(mark==='!')capsule(motion.active?'HELP! My money!':'Scam report filed',a.x,a.y-91-motion.jump,'#8c3c29','#fff0cf');
       }else if(a.payment&&a.until>time)capsule(a.payment,a.x,a.y-49);
     }
     fx=fx.filter(f=>time-f.start<2200);
@@ -59,9 +64,10 @@ export function createTown(canvas){
     if(hovered){const p=people.find(p=>p.id===hovered),a=actors.get(hovered);if(p&&a)capsule(p.name,a.x,a.y-(alerts.has(p.id)?80:51))}
   }
   function frame(time){
-    raf=0;if(!running||reduced)return;
+    raf=0;if(!animating()){paint(time);return}
     const dt=Math.min((time-(last||time))/1000,.045);last=time;
     for(const [i,p] of people.entries()){
+      if(!running||alerts.get(p.id)==='!')continue;
       const a=actors.get(p.id);if(!a.path.length&&time>a.until){
         const target=a.home||NODES[(a.wander++*7+i*3)%NODES.length];a.path=streetRoute(a,target);a.until=time+1800+i*53;
       }
@@ -71,7 +77,7 @@ export function createTown(canvas){
       if(d<=step){a.x=target.x;a.y=target.y;a.path.shift();if(!a.path.length)a.until=time+1800+i*61}
       else{a.x+=dx/d*step;a.y+=dy/d*step}
     }
-    paint(time);raf=requestAnimationFrame(frame);
+    paint(time);if(animating())raf=requestAnimationFrame(frame);
   }
   function draw(list,focus){
     population=list.slice(0,100);selected=focus;
@@ -106,12 +112,14 @@ export function createTown(canvas){
       fx.push({x:a.x,y:a.y,to:e.transaction_type==='P2P_TRANSFER'&&other?{x:other.x,y:other.y}:null,held,start:performance.now()});
       if(reduced&&!held){a.x=target.x;a.y=target.y;a.path=[]}
     }
-    fx=fx.slice(-12);clearTimeout(expiryTimer);expiryTimer=setTimeout(()=>paint(),3100);paint();
+    fx=fx.slice(-12);clearTimeout(expiryTimer);expiryTimer=setTimeout(()=>paint(),3100);paint();syncAnimation();
   };
-  draw.setRunning=on=>{if(running===on)return;running=on;last=0;cancelAnimationFrame(raf);raf=on&&!reduced?requestAnimationFrame(frame):0;paint()};
+  draw.setRunning=on=>{running=on;syncAnimation();paint()};
+  draw.setVisible=on=>{visible=on;syncAnimation()};
   draw.setSpeed=value=>{speed=value};draw.setHour=value=>{hour=value;paint()};
-  draw.setAlerts=value=>{alerts=new Map(value.map(v=>[v.customer_id,v.mark]));draw(population,selected)};
-  draw.reset=()=>{clearTimeout(expiryTimer);actors.clear();alerts.clear();seen.clear();recent=[];people=[];selected=hovered=centered=null;fx=[];last=0;paint()};
+  draw.setAlerts=value=>{const next=new Map(value.map(v=>[v.customer_id,v.mark]));for(const [id,mark] of next)if(mark==='!'&&alerts.get(id)!=='!')alarmStarts.set(id,performance.now());for(const id of alarmStarts.keys())if(next.get(id)!=='!')alarmStarts.delete(id);alerts=next;draw(population,selected);syncAnimation()};
+  draw.alertBounds=()=>{const id=[...alerts].find(([,mark])=>mark==='!')?.[0],a=actors.get(id);return a?{x:Math.max(0,a.x-102),y:Math.max(0,a.y-142),width:204,height:155}:null};
+  draw.reset=()=>{clearTimeout(expiryTimer);cancelAnimationFrame(raf);raf=0;running=false;actors.clear();alerts.clear();alarmStarts.clear();seen.clear();recent=[];people=[];selected=hovered=centered=null;fx=[];last=0;paint()};
   const personAt=event=>{
     const bounds=canvas.getBoundingClientRect(),x=(event.clientX-bounds.left)/bounds.width*WIDTH,y=(event.clientY-bounds.top)/bounds.height*HEIGHT;
     return [...people].reverse().find(p=>{const a=actors.get(p.id);return Math.abs(x-a.x)<17&&y>a.y-40&&y<a.y+6})?.id||null;
@@ -119,7 +127,7 @@ export function createTown(canvas){
   canvas.addEventListener('pointermove',e=>{const id=personAt(e);if(id!==hovered){hovered=id;canvas.style.cursor=id?'pointer':'default';paint()}});
   canvas.addEventListener('pointerleave',()=>{hovered=null;paint()});
   canvas.addEventListener('click',e=>{const id=personAt(e);if(id)canvas.dispatchEvent(new CustomEvent('resident-select',{detail:id}))});
-  media.addEventListener('change',e=>{reduced=e.matches;cancelAnimationFrame(raf);last=0;raf=running&&!reduced?requestAnimationFrame(frame):0;paint()});
+  media.addEventListener('change',e=>{reduced=e.matches;syncAnimation();paint()});
   document.fonts.ready.then(()=>{background=null;paint()});
   return draw;
 }

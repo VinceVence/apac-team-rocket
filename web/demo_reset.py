@@ -93,6 +93,7 @@ class DemoReset:
                 self.lab.db.rollback();raise
             finally:self.lab.db.execute('PRAGMA foreign_keys=ON')
             self.lab.clock_day=AS_OF
+            self.lab.seed_history=False
             if self.lab.db.execute('PRAGMA foreign_key_check').fetchone():raise RuntimeError('Fresh scene failed referential integrity.')
             if not self.lab.integrity():raise RuntimeError('Fresh scene ledger is not balanced.')
             if self.cloud:self.cloud.save(self.lab)

@@ -55,3 +55,6 @@ summary{display:flex;align-items:center;gap:12px;cursor:pointer;list-style:none;
 /* Keep the guide beside the case on laptops, never over its controls. */
 @media(min-width:1200px){.guide-open .workspace-shell[data-view=resolution] .lab-content{padding-right:390px}}
 @media(max-width:1199px){.guide-open .lab-toolbar{position:static}.guide-caption .guide-detail{display:none}}
+
+.world-status{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;justify-content:flex-end}.world-status strong{font-size:15px;font-weight:600;color:var(--accent)}.world-status .muted{font-size:12px}.map-viewport{position:relative}.fraud-sprite-focus{position:absolute;pointer-events:none;min-width:0;min-height:0}.world-alert{scroll-margin-top:100px}#play-world{min-width:160px}
+@media(max-width:650px){.world-status{gap:4px;flex-direction:column;align-items:flex-end}.world-status strong{font-size:13px}.world-status .muted{font-size:10px}#play-world{min-width:148px}.world-heading{align-items:center}}

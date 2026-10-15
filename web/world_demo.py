@@ -49,9 +49,12 @@ class WorldDemo:
                     phase='prevention' if not job or job['status'] in ('ready','queued','running') else 'activate' if rule and rule['status']=='proposed' else 'ready' if rule and rule['status']=='active' else 'attention'
                 if any(i['id']=='world-proof-'+str(state['run_id']) and i['status']=='passed' for i in incidents):phase='protected'
             scene=self.lab.db.execute('SELECT scene_id FROM demo_scene WHERE id=1').fetchone()[0] if self.resetter else 'legacy'
+            restart_blocked=bool(self.runner.pending or self.lab.db.execute("SELECT 1 FROM fraud_agent_turns WHERE status IN ('reserved','responded') LIMIT 1").fetchone())
+            if self.environment_publisher and self.lab.db.execute("SELECT 1 FROM environment_publications WHERE status!='completed' LIMIT 1").fetchone():restart_blocked=True
             return {**state,'max_steps':RUN_STEPS,'provider':provider,'incidents':incidents,'blocked_payments':blocked,
                     'knowledge_count':len(self.desk.memories()),'calls_remaining':max(0,budget['daily_call_limit']-budget['daily_calls']),
-                    'phase':phase,'scene_id':scene,'focus_customer_id':focus['customer_id'] if focus else None}
+                    'phase':phase,'scene_id':scene,'focus_customer_id':focus['customer_id'] if focus else None,
+                    'restart_blocked':restart_blocked,'agent_busy':bool(self.runner.pending)}
 
     def start(self, expected_run, activity=2, speed=1, background=True, fresh=False):
         if type(expected_run) is not int or type(activity) is not int or activity not in range(1,5) or type(speed) is not int or speed not in (1,2,4):

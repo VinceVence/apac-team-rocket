@@ -13,14 +13,19 @@ class World:
         lab.db.executescript('''
         CREATE TABLE IF NOT EXISTS simulation_state(
           id INTEGER PRIMARY KEY CHECK(id=1), tick INTEGER NOT NULL DEFAULT 0,
-          last_alert INTEGER NOT NULL DEFAULT -24, shock_until INTEGER NOT NULL DEFAULT 0);
-        INSERT OR IGNORE INTO simulation_state(id) VALUES(1);
+          last_alert INTEGER NOT NULL DEFAULT -24, shock_until INTEGER NOT NULL DEFAULT 0,
+          history_seeded INTEGER NOT NULL DEFAULT 1);
         CREATE TABLE IF NOT EXISTS service_actions(
           id TEXT PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(id), run_id TEXT NOT NULL REFERENCES agent_runs(id),
           customer_id TEXT NOT NULL, device_id TEXT NOT NULL, service TEXT NOT NULL,
           action TEXT NOT NULL, created_at TEXT NOT NULL,
           UNIQUE(customer_id,device_id,action));
         ''')
+        with lab.db:
+            if 'history_seeded' not in {r['name'] for r in lab.rows('PRAGMA table_info(simulation_state)')}:
+                lab.db.execute('ALTER TABLE simulation_state ADD COLUMN history_seeded INTEGER NOT NULL DEFAULT 1')
+            lab.db.execute('INSERT OR IGNORE INTO simulation_state(id,history_seeded) VALUES(1,?)',(int(lab.seed_history),))
+            lab.seed_history=bool(lab.db.execute('SELECT history_seeded FROM simulation_state WHERE id=1').fetchone()[0])
         lab.clock_day=self.day(self.state()['tick'])
 
     def state(self):

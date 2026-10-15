@@ -10,20 +10,11 @@ from pathlib import Path
 
 AS_OF = '2026-10-06'
 TABLES = ('customers', 'accounts', 'financial_events', 'ledger_entries', 'cases', 'agent_runs')
-RESIDENT_FIRST_NAMES = ('Ari','Bea','Carlo','Dani','Eli','Faye','Gab','Hana','Ivo','Jules','Kai','Lia',
-                        'Mika','Nico','Oli','Pia','Quinn','Rafi','Sage','Toni','Uma','Vince','Wren','Yani',
-                        'Amara','Benjie','Celine','Diego','Enzo','Frances','Gia','Hugo','Isabel','Jessa','Kiko','Luna',
-                        'Marco','Nina','Paolo','Rina','Sofia','Theo','Maya','Luis','Clara','Noel','Andi','Rosa','Emil','Zia')
-RESIDENT_SURNAMES = ('Reyes','Dela Cruz','Bautista','Garcia','Ramos','Mendoza','Aquino','Navarro',
-                    'Torres','Castillo','Villanueva','Flores','Santos','Rivera','Fernandez','Lim',
-                    'Mercado','Valdez','Soriano','Aguilar','Castro','Domingo','Pascual','Tan',
-                    'Salazar','Manalo','Gonzales','Rosales','Santiago','Alvarez','De Leon','Cruz')
 
 
 def resident_name(index):
-    """Stable fictional names for new worlds; never rewrite saved case evidence."""
-    offset=index-1
-    return RESIDENT_FIRST_NAMES[offset%len(RESIDENT_FIRST_NAMES)]+' '+RESIDENT_SURNAMES[(offset*7+offset//len(RESIDENT_FIRST_NAMES))%len(RESIDENT_SURNAMES)]
+    """Numbered synthetic residents; never rewrite saved case evidence."""
+    return 'Resident '+str(index)
 
 
 def encoded(value):
@@ -41,11 +32,15 @@ class LabError(Exception):
 
 
 class Lab:
-    def __init__(self, path):
+    def __init__(self, path, seed_history=True):
         self.lock = threading.RLock()
         self.clock_day = AS_OF
         self.db = sqlite3.connect(str(path), check_same_thread=False)
         self.db.row_factory = sqlite3.Row
+        self.seed_history=seed_history
+        if self.db.execute("SELECT 1 FROM sqlite_master WHERE name='simulation_state'").fetchone():
+            if 'history_seeded' in {r['name'] for r in self.db.execute('PRAGMA table_info(simulation_state)')}:
+                self.seed_history=bool(self.db.execute('SELECT history_seeded FROM simulation_state WHERE id=1').fetchone()[0])
         self.db.executescript('''
         PRAGMA foreign_keys=ON;
         PRAGMA journal_mode=WAL;
@@ -111,8 +106,6 @@ class Lab:
 
     def seed(self):
         rng = random.Random(42)
-        names = ['Ari','Bea','Carlo','Dani','Eli','Faye','Gab','Hana','Ivo','Jules','Kai','Lia',
-                 'Mika','Nico','Oli','Pia','Quinn','Rafi','Sage','Toni','Uma','Vince','Wren','Yani']
         with self.lock, self.db:
             def account(identifier, customer, label, kind, amount):
                 self.db.execute('INSERT INTO accounts(id,customer_id,label,kind,opening_minor,balance_minor) VALUES(?,?,?,?,?,?)',
@@ -120,11 +113,13 @@ class Lab:
             account('treasury', None, 'Town treasury', 'treasury', 100000000)
             for i, name in enumerate(('Kape café','Sari-sari','Mercado'), 1):
                 account('m%d' % i, None, name, 'merchant', 2000000)
-            for i, name in enumerate(names, 1):
+            for i in range(1,25):
+                name=resident_name(i)
                 cid = 'C%03d' % i
                 self.db.execute('INSERT INTO customers VALUES(?,?,?)', (cid, resident_name(i), 350000+i*9000))
                 account(cid+':wallet', cid, name+' · wallet', 'wallet', 1500000)
                 account(cid+':savings', cid, name+' · savings', 'savings', 200000)
+                if not self.seed_history:continue
                 for day_index in range(28):
                     day = (dt.date.fromisoformat(AS_OF)-dt.timedelta(days=28-day_index)).isoformat()
                     if day_index % 7 == 0:
@@ -135,6 +130,7 @@ class Lab:
                                   day+'T%02d:00:00Z'%(10+j*8), cid+':wallet', merchant,
                                   {'category':'essential' if j == 0 else 'discretionary', 'device_id':'device-'+cid,
                                    'rail':['QR','Card','Wallet'][j % 3]})
+            if not self.seed_history:return
             # Explicit scenario setup transfers create low/high buffers without silently changing balances.
             for cid, desired in (('C004',200000), ('C005',1400000)):
                 current = self.db.execute('SELECT balance_minor FROM accounts WHERE id=?',(cid+':wallet',)).fetchone()[0]

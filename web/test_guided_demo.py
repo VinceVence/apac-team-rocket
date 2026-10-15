@@ -39,10 +39,18 @@ class GuidedDemoChecks(unittest.TestCase):
             self.assertTrue(state['guided']);self.assertEqual(self.server.world.state()['tick'],0)
             residents=self.lab.rows('SELECT id,name FROM customers ORDER BY id')
             self.assertEqual(len(residents),100);self.assertEqual(len({r['name'] for r in residents}),100)
-            self.assertEqual(residents[0],{'id':'C001','name':'Ari Reyes'})
-            self.assertGreater(len({r['name'].split()[-1] for r in residents}),25)
+            self.assertEqual([r['name'] for r in residents],['Resident '+str(i) for i in range(1,101)])
+            for table in ('financial_events','ledger_entries','bronze_interactions','model_runs'):
+                self.assertEqual(self.lab.db.execute('SELECT count(*) FROM '+table).fetchone()[0],0,table)
+            self.assertEqual(self.server.environment_data.tables()['wallet_transactions'],[])
+            daily=self.server.warehouse.tables()['pallet_customer_daily']
+            self.assertEqual(len(daily),100);self.assertEqual({r['event_date'] for r in daily},{self.lab.clock_day})
             self.assertEqual(self.lab.db.execute('SELECT count(*) FROM fraud_reports').fetchone()[0],0)
-            for _ in range(6):demo.tick(state['run_id'])
+            demo.tick(state['run_id'])
+            self.assertGreater(len(self.server.environment_data.tables()['wallet_transactions']),0)
+            self.assertFalse(demo.status()['incidents'])
+            self.assertEqual(self.lab.db.execute('SELECT count(*) FROM fraud_agent_turns').fetchone()[0],0)
+            for _ in range(5):demo.tick(state['run_id'])
             state=demo.status();self.assertFalse(state['running']);self.assertTrue(state['focus_report_id'])
             case=self.wait(state['focus_report_id']);self.assertEqual(case['investigation']['status'],'awaiting_review',case['investigation']['context'].get('stop_reason'))
             self.assertEqual(demo.status()['phase'],'review')
@@ -70,6 +78,18 @@ class GuidedDemoChecks(unittest.TestCase):
             self.assertEqual(demo.prove(state['run_id'])['phase'],'protected')
             self.assertEqual(self.lab.db.execute('SELECT count(*) FROM fraud_agent_turns').fetchone()[0],paid)
             self.assertTrue(self.lab.integrity());client.assert_not_called()
+
+    def test_empty_scene_stays_empty_after_restart_without_backfilling_history(self):
+        state=self.server.world_demo.start(0,background=False,fresh=True);self.server.world_demo.stop(state['run_id'])
+        self.server.server_close();self.lab.db.close()
+        with patch.dict(os.environ,{'PALLET_WAREHOUSE_ENABLED':'1','MINTTOWN_CLOUD_LIVE':'0'}):
+            self.server=make_server(0,Path(self.tmp.name)/'demo.db',cloud=self.cloud)
+        self.lab=self.server.lab
+        self.assertFalse(self.lab.seed_history)
+        self.assertEqual(self.lab.db.execute('SELECT count(*) FROM financial_events').fetchone()[0],0)
+        self.assertEqual(self.lab.db.execute('SELECT count(*) FROM bronze_interactions').fetchone()[0],0)
+        self.assertEqual(self.server.environment_data.tables()['wallet_transactions'],[])
+        self.assertTrue(self.lab.integrity())
 
     def test_fresh_reset_preserves_money_calls_admission_queries_and_circuit(self):
         day=now()[:10]

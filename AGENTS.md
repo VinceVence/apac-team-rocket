@@ -6,7 +6,7 @@ Synthetic Philippine fintech demo: world transactions → complaint → Gemini t
 
 - Working: AE-dictionary generation and isolated `minttown_world` publishing (`web/environment_data.py`, `environment_cloud.py`); updated resident sprites; resolution/prevention agents; optional risk scientist/validator; versioned BigQuery evidence; reviewed memory and payment safeguards.
 - New cases use the [investigation harness](docs/harness-runtime.md): case lead, 0–1 scoped specialist/critic, versioned model receipts and local judges before human review. Legacy saved cases keep their original traces. Research rationale: [mesh](docs/fraud-agent-mesh.md), [harness design](docs/agent-harness-design.md).
-- UI: one case flow (resolution → human review → prevention), actor icons, state tracker and guided spotlight. `web/dist/agent-ui.js` hides provider/cost metadata for display only; never remove durable accounting. New scenes use varied fictional names; keep saved evidence unchanged.
+- UI: resolution → human review → prevention, actor icons, tracker and spotlight. `agent-ui.js` hides provider/cost metadata for display only. **Run simulation** starts an empty ledger; residents are numbered 1–100. Preserve saved evidence and all spend counters when resetting.
 - AE owns source data; DS owns trained model artifacts/evaluation; agent work owns routing, scoped tools, checkpoints and review. Start with the AE’s four tables (`customers`, `wallets`, `devices`, `wallet_transactions`); the dictionary is synced from Gab’s `f03a384`; his generator/loader are not merged. Validate ownership, chronology and label leakage before importing it.
 
 ## Next implementation
@@ -44,6 +44,7 @@ Python 3.12; `pyproject.toml` + `uv.lock` are canonical. Add dependencies with `
 
 - Preserve shared durable accounting: $2/day, $0.05/case, $8 lifetime model spend; six calls/case including prevention; one paid call in flight; six-second spacing; no automatic retries. The $20 project envelope includes delayed cloud shutdown protection, not a guaranteed bill ceiling.
 - Keep 100 active customers and existing BigQuery byte/row/query limits. Never reset the spend ledger or run local and hosted writers together.
+- Interactive starts and AE exports use `seed_history=False`; historical fixtures remain available to offline tests. The persisted `simulation_state.history_seeded` flag prevents restart backfills. Opening wallet/bank endowments are not transactions; absent history must stay absent in warehouse features.
 - Publish AE-shaped rows only to `minttown_world`; preserve Gab's `minttown_simulated_env`. Six-table batches share the daily quota, require a completed receipt, and expire after seven days. See [data guide](docs/environment-data.md); current agent tools still use pinned warehouse snapshots.
 - Analyst approval publishes knowledge; separate approval activates a replay-passed safeguard. Models and agents cannot approve themselves. No LLM call per payment.
 - Pin evidence/model versions. Keep synthetic truth labels out of agent inputs and prevention features. Existing rule scores are not calibrated fraud probabilities.

@@ -9,7 +9,7 @@ import uuid
 from collections import Counter, defaultdict
 
 from cloud_data import DAILY_EXPORTS, MAX_EXPORT_BYTES, MAX_EXPORT_ROWS, wait_job
-from lab import LabError, encoded, now
+from lab import AS_OF, LabError, encoded, now
 from settings import MAX_CUSTOMERS, DAILY_WAREHOUSE_QUERIES
 
 MAX_QUERY_BYTES=50*1024*1024
@@ -60,6 +60,7 @@ class Warehouse:
 
     def tables(self):
         day=self.lab.clock_day;start=(dt.date.fromisoformat(day)-dt.timedelta(days=28)).isoformat()
+        if not self.lab.seed_history:start=max(start,AS_OF)
         people=self.lab.rows('SELECT * FROM customers ORDER BY id LIMIT ?', (MAX_CUSTOMERS,));ids={p['id'] for p in people}
         profiles={r['customer_id']:json.loads(r['profile']) for r in self.lab.rows('SELECT * FROM customer_profiles') if r['customer_id'] in ids}
         events=[r for r in self.lab.rows('SELECT * FROM financial_events WHERE occurred_at>=? AND occurred_at<? ORDER BY rowid',(start,day+'T24')) if r['customer_id'] in ids]
@@ -82,7 +83,7 @@ class Warehouse:
                 'device_known':meta.get('device_known'),'authorization_verified':meta.get('authorization_verified')})
         for mid in sorted(merchant_ids):tables['pallet_merchants'].append({'event_date':day,'merchant_id':mid,'name':accounts[mid]['label'],'kind':accounts[mid]['kind']})
         for cid in sorted(ids):
-            for offset in range(29):
+            for offset in range((dt.date.fromisoformat(day)-dt.date.fromisoformat(start)).days+1):
                 event_day=(dt.date.fromisoformat(start)+dt.timedelta(days=offset)).isoformat()
                 rows=grouped[(cid,event_day)];payments=[r for r in rows if r['kind']=='payment' and r['status']=='settled']
                 amounts=[r['amount_minor'] for r in payments];minutes=Counter(r['occurred_at'][:16] for r in payments if 'T' in r['occurred_at'])

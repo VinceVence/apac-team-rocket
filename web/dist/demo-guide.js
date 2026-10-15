@@ -23,9 +23,9 @@ const short=text=>typeof text==='string'?cleanText(text).slice(0,180):'';
 export function demoBeats(demo,report){
   if(!demo?.guided)return [];
   const beats=[],add=(id,view,target,title,copy,extra={})=>beats.push({id,view,target,title,copy,...extra});
-  add('world','world','.map-shell','Everyday payments become evidence','Residents transact and create customer, device, wallet and transaction records.',{who:'Live world',wait:'Waiting for a report'});
+  add('world','world','.map-shell','Everyday payments become evidence','Start with zero transactions. Watch numbered residents make payments before someone calls for help.',{who:'Live world',wait:'Waiting for a report'});
   if(!demo.focus_report_id)return beats;
-  add('complaint','world','#world-alert','A customer reports a scam','The marked resident filed a complaint. Follow the case to see what the agent actually checks.',{who:'Customer',next:'Follow investigation'});
+  add('complaint','world',(demo.incidents||[]).some(i=>i.report_id===demo.focus_report_id&&i.report_status!=='resolved')?'#fraud-sprite-focus':'#world-alert','A customer reports a scam','This resident is calling for help and has filed a scam report. Follow the investigation to see what the agent checks.',{who:'Customer',next:'Follow investigation'});
   if(report?.id!==demo.focus_report_id)return beats;
   add('report','resolution','.report-details','Start with the customer’s account','This report is a claim to investigate. The agent must compare it with independent records.',{who:'Customer report'});
   const trail=report.decision_trail?.length?report.decision_trail:(report.investigation?.trace||[]).map(t=>({...t,number:t.step,status:'completed',purpose:t.summary,result:t.output}));
@@ -133,7 +133,7 @@ export function createDemoGuide({state,openCase,showWorld,error}){
   document.getElementById('fraud-select').addEventListener('change',close);
   document.getElementById('risk-models-tab').addEventListener('click',close);
   window.addEventListener('keydown',e=>{if(e.key==='Escape'&&active){close();if(priorFocus?.isConnected)priorFocus.focus({preventScroll:true})}});
-  window.addEventListener('scroll',layout,{passive:true});window.addEventListener('resize',()=>active?render(true):layout());
+  window.addEventListener('scroll',layout,{passive:true,capture:true});window.addEventListener('resize',()=>active?render(true):layout());
   new ResizeObserver(layout).observe(card);
   return {update,start,close};
 }

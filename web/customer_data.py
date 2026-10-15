@@ -70,7 +70,7 @@ class CustomerData:
           report TEXT NOT NULL,created_at TEXT NOT NULL);
         ''')
         self.seed_profiles()
-        self.seed_interactions()
+        if lab.seed_history:self.seed_interactions()
 
     def profiles(self):
         return {r['customer_id']: json.loads(r['profile']) for r in self.lab.rows('SELECT * FROM customer_profiles ORDER BY customer_id LIMIT ?', (MAX_CUSTOMERS,))}

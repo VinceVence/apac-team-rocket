@@ -68,6 +68,7 @@ class Science:
                 for kind,amount in [('wallet',1000000),('savings',100000)]:
                     self.lab.db.execute('INSERT INTO accounts(id,customer_id,label,kind,opening_minor,balance_minor) VALUES(?,?,?,?,?,?)',
                                         (cid+':'+kind,cid,cid+' · '+kind,kind,amount,amount))
+                if not self.lab.seed_history:continue
                 rate=.25+(i%7)*.10;save_rate=.10+(i%5)*.16
                 for offset in range(84):
                     day=(dt.date.fromisoformat(AS_OF)-dt.timedelta(days=84-offset)).isoformat();week=offset//7

@@ -67,8 +67,13 @@ class Macro:
                 source='cohort-treasury' if lab.db.execute("SELECT 1 FROM accounts WHERE id='cohort-treasury'").fetchone() else 'treasury'
                 available=self.balance(source);capital=min(100000000,available//2)
                 if capital:
-                    lab.post('macro-bank-capital',None,'policy_setup',capital//5,lab.clock_day,source,'macro-bank')
-                    lab.post('macro-reserve-capital',None,'policy_setup',capital-capital//5,lab.clock_day,source,'central-reserves')
+                    if lab.seed_history:
+                        lab.post('macro-bank-capital',None,'policy_setup',capital//5,lab.clock_day,source,'macro-bank')
+                        lab.post('macro-reserve-capital',None,'policy_setup',capital-capital//5,lab.clock_day,source,'central-reserves')
+                    else:
+                        # Initial endowments, not transactions: the opening ledger stays empty.
+                        for account,delta in ((source,-capital),('macro-bank',capital//5),('central-reserves',capital-capital//5)):
+                            lab.db.execute('UPDATE accounts SET opening_minor=opening_minor+?,balance_minor=balance_minor+? WHERE id=?',(delta,delta,account))
                 for merchant,name,price,capacity in GOODS:
                     lab.db.execute('INSERT INTO market_goods(merchant,name,base_minor,price_minor,capacity) VALUES(?,?,?,?,?)',(merchant,name,price,price,capacity))
                 self.observe(tick)

@@ -41,15 +41,15 @@ class MintTownServer(ThreadingHTTPServer):
         if hasattr(self, 'fraud_runner'): self.fraud_runner.close()
 
 
-def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=None, bind_host=None):
+def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=None, bind_host=None, seed_history=True):
     (ROOT/'data').mkdir(exist_ok=True)
     cloud_live=bool(cloud and os.getenv('MINTTOWN_CLOUD_LIVE')=='1' and os.getenv('MINTTOWN_LIVE')=='1' and os.getenv('MINTTOWN_FRAUD_LIVE')=='1')
     if cloud_live and os.getenv('GOOGLE_CLOUD_PROJECT')!='minttown-apac-2026':raise ValueError('Hosted live investigations are scoped to the MintTown project.')
-    lab=Lab(db_path or ROOT/'data'/'minttown.sqlite3'); agents=Agents(lab,Config(live=cloud_live,model='gemini-3.5-flash-lite') if cloud else config)
+    lab=Lab(db_path or ROOT/'data'/'minttown.sqlite3',seed_history=seed_history); agents=Agents(lab,Config(live=cloud_live,model='gemini-3.5-flash-lite') if cloud else config)
     world=World(lab);science=Science(lab)
     macro=Macro(lab,world,agents);world.macro=macro
     science_team=ScienceTeam(lab,science,agents)
-    if not cloud:
+    if not cloud and lab.seed_history:
         try:science_team.autorun()
         except LabError:pass  # A recorded failed quality gate must not prevent the UI from opening.
     customer_data=CustomerData(lab);world.customer_data=customer_data
@@ -66,7 +66,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
     def baseline():
         from cloud_data import CloudData
         with tempfile.TemporaryDirectory(prefix='pallet-baseline-') as folder:
-            fresh=make_server(0,Path(folder)/'baseline.db',config=Config(live=False))
+            fresh=make_server(0,Path(folder)/'baseline.db',config=Config(live=False),seed_history=False)
             try:
                 CloudData.initialize_schema(fresh.lab)
                 Warehouse(fresh.lab,cloud)
@@ -353,7 +353,7 @@ if __name__=='__main__':
         from cloud_data import CloudData
         cloud=CloudData.environment()
         db_path=Path(tempfile.mkdtemp(prefix='minttown-'))/'minttown.sqlite3'; cloud.restore(db_path)
-    server=make_server(args.port,db_path,cloud=cloud,public_host=os.getenv('MINTTOWN_PUBLIC_HOST'))
+    server=make_server(args.port,db_path,cloud=cloud,public_host=os.getenv('MINTTOWN_PUBLIC_HOST'),seed_history=False)
     def terminate(signum, frame): raise KeyboardInterrupt
     signal.signal(signal.SIGTERM,terminate)
     print('Mint Town: http://127.0.0.1:%d · %s' % (server.server_port,server.agents.budget()['mode']),flush=True)
