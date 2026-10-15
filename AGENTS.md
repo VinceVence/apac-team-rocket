@@ -18,6 +18,7 @@ Synthetic Philippine fintech demo: world transactions → complaint → Gemini t
 
 ## Next implementation
 
+- Two-day competition priorities: [review and sprint plan](docs/two-day-competition-plan.md). Fix the live citation failure, connect one real BQ feature query to a DS-reviewed model, then evaluate selective investigation and paired-policy prevention. These are planned upgrades. The owner deferred making the repository public; do not change visibility without authorization.
 - Next: integrate DS-reviewed trained artifacts and run a separately authorized bounded Gemini evaluation. Current predictor adapters are three registered demo rules; never present their scores as probabilities. The research design includes future extensions beyond the implemented scope.
 - Keep native ADK tools, one worker and at most one specialist generation per case. Parent completes before child scheduling. All roles share the meter; no nested `AgentTool` calls. Judges enforce contracts, not factual certainty.
 - Bind customer scope, cutoff and feature values in server code. Return model/feature versions, score meaning and missing inputs; exclude AE label-derived `risk_score`/`risk_factors`, `is_fraud` and `scam_type` from predictor inputs.
