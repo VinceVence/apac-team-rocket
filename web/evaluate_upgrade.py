@@ -178,7 +178,7 @@ def live_evaluation(url,path,max_cases):
                 state=call('GET','/api/state');cloud=call('GET','/api/cloud');b=state['budget'];g=cloud['guardrails']
                 if (sum(r['day_utc']==day for r in data['cases'])>=max_cases or b['daily_call_limit']-b['calls_today']<26 or
                     b['daily_usd_limit']-b['committed_usd_today']<.05 or b['total_usd_limit']-b['committed_usd_total']<.05 or
-                    g['used']['reports']>=g['limits']['new_reports_per_day']):
+                    (g['limits']['new_reports_per_day'] is not None and g['used']['reports']>=g['limits']['new_reports_per_day'])):
                     data['stop']='Evaluation allowance unavailable; twenty daily calls are reserved for demos. Resume explicitly after allowance returns.';save();return data
                 prior={'key':key,'day_utc':day,'request_id':'eval-'+data['batch_id']+'-'+str(len(data['cases'])),'uncertain':True};data['cases'].append(prior);save()
                 case=call('POST','/api/risk-lab/evaluate-case',{'fixture':fixture,'arm':arm,'pair_id':'eval-'+data['batch_id']+'-'+fixture,'request_id':prior['request_id'],'mode':'gemini'})

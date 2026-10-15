@@ -1,5 +1,6 @@
 """Bounded background town: payments -> scam report -> ADK -> reviewed prevention."""
 import json
+import datetime as dt
 import random
 import threading
 
@@ -10,6 +11,7 @@ from cloud_data import DAILY_EXPORTS
 
 RUN_STEPS = 24
 REPORTS_PER_ANALYTICS_BATCH = 5
+RUN_LEASE_SECONDS = 900
 
 
 class WorldDemo:
@@ -36,7 +38,7 @@ class WorldDemo:
         ''')
         with self.lab.db:
             columns={r['name'] for r in self.lab.rows('PRAGMA table_info(world_demo_state)')}
-            for name,definition in {'guided':'INTEGER NOT NULL DEFAULT 0','continuous':'INTEGER NOT NULL DEFAULT 0','focus_report_id':'TEXT','event_start':'INTEGER NOT NULL DEFAULT 0','report_reserved':'INTEGER NOT NULL DEFAULT 0'}.items():
+            for name,definition in {'guided':'INTEGER NOT NULL DEFAULT 0','continuous':'INTEGER NOT NULL DEFAULT 0','focus_report_id':'TEXT','event_start':'INTEGER NOT NULL DEFAULT 0','report_reserved':'INTEGER NOT NULL DEFAULT 0','lease_until':'TEXT'}.items():
                 if name not in columns:self.lab.db.execute('ALTER TABLE world_demo_state ADD COLUMN '+name+' '+definition)
             self.lab.db.execute("UPDATE world_demo_state SET running=0,note='Paused after server restart' WHERE running=1")
 
@@ -69,7 +71,7 @@ class WorldDemo:
             if self.lab.db.execute("SELECT 1 FROM fraud_case_preparation WHERE status='running' LIMIT 1").fetchone():restart_blocked=True
             if self.environment_publisher and self.lab.db.execute("SELECT 1 FROM environment_publications WHERE status!='completed' LIMIT 1").fetchone():restart_blocked=True
             allowance=self.guard.status() if self.guard else None
-            start_blocked='Live world allowance reached. The recorded Gemini demo remains available.' if allowance and allowance['used']['world_steps']>=allowance['limits']['world_steps_per_day'] else None
+            start_blocked='Live world allowance reached. The recorded Gemini demo remains available.' if allowance and allowance['limits']['world_steps_per_day'] is not None and allowance['used']['world_steps']>=allowance['limits']['world_steps_per_day'] else None
             failed_scene=bool(state['guided'] and not state['focus_report_id'] and any(i['id'].startswith('world-scam-'+str(state['run_id'])+'-') and i['status'] in ('budget_limited','no_funds') for i in incidents))
             scene_blocked=(start_blocked or (state['note'] if state['note'] not in ('Paused','Running','Ready') else 'The scam report was not created. No investigation ran.')) if failed_scene or (state['guided'] and not state['focus_report_id'] and not state['running'] and state['steps']) else None
             return {**state,'mode':'simulation' if state['continuous'] else 'demo' if state['guided'] else 'episode',
@@ -102,6 +104,7 @@ class WorldDemo:
                 self.resetter.reset(current['run_id']+1)
             with self.lab.db:
                 self.lab.db.execute("UPDATE world_demo_state SET run_id=?,running=1,steps=?,activity=?,speed=?,report_reserved=?,note='Running' WHERE id=1",(run_id,current['steps'] if resume else 0,activity,speed,report_reserved))
+                self.lab.db.execute('UPDATE world_demo_state SET lease_until=? WHERE id=1',((dt.datetime.fromisoformat(now())+dt.timedelta(seconds=RUN_LEASE_SECONDS)).isoformat(),))
                 if mode:self.lab.db.execute('UPDATE world_demo_state SET guided=?,continuous=?,focus_report_id=CASE WHEN ? THEN focus_report_id ELSE NULL END WHERE id=1',(int(mode=='demo'),int(mode=='simulation'),int(mode=='demo')))
             self.checkpoint();self.stopping.clear()
             if background:
@@ -242,7 +245,7 @@ class WorldDemo:
                 if self.lab.db.execute("SELECT 1 FROM sqlite_master WHERE name=?",(table,)).fetchone() and self.lab.db.execute("SELECT 1 FROM "+table+" WHERE status!='completed'").fetchone():
                     return 'Fresh ledger evidence is ready. An uncertain analytics publication needs reconciliation; no load was retried.'
             needed=int(self.warehouse is not None)+int(self.environment_publisher is not None)
-            if cloud.daily_exports(self.lab)+needed>DAILY_EXPORTS:
+            if DAILY_EXPORTS is not None and cloud.daily_exports(self.lab)+needed>DAILY_EXPORTS:
                 return 'Fresh ledger evidence is ready. BigQuery sync is deferred until publication allowance is available.'
         try:
             # Each existing publisher retains its own durable allowance and job receipts.
@@ -283,6 +286,9 @@ class WorldDemo:
         with self.lab.lock:
             state=self.status()
             if not state['running'] or run_id!=state['run_id']:return state
+            if state.get('lease_until') and state['lease_until']<=now():
+                with self.lab.db:self.lab.db.execute("UPDATE world_demo_state SET running=0,note='Paused after 15 minutes. Resume when ready.' WHERE id=1")
+                self.checkpoint();return self.status()
             # This tick is local-only. Persist its allowance and resulting ledger together,
             # before any publication or model call, instead of uploading the full DB twice.
             if self.guard:self.guard.allow('POST','/api/world/step',{},checkpoint=False)

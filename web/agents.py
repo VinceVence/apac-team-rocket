@@ -38,21 +38,21 @@ class Config:
     api_key: str = ''
     live: bool = False
     model: str = 'gemini-2.5-flash-lite'
-    daily_calls: int = DAILY_MODEL_CALLS
+    daily_calls: int | None = DAILY_MODEL_CALLS
     daily_usd: float = DAILY_MODEL_USD
     total_usd: float = TOTAL_MODEL_USD
 
     def __post_init__(self):
         if self.model not in MODELS:
             raise ValueError('Use an explicitly priced Flash-Lite model from MODELS.')
-        if not 1<=self.daily_calls<=100 or not 0<self.daily_usd<=10 or not 0<self.total_usd<=100:
+        if (self.daily_calls is not None and (type(self.daily_calls) is not int or not 1<=self.daily_calls<=100)) or not 0<self.daily_usd<=10 or not 0<self.total_usd<=100:
             raise ValueError('Invalid call/spend limits.')
 
     @classmethod
     def environment(cls):
         return cls(api_key=os.getenv('GEMINI_API_KEY',''),live=os.getenv('MINTTOWN_LIVE')=='1',
                    model=os.getenv('GEMINI_MODEL','gemini-2.5-flash-lite'),
-                   daily_calls=int(os.getenv('MINTTOWN_DAILY_CALLS',str(DAILY_MODEL_CALLS))),
+                   daily_calls=int(os.environ['MINTTOWN_DAILY_CALLS']) if os.getenv('MINTTOWN_DAILY_CALLS') else None,
                    daily_usd=float(os.getenv('MINTTOWN_DAILY_USD',str(DAILY_MODEL_USD))),
                    total_usd=float(os.getenv('MINTTOWN_TOTAL_USD',str(TOTAL_MODEL_USD))))
 
@@ -92,6 +92,14 @@ class Agents:
     def __init__(self, lab, config=None, transport=gemini):
         self.lab=lab; self.config=config or Config.environment(); self.transport=transport
 
+    def call_ceiling(self,calls,daily_usd,total_usd):
+        # Keep the existing numeric API, but derive capacity from dollars rather
+        # than an unrelated daily call count. Explicit smaller test limits work.
+        remaining=min(Decimal(str(self.config.daily_usd))-Decimal(str(daily_usd)),
+            Decimal(str(self.config.total_usd))-Decimal(str(total_usd)))
+        affordable=calls+max(0,int(remaining/Decimal(str(RESERVATION_USD))))
+        return min(affordable,self.config.daily_calls) if self.config.daily_calls is not None else affordable
+
     def budget(self, day=None):
         db=self.lab.db; day=day or now()[:10]
         sources=["SELECT created_at,coalesce(cost_usd,reserved_usd) amount FROM agent_runs WHERE provider='gemini'"]
@@ -107,7 +115,8 @@ class Agents:
         vertex=bool(self.config.live and os.getenv('MINTTOWN_FRAUD_LIVE')=='1' and os.getenv('GOOGLE_CLOUD_PROJECT'))
         live=bool(self.config.live and (self.config.api_key or vertex))
         return {'day_utc':day,'calls_today':today[0],'committed_usd_today':round(today[1],6),'committed_usd_total':round(total,6),
-                'daily_call_limit':self.config.daily_calls,'daily_usd_limit':self.config.daily_usd,'total_usd_limit':self.config.total_usd,
+                'daily_call_limit':self.call_ceiling(today[0],today[1],total),'call_admission':'spend_based' if self.config.daily_calls is None else 'explicit_call_limit',
+                'daily_usd_limit':self.config.daily_usd,'total_usd_limit':self.config.total_usd,
                 'committed_microusd_today':int((Decimal(str(today[1]))*1000000).to_integral_value(rounding=ROUND_CEILING)),
                 'committed_microusd_total':int((Decimal(str(total))*1000000).to_integral_value(rounding=ROUND_CEILING)),
                 'reservation_per_call_usd':RESERVATION_USD,'model':self.config.model,
@@ -117,7 +126,7 @@ class Agents:
     def check_budget(self):
         if not self.config.live or not self.config.api_key:raise LabError('Live Gemini is off. Configure the server key and enable live mode first.',409)
         b=self.budget()
-        if b['calls_today']>=self.config.daily_calls or b['committed_usd_today']+RESERVATION_USD>self.config.daily_usd+1e-9 or b['committed_usd_total']+RESERVATION_USD>self.config.total_usd+1e-9:
+        if b['calls_today']>=b['daily_call_limit'] or b['committed_usd_today']+RESERVATION_USD>self.config.daily_usd+1e-9 or b['committed_usd_total']+RESERVATION_USD>self.config.total_usd+1e-9:
             raise LabError('The shared model-call or spend limit has been reached.',429)
 
     def generate(self,packet):
@@ -159,7 +168,7 @@ class Agents:
                 if len(encoded(packet).encode())+len(SYSTEM.encode())+len(encoded(SCHEMA).encode())+1024>MAX_INPUT_BYTES:
                     raise LabError('The dossier exceeds the prompt size limit.',413)
                 budget=self.budget()
-                if (budget['calls_today']>=self.config.daily_calls or
+                if (budget['calls_today']>=budget['daily_call_limit'] or
                     budget['committed_usd_today']+RESERVATION_USD>self.config.daily_usd+1e-9 or
                     budget['committed_usd_total']+RESERVATION_USD>self.config.total_usd+1e-9):
                     raise LabError('The configured model-call or spend limit has been reached. Use the free baseline.',429)

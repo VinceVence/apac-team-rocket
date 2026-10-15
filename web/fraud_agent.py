@@ -217,7 +217,7 @@ class FraudAgent:
             calls, daily, total = tuple(row)
         return {'case_calls': case[0], 'max_case_calls': self.max_case_calls,
                 'case_committed_microusd': case[1], 'case_limit_microusd': self.case_limit,
-                'daily_calls': calls, 'daily_call_limit': self.agents.config.daily_calls,
+                'daily_calls': calls, 'daily_call_limit': self.agents.call_ceiling(calls,daily/1e6,total/1e6),
                 'daily_committed_microusd': daily, 'daily_limit_microusd': micro(self.agents.config.daily_usd),
                 'total_committed_microusd': total, 'total_limit_microusd': micro(self.agents.config.total_usd),
                 'actual_usd': 0 if mode == 'fake' else case[1] / 1e6,
@@ -356,7 +356,7 @@ class FraudAgent:
                     raise LabError('Another live model request is in progress. No request was made.',409)
             b = self.budget(report_id, mode)
             if b['case_calls'] >= b['max_case_calls']: raise LabError('Per-case generation limit reached.', 429)
-            if b['daily_calls'] >= b['daily_call_limit']: raise LabError('Daily model-call limit reached.', 429)
+            if self.agents.config.daily_calls is not None and b['daily_calls'] >= self.agents.config.daily_calls: raise LabError('Daily model-call limit reached.', 429)
             for label, used, limit in [('Per-case', b['case_committed_microusd'], b['case_limit_microusd']),
                                        ('Daily', b['daily_committed_microusd'], b['daily_limit_microusd']),
                                        ('Lifetime', b['total_committed_microusd'], b['total_limit_microusd'])]:

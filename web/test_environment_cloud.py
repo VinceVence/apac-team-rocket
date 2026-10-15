@@ -9,7 +9,8 @@ from unittest.mock import patch
 from urllib.parse import urlsplit
 
 from agents import Config
-from cloud_data import CloudData, DAILY_EXPORTS
+from cloud_data import CloudData
+DAILY_EXPORTS=25  # Explicit saturation test, not a production daily quota.
 from environment_cloud import DATASET, LABELS, RETENTION_MS
 from environment_data import COLUMNS, schema
 from lab import LabError, now
@@ -40,6 +41,7 @@ class EnvironmentCloud(FakeCloud):
 
 class EnvironmentCloudChecks(unittest.TestCase):
     def setUp(self):
+        limit=patch('environment_cloud.DAILY_EXPORTS',DAILY_EXPORTS);limit.start();self.addCleanup(limit.stop)
         self.tmp=tempfile.TemporaryDirectory();self.remote=EnvironmentCloud()
         self.cloud=CloudData('test-project','test-bucket','simulation',session=self.remote)
         self.env=patch.dict('os.environ',{'MINTTOWN_ENV_DATASET':DATASET,'MINTTOWN_LIVE':'0','MINTTOWN_FRAUD_LIVE':'0','PALLET_WAREHOUSE_ENABLED':'0'})

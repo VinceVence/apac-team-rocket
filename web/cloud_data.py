@@ -204,7 +204,7 @@ class CloudData:
             latest = lab.db.execute("SELECT profile_hash FROM cloud_exports WHERE status='completed' ORDER BY rowid DESC LIMIT 1").fetchone()
             if not event_count and latest and latest['profile_hash']==profile_hash:
                 records=[]  # Persist an idempotent no-op receipt without consuming a load-job allowance.
-            if records and self.daily_exports(lab)>=DAILY_EXPORTS:
+            if records and DAILY_EXPORTS is not None and self.daily_exports(lab)>=DAILY_EXPORTS:
                 raise LabError('Daily BigQuery export limit reached.', 429)
             batch_id = hashlib.sha256(encoded([request_id,start,end,records]).encode()).hexdigest()
             job_id = 'minttown_' + batch_id if records else ''

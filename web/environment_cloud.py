@@ -118,7 +118,7 @@ class EnvironmentPublisher:
             if prior:return dict(prior)|{'replayed':True}
             count=sum(map(len,tables.values()));size=sum(map(len,bodies.values()))
             if count>MAX_EXPORT_ROWS or size>MAX_EXPORT_BYTES:raise LabError('Simulator publication exceeds its row or byte cap.',413)
-            if self.cloud.daily_exports(self.lab)>=DAILY_EXPORTS:raise LabError('Daily BigQuery publication limit reached.',429)
+            if DAILY_EXPORTS is not None and self.cloud.daily_exports(self.lab)>=DAILY_EXPORTS:raise LabError('Daily BigQuery publication limit reached.',429)
             jobs={name:'mint_env_'+fingerprint[:32]+'_'+name for name in COLUMNS}
             counts={name:len(rows) for name,rows in tables.items()};day=self.lab.clock_day
             with self.lab.db:self.lab.db.execute('INSERT INTO environment_publications VALUES(?,?,?,?,?,?,?,NULL)',

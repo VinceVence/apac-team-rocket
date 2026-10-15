@@ -181,7 +181,7 @@ class Warehouse:
                 raise LabError('An earlier warehouse publication needs operator reconciliation. No load was retried.',409)
             count=sum(map(len,tables.values()));size=sum(len(encoded(r).encode())+90 for rows in tables.values() for r in rows)
             if count>MAX_EXPORT_ROWS or size>MAX_EXPORT_BYTES:raise LabError('Warehouse snapshot exceeds its row or byte cap.',413)
-            if self.cloud.daily_exports(self.lab)>=DAILY_EXPORTS:raise LabError('Daily BigQuery publication limit reached.',429)
+            if DAILY_EXPORTS is not None and self.cloud.daily_exports(self.lab)>=DAILY_EXPORTS:raise LabError('Daily BigQuery publication limit reached.',429)
             jobs={name:'pallet_load_'+snapshot[:32]+'_'+name for name,rows in tables.items() if rows}
             with self.lab.db:self.lab.db.execute('INSERT INTO warehouse_snapshots VALUES(?,?,?,?,?,?,?)',
                 (snapshot,now(),self.lab.clock_day,'reserved',count,encoded(jobs),encoded({k:len(v) for k,v in tables.items()})))
@@ -211,7 +211,7 @@ class Warehouse:
             used=self.lab.db.execute('SELECT count(*) FROM warehouse_queries WHERE substr(created_at,1,10)=?',(now()[:10],)).fetchone()[0]
             if self.lab.db.execute("SELECT 1 FROM sqlite_master WHERE name='demo_usage_archive'").fetchone():
                 used+=self.lab.db.execute('SELECT coalesce(sum(queries),0) FROM demo_usage_archive WHERE day=?',(now()[:10],)).fetchone()[0]
-            if used>=DAILY_QUERIES:raise LabError('Daily BigQuery query allowance reached.',429)
+            if DAILY_QUERIES is not None and used>=DAILY_QUERIES:raise LabError('Daily BigQuery query allowance reached.',429)
             self.lab.db.execute('INSERT INTO warehouse_queries(id,created_at,status) VALUES(?,?,?)',(identifier,now(),'reserved'))
         self.cloud.save(self.lab)
         try:

@@ -7,7 +7,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from cloud_data import CloudData, DAILY_EXPORTS
+from cloud_data import CloudData
+DAILY_EXPORTS=25  # Explicitly exercise saturation; production uses spend/size gates.
 from lab import LabError, now
 from server import make_server
 from test_environment_cloud import EnvironmentCloud
@@ -15,6 +16,8 @@ from test_environment_cloud import EnvironmentCloud
 
 class EvidenceBatchChecks(unittest.TestCase):
     def setUp(self):
+        for module in ('cloud_data','environment_cloud','warehouse','world_demo'):
+            limit=patch(module+'.DAILY_EXPORTS',DAILY_EXPORTS);limit.start();self.addCleanup(limit.stop)
         self.tmp=tempfile.TemporaryDirectory();self.remote=EnvironmentCloud()
         self.cloud=CloudData('test-project','test-state','demo',session=self.remote)
         self.env=patch.dict('os.environ',{'MINTTOWN_ENV_DATASET':'minttown_world','PALLET_WAREHOUSE_ENABLED':'1',

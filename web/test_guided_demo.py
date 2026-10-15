@@ -53,7 +53,7 @@ class GuidedDemoChecks(unittest.TestCase):
         self.assertEqual(self.lab.db.execute('SELECT count(*) FROM fraud_agent_turns').fetchone()[0],count)
 
     def test_full_report_and_scene_quotas_do_not_block_the_guided_demo(self):
-        from settings import DAILY_REPORTS
+        DAILY_REPORTS=25  # Historical counter value; no longer a default admission cap.
         demo=self.server.world_demo;demo.start(0,background=False,fresh=True,mode='simulation');demo.tick(1);demo.stop(1)
         with self.lab.db:self.lab.db.execute('UPDATE demo_daily_usage SET reports=?,starts=? WHERE day=?',(DAILY_REPORTS,DAILY_REPORTS,now()[:10]))
         self.server.demo_guard.allow('POST','/api/world/start',{'expected_run':1,'fresh':True,'mode':'demo'})
@@ -65,7 +65,7 @@ class GuidedDemoChecks(unittest.TestCase):
         self.assertEqual(self.lab.db.execute('SELECT count(*) FROM fraud_agent_turns').fetchone()[0],0)
 
     def test_guided_complaint_does_not_consume_the_last_simulation_report_slot(self):
-        from settings import DAILY_REPORTS
+        DAILY_REPORTS=25  # Historical counter value; no longer a default admission cap.
         demo=self.server.world_demo
         with self.lab.db:self.lab.db.execute('UPDATE demo_daily_usage SET reports=? WHERE day=?',(DAILY_REPORTS-1,now()[:10]))
         with patch('google.genai.Client.__init__',side_effect=AssertionError('No paid client')):
@@ -82,12 +82,13 @@ class GuidedDemoChecks(unittest.TestCase):
             self.assertEqual(self.lab.db.execute('SELECT count(*) FROM fraud_agent_turns').fetchone()[0],0)
 
     def test_legacy_unreserved_demo_stops_visibly_if_report_admission_is_rejected(self):
-        from settings import DAILY_REPORTS
+        DAILY_REPORTS=25  # Historical counter value; no longer a default admission cap.
         demo=self.server.world_demo;state=demo.start(0,background=False,fresh=True,mode='demo')
         with self.lab.db:
             self.lab.db.execute('UPDATE world_demo_state SET report_reserved=0')
             self.lab.db.execute('UPDATE demo_daily_usage SET reports=? WHERE day=?',(DAILY_REPORTS,now()[:10]))
-        for _ in range(6):demo.tick(state['run_id'])
+        with patch('demo_guard.DAILY_REPORTS',DAILY_REPORTS):
+            for _ in range(6):demo.tick(state['run_id'])
         result=demo.status();self.assertFalse(result['running']);self.assertIsNone(result['focus_report_id'])
         self.assertIn('new-report limit',result['scene_blocked_reason'])
         self.assertEqual(result['incidents'][0]['status'],'budget_limited')

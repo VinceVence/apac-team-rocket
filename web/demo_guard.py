@@ -56,13 +56,13 @@ class DemoGuard:
             with self.lab.db:
                 self.lab.db.execute('INSERT OR IGNORE INTO demo_daily_usage(day) VALUES(?)',(day,))
                 usage=self.lab.db.execute('SELECT * FROM demo_daily_usage WHERE day=?',(day,)).fetchone()
-                if is_start and usage['world_steps']>=DAILY_WORLD_STEPS:
+                if is_start and DAILY_WORLD_STEPS is not None and usage['world_steps']>=DAILY_WORLD_STEPS:
                     raise LabError('Daily world-step limit reached. Restart cannot replenish this allowance; the current scene was kept.',429)
                 for label,used,added,limit in (('write',usage['writes'],1,DAILY_WRITES),
                     ('world-step',usage['world_steps'],int(is_step),DAILY_WORLD_STEPS),
                     ('new-report',usage['reports'],int(is_report),DAILY_REPORTS),
                     ('fresh-simulation',usage['starts'],int(is_start and not guided_start),DAILY_REPORTS)):
-                    if added and used+added>limit:raise LabError('Daily hosted '+label+' limit reached. No work was queued.',429)
+                    if limit is not None and added and used+added>limit:raise LabError('Daily hosted '+label+' limit reached. No work was queued.',429)
                 self.lab.db.execute('UPDATE demo_daily_usage SET writes=writes+1,world_steps=world_steps+?,reports=reports+?,starts=starts+? WHERE day=?',
                                     (int(is_step),int(is_report),int(is_start and not guided_start),day))
             if checkpoint:self.checkpoint()  # External work is admitted durably before it begins.

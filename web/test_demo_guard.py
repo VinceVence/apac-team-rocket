@@ -69,10 +69,16 @@ class GuardChecks(unittest.TestCase):
                 self.assertEqual(requests.post(base+path,json=body,headers=headers,timeout=10).status_code,code)
             self.assertEqual(requests.get(base+'/api/science',timeout=10).status_code,403)
             status=requests.get(base+'/api/cloud',timeout=10).json()
-            self.assertEqual(status['guardrails']['limits']['new_reports_per_day'],25)
+            self.assertIsNone(status['guardrails']['limits']['new_reports_per_day'])
             self.assertEqual(status['guardrails']['used']['writes'],0)
             self.assertEqual(server.lab.db.execute('SELECT count(*) FROM fraud_agent_turns').fetchone()[0],0)
         finally:server.shutdown();server.server_close();thread.join();server.lab.db.close()
+
+    def test_default_admission_has_no_arbitrary_daily_counter_stop(self):
+        with self.lab.db:self.lab.db.execute('UPDATE demo_daily_usage SET reports=9999,writes=9999,world_steps=9999,starts=9999')
+        self.guard.allow('POST','/api/fraud-desk/report',{'request_id':'next-request'})
+        self.assertEqual(self.guard.status()['used']['reports'],10000)
+        self.assertIsNone(self.guard.status()['limits']['writes_per_day'])
 
 
 if __name__=='__main__':unittest.main()
