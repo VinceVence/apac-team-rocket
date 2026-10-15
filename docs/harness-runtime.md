@@ -39,6 +39,8 @@ Approved lessons include applicability, legitimate counterexamples, source recei
 
 Run the world, then open **Agent activity**. The investigation-team panel shows role handoff, checkpoint, shared calls, judge verdicts and model receipts. Expand rejected checks to see why a draft was withheld. Approve the proposal, review the prevention replay and separately enable its safeguard. Test the changed-recipient payment and legitimate control.
 
+Each fresh world automatically opens a spotlight guide. It dims the surrounding UI and explains the actual recorded tool choices, specialist finding, judge checks and review. **Next/Back** only navigate saved activity; they never run a model or approve an action. The guide waits at customer replies, analyst review and safeguard activation. Close it with **Esc** or **Hide guide**, reopen it with **Guide demo**; a new world starts a new guide. Test its presentation logic with `node --test web/test_demo_guide.mjs`.
+
 ```sh
 uv run --locked python -B -m unittest discover -s web -p 'test_*.py'
 uv run --locked python -B web/evaluate_harness.py

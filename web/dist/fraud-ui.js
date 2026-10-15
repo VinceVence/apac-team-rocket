@@ -1,5 +1,5 @@
 import {renderHarness,roleNames} from './harness-ui.js';
-export function createFraudUI({$,api,state,setPlaying,setBusy,refresh,error,focusCustomer}){
+export function createFraudUI({$,api,state,setPlaying,setBusy,refresh,error,focusCustomer,onRender=()=>{}}){
   let dashboard=null,report=null,working=false,pollTimer=null,pollKey='',pollDelay=1500,pollRun='',pollStarted=0;
   const learning=()=>['queued','running'].includes(report?.prevention?.status);
   const running=()=>learning()||['queued','running'].includes(report?.investigation?.context.execution?.status);
@@ -95,7 +95,7 @@ export function createFraudUI({$,api,state,setPlaying,setBusy,refresh,error,focu
     $('fraud-tools').hidden=!trail.length;$('fraud-tool-count').textContent=trail.length?trail.length+' model turns':'';
     $('fraud-trace').replaceChildren();
     for(const t of trail){
-      const li=el('li'),icon=el('span',String(t.number),'agent-avatar'),body=el('div');
+      const li=el('li'),icon=el('span',String(t.number),'agent-avatar'),body=el('div');li.id='guide-turn-'+t.number;
       if(report.harness?.enabled)body.append(el('small',roleNames[t.role]||t.role||'Case lead','trace-role'));
       body.append(el('strong',t.tool?t.tool.replaceAll('_',' '):t.status==='reserved'?'Choosing a tool…':'Model request stopped'));
       const result=t.result||{},brief=['get_transactions','get_case_evidence'].includes(t.tool)?`Verified ${result.transactions?.length||0} reported payments.`:t.tool==='search_reviewed_cases'?`Found ${result.matches?.length||0} approved lessons.`:t.tool==='trace_recipient'?`Found ${result.related_transfers?.length||0} transfers to this recipient.`:t.tool==='ask_customer'?result.question:['submit_for_review','submit_case_resolution'].includes(t.tool)?(result.status==='revision_required'?'Judges withheld the draft.': 'Sent the proposed resolution for analyst review.'):t.finding;
@@ -133,6 +133,7 @@ export function createFraudUI({$,api,state,setPlaying,setBusy,refresh,error,focu
     const stage=reviewed?(dashboard.memories.some(m=>m.source_report_id===report.id)?4:3):report.status==='awaiting_review'?2:run?1:0;
     document.querySelectorAll('[data-fraud-stage]').forEach((node,i)=>{node.classList.toggle('done',i<stage);node.classList.toggle('current',i===stage);if(i===stage)node.setAttribute('aria-current','step');else node.removeAttribute('aria-current')});
     schedulePoll();
+    onRender({...report,approved_lesson:dashboard.memories.find(m=>m.source_report_id===report.id)});
   }
   function schedulePoll(){
     clearTimeout(pollTimer);

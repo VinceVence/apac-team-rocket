@@ -1,11 +1,12 @@
 import {createTown} from './town.js';
 import {createFraudUI} from './fraud-ui.js';
 import {createRiskUI} from './risk-ui.js';
+import {createDemoGuide} from './demo-guide.js';
 const $=id=>document.getElementById(id),drawTown=createTown($('town-map'));
 const state={data:null,view:'world',busy:false,playing:false,speed:1,stepping:false,customerId:null,hosted:false};
 const money=n=>'₱'+(n/100).toLocaleString('en-PH',{maximumFractionDigits:0});
 const node=(tag,text,cls)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e};
-let pollTimer=null,lastTick=-1,lastIncident=null,lastScene=null;
+let pollTimer=null,lastTick=-1,lastIncident=null,lastScene=null,guide=null;
 async function api(path,body){
   const response=await fetch(path,body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-MintTown-Token':state.data.csrf_token},body:JSON.stringify(body)});
   const result=await response.json();if(!response.ok)throw Error(result.error||'Request could not be completed.');return result;
@@ -68,6 +69,7 @@ function renderWorld(){
   drawTown.motion(payments.slice(0,4).map(e=>({id:e.id,customer_id:e.customer_id,merchant:['m1','m2','m3'].includes(e.to_account)?e.to_account:'m4',receiver_customer_id:e.to_account?.endsWith(':wallet')?e.to_account.split(':')[0]:null,transaction_type:e.metadata?.transaction_type,amount_minor:e.amount_minor,status:e.status})),lastTick===-1);
   lastTick=w.tick;
   renderResident();
+  guide?.update();
 }
 function renderResident(){
   const people=state.data.customers,picker=$('resident-picker');
@@ -89,12 +91,13 @@ $('resident-close').onclick=()=>followResident(null);
 async function refresh(){state.data=await api('/api/state');renderWorld();schedulePoll()}
 function schedulePoll(){clearTimeout(pollTimer);if(document.hidden||(!state.data?.demo.running&&!['complaint','investigation','prevention'].includes(state.data?.demo.phase)))return;pollTimer=setTimeout(async()=>{try{await refresh();const latest=state.data.demo.incidents[0]?.id;if(latest!==lastIncident&&state.view==='resolution')await fraudUI.load();lastIncident=latest}catch(e){error(e.message)}},3000)}
 async function cloudStatus(){const c=await api('/api/cloud');state.hosted=!!c.enabled;$('cloud-data-panel').hidden=!c.enabled;if(c.enabled){$('deployment-label').textContent=c.execution==='local'?'Local · Vertex AI':'Cloud simulation';$('cloud-data-status').textContent=`${c.daily_exports}/${c.daily_export_limit} exports today`;const pending=!!sessionStorage.getItem('minttown-export-request');$('cloud-export').textContent=pending?'Check export status':'Export next batch';$('cloud-export').disabled=!c.healthy||(c.daily_exports>=c.daily_export_limit&&!pending)}}
-const fraudUI=createFraudUI({$,api,state,setPlaying:()=>{},setBusy,refresh,error,focusCustomer:cid=>{state.customerId=cid;renderWorld()}});
+const fraudUI=createFraudUI({$,api,state,setPlaying:()=>{},setBusy,refresh,error,focusCustomer:cid=>{state.customerId=cid;renderWorld()},onRender:report=>guide?.update(report)});
 const riskUI=createRiskUI({$,state,error,onCases:()=>fraudUI.load(true)});
+guide=createDemoGuide({state,error,showWorld:()=>showView('world'),openCase:()=>openIncident({report_id:state.data.demo.focus_report_id})});
 async function showView(view){state.view=['world','resolution','agents'].includes(view)?view:'world';setMenu(false);error('');$('mint-town').dataset.view=state.view;history.replaceState(null,'',state.view==='world'?location.pathname:state.view==='agents'?'#agents':location.hash==='#models'?'#models':'#agent');document.title='Mint Town · '+({world:'Environment',resolution:'Agent activity',agents:'Agents'}[state.view]);document.querySelectorAll('[data-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===state.view)));$('case-view').hidden=state.view!=='world';$('fraud-view').hidden=state.view!=='resolution';$('agents-view').hidden=state.view!=='agents';renderWorld();document.querySelector('.demo-story').hidden=false;if(state.view==='resolution'){if(location.hash==='#models'||!$('risk-view').hidden)await riskUI.show(true);else await fraudUI.load(true)}else riskUI.pause()}
 async function openIncident(i){try{await riskUI.show(false);await showView('resolution');if(i.report_id||state.data.demo.focus_report_id)await fraudUI.open(i.report_id||state.data.demo.focus_report_id);if(i.status==='blocked')$('fraud-memory-panel').open=true}catch(e){error(e.message)}}
 $('open-menu').onclick=()=>setMenu(true);$('close-menu').onclick=()=>setMenu(false);$('sidebar-backdrop').onclick=()=>setMenu(false);window.addEventListener('keydown',e=>{if(e.key==='Escape')setMenu(false)});
-for(const b of document.querySelectorAll('[data-view]'))b.onclick=()=>showView(b.dataset.view).catch(e=>error(e.message));
+for(const b of document.querySelectorAll('[data-view]'))b.onclick=()=>{guide.close();showView(b.dataset.view).catch(e=>error(e.message))};
 for(const b of document.querySelectorAll('[data-speed]'))b.onclick=()=>{state.speed=Number(b.dataset.speed);$('speed-label').textContent=state.speed+'×';document.querySelectorAll('[data-speed]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)))};
 $('activity').oninput=()=>{$('activity-value').textContent=$('activity').value};
 $('play-world').onclick=async()=>{if(state.busy)return;setBusy(true);error('');try{const demo=state.data.demo;if(!demo.running&&demo.phase==='ready'){await api('/api/world/prove',{expected_run:demo.run_id});await refresh()}else if(!demo.running&&['complaint','investigation','followup','review','prevention','activate','attention'].includes(demo.phase)){await riskUI.show(false);await showView('resolution');if(demo.focus_report_id)await fraudUI.open(demo.focus_report_id)}else{await api(demo.running?'/api/world/stop':'/api/world/start',demo.running?{expected_run:demo.run_id}:{expected_run:demo.run_id,activity:Number($('activity').value),speed:state.speed,fresh:true});await refresh()}}catch(e){error(e.message)}finally{setBusy(false)}};
