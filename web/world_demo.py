@@ -204,6 +204,8 @@ class WorldDemo:
         if report_id:
             if manual_only:
                 self.desk.prepare(report_id,'blocked','admission','Live investigation is unavailable. The demo can continue with an assumed analyst review of the recorded payment; no model request was made.');self.checkpoint()
+            elif metadata['guided_demo'] and not repeat:
+                self.desk.prepare(report_id,'waiting','demo_investigation','Ready. Next starts the resolution agent while you watch its decisions.');self.checkpoint()
             elif background:
                 self.intake=threading.Thread(target=self.prepare,args=(report_id,identifier,provider),daemon=True,name='case-intake');self.intake.start()
             else:self.prepare(report_id,identifier,provider)
@@ -308,7 +310,7 @@ class WorldDemo:
         activation. Failed models stay failed; the reviewed recipient watch is
         the honest, local fallback when a broader candidate cannot be activated.
         """
-        if action not in ('answer','review','learn','activate','prove'):raise LabError('Unknown demo action.')
+        if action not in ('investigate','answer','review','learn','activate','prove'):raise LabError('Unknown demo action.')
         with self.lab.lock:
             state=self.status()
             if type(expected_run) is not int or expected_run!=state['run_id'] or not state['guided'] or report_id!=state['focus_report_id']:
@@ -319,14 +321,25 @@ class WorldDemo:
             prior=self.lab.db.execute('SELECT receipt FROM world_demo_actions WHERE run_id=? AND action=?',(expected_run,action)).fetchone()
             if prior:return {'demo':state,'report':report,'receipt':json.loads(prior[0]),'replayed':True}
             run=report['investigation']
-            if (run and run['status'] in ('running','stepping')) or (report.get('preparation') or {}).get('status')=='running':raise LabError('The current check is still being recorded.',409)
+            if action!='investigate' and ((run and run['status'] in ('running','stepping')) or (report.get('preparation') or {}).get('status')=='running'):raise LabError('The current check is still being recorded.',409)
             receipt={'actor':'simulated_analyst','assumption':True,'action':action,'report_id':report_id}
-            if action=='answer':
+            intake=None
+            if action=='investigate':
+                if run:raise LabError('This case already has an investigation. Follow its saved receipts; no request was retried.',409)
+                if (report.get('preparation') or {}).get('status')!='waiting':raise LabError('The case is not waiting for the demo investigation step.',409)
+                if self.intake and self.intake.is_alive():raise LabError('An evidence handoff is already running.',409)
+                identifier=self.lab.db.execute('SELECT id FROM world_incidents WHERE report_id=?',(report_id,)).fetchone()[0]
+                self.desk.prepare(report_id,'running','queued','The viewer started the resolution agent. Preparing its case evidence.')
+                intake=threading.Thread(target=self.prepare,args=(report_id,identifier,'gemini' if self.runner.agent.live_enabled() else 'fake'),daemon=True,name='demo-case-intake')
+                self.intake=intake;receipt.update(actor='viewer',assumption=False,status='investigation_requested')
+            elif action=='answer':
                 if report['status']!='awaiting_customer':raise LabError('No customer reply is pending.',409)
                 self.runner.reply(report_id=report_id,answer=SCAMS['phishing']['reply'],expected_revision=report['revision'])
                 receipt['actor']='simulated_customer'
             elif action=='review':
                 if report['status']!='resolved':
+                    if not run and (report.get('preparation') or {}).get('status')=='waiting':
+                        raise LabError('Start the resolution agent with Next before the demo review.',409)
                     # This scripted review is permitted only for the demonstrated
                     # impersonation evidence, never from a synthetic truth label.
                     observed=[t['metadata'].get('prevention_features',{}) for t in tx]
@@ -368,6 +381,7 @@ class WorldDemo:
                     receipt.update(actor='payment_gateway',blocked=True,legitimate_payment_passed=True)
             with self.lab.db:self.lab.db.execute('INSERT INTO world_demo_actions VALUES(?,?,?,?,?)',(expected_run,report_id,action,encoded(receipt),now()))
             self.checkpoint()
+            if intake:intake.start()
             return {'demo':self.status(),'report':self.desk.detail(report_id),'receipt':receipt,'replayed':False}
 
     def prove(self,expected_run,allow_watch=False):

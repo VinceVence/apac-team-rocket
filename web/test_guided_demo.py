@@ -25,6 +25,10 @@ class GuidedDemoChecks(unittest.TestCase):
         self.lab=self.server.lab
     def tearDown(self):self.server.server_close();self.lab.db.close();self.tmp.cleanup()
     def wait(self,report_id,prevention=False):
+        # Simulate the explicit Next gate before awaiting a guided investigation.
+        case=self.server.fraud_desk.detail(report_id)
+        if not prevention and (case.get('preparation') or {}).get('status')=='waiting':
+            self.server.world_demo.demo_action(self.server.world_demo.status()['run_id'],report_id,'investigate')
         limit=time.monotonic()+20
         while time.monotonic()<limit:
             case=self.server.fraud_desk.detail(report_id)
@@ -32,6 +36,21 @@ class GuidedDemoChecks(unittest.TestCase):
             if item and item['status'] not in ('queued','running','stepping'):return case
             time.sleep(.02)
         self.fail('Worker did not settle')
+
+    def test_next_starts_the_agent_once_and_review_cannot_skip_the_investigation(self):
+        demo=self.server.world_demo;state=demo.start(0,background=False,fresh=True,mode='demo')
+        for _ in range(6):demo.tick(state['run_id'])
+        rid=demo.status()['focus_report_id'];case=self.server.fraud_desk.detail(rid)
+        self.assertIsNone(case['investigation']);self.assertEqual(case['preparation']['status'],'waiting')
+        self.assertEqual(self.lab.db.execute('SELECT count(*) FROM fraud_agent_turns').fetchone()[0],0)
+        with self.assertRaisesRegex(LabError,'Start the resolution agent'):demo.demo_action(state['run_id'],rid,'review')
+        first=demo.demo_action(state['run_id'],rid,'investigate')
+        self.assertFalse(first['receipt']['assumption']);self.assertEqual(first['receipt']['actor'],'viewer')
+        self.assertTrue(demo.demo_action(state['run_id'],rid,'investigate')['replayed'])
+        case=self.wait(rid);self.assertEqual(case['status'],'awaiting_review')
+        count=self.lab.db.execute('SELECT count(*) FROM fraud_agent_turns').fetchone()[0]
+        demo.demo_action(state['run_id'],rid,'investigate')
+        self.assertEqual(self.lab.db.execute('SELECT count(*) FROM fraud_agent_turns').fetchone()[0],count)
 
     def test_fresh_world_routes_detectors_review_learning_and_local_prevention(self):
         with patch('google.genai.Client.__init__',side_effect=AssertionError('No paid SDK client')) as client:
@@ -162,7 +181,8 @@ class GuidedDemoChecks(unittest.TestCase):
         publisher=Publisher();demo=self.server.world_demo
         state=demo.start(0,background=False,fresh=True);demo.environment_publisher=publisher
         with patch('google.genai.Client.__init__',side_effect=AssertionError('No paid client')):
-            thread=threading.Thread(target=lambda:demo.incident(state['run_id'],'phishing'));thread.start()
+            demo.incident(state['run_id'],'phishing');rid=demo.status()['focus_report_id']
+            demo.demo_action(state['run_id'],rid,'investigate');thread=demo.intake
             try:
                 self.assertTrue(entered.wait(5));rid=demo.status()['focus_report_id'];case=self.server.fraud_desk.detail(rid)
                 self.assertIsNone(case['investigation']);self.assertEqual(case['preparation']['stage'],'ledger_snapshot')

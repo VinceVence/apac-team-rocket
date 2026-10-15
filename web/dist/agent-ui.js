@@ -31,6 +31,7 @@ export function caseActivity(report,demo={}){
   const run=report?.investigation,prep=report?.preparation,execution=run?.context?.execution?.status;
   const trail=report?.decision_trail||[],completed=trail.filter(t=>t.status==='completed'&&t.tool),last=trail.at(-1);
   const base={completed,latest:last,poll:false,active:false,action:null,stage:'report'};
+  if(!run&&prep?.status==='waiting'&&prep.stage==='demo_investigation')return {...base,stage:'ready',title:'Ready to start the resolution agent',detail:'Next starts the live investigation while you watch its tool choices.',action:'start'};
   if(report?.status==='resolved')return {...base,stage:'review',title:'Analyst resolution recorded',detail:'The reviewed case can inform prevention.'};
   if(report?.status==='awaiting_customer')return {...base,stage:'customer',title:'The agent needs a customer answer',detail:cleanText(run?.context?.pending_question||'Answer the saved follow-up question to continue.')};
   if(report?.status==='awaiting_review'||run?.recommendation)return {...base,stage:'review',title:'Ready for the risk analyst',detail:'The recorded checks and proposed resolution are ready below.'};
@@ -41,32 +42,6 @@ export function caseActivity(report,demo={}){
   if(!run&&incident?.status==='needs_review')return {...base,stage:'blocked',title:'The case needs attention',detail:cleanText(demo.note||'Evidence preparation stopped. Inspect the saved case.'),action:'refresh'};
   if(!run&&(prep?.status==='running'||(report?.status==='reported'&&demo.focus_report_id===report?.id)))return {...base,stage:'evidence',active:true,poll:true,title:prep?.stage==='simulation_data'?'Saving simulation data':prep?.stage==='dispatch'?'Handing evidence to the agent':'Preparing the case evidence',detail:cleanText(prep?.detail||'The report is saved. Transaction snapshots are being prepared before the investigator starts.')};
   return {...base,stage:'ready',title:'Ready to investigate',detail:'Start the investigation to let the agent choose its checks.',action:'start'};
-}
-export function renderAgentActivity(report,demo,onNavigate){
-  const a=caseActivity(report,demo),root=document.getElementById('agent-live-panel');root.replaceChildren();root.dataset.stage=a.stage;root.classList.toggle('is-live',a.active);
-  const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n};
-  const head=el('header'),heading=el('div');heading.append(el('strong',a.title),el('p',a.detail));head.append(heading,el('span',a.active?'Live':a.completed.length?'Recorded activity':'Case status','activity-state'));root.append(head);
-  const graph=el('div',undefined,'activity-route'),agentDone=['review','customer'].includes(a.stage);
-  for(const [icon,label,state] of [['human','Report','complete'],['knowledge','Evidence',a.stage==='evidence'?'active':report.investigation?.snapshot?'complete':'pending'],['resolution','Agent',a.stage==='agent'?'active':agentDone?'complete':'pending'],['human','Review',report.status==='resolved'?'complete':a.stage==='review'?'active':'pending']]){
-    const n=el('div',undefined,'activity-node '+state);n.append(agentIcon(icon),el('strong',label),el('small',state==='complete'?'Ready':state==='active'?(a.active?'Working':'Your turn'):'Next'));graph.append(n);
-  }
-  root.append(graph);
-  const task=report.harness?.tasks?.[0];
-  if(task){const handoff=el('div',undefined,'activity-delegation');handoff.append(agentIcon('specialist'),el('strong',pretty(task.role)),el('span',task.status==='completed'?'Finding returned to the lead':'Reviewing the delegated question'));root.append(handoff)}
-  if(a.completed.length||a.stage==='agent'){
-    const choices=el('div',undefined,'activity-choices');choices.append(el('small','Agent choices'));
-    for(const t of a.completed){const b=el('button',`${t.number}. ${toolLabels[t.tool]||pretty(t.tool)}`,'activity-choice');b.type='button';b.onclick=()=>{onNavigate();const step=document.getElementById('guide-turn-'+t.number);if(step){step.open=true;step.scrollIntoView({behavior:'smooth',block:'start'})}};choices.append(b)}
-    if(a.stage==='agent')choices.append(el('span',a.latest?.status==='responded'&&a.latest.tool?(toolLabels[a.latest.tool]||pretty(a.latest.tool)):'Choosing the next check…','activity-choice in-progress'));root.append(choices);
-  }
-  const result=a.completed.at(-1)?.result,proof=el('div',undefined,'activity-proof');
-  const evidence=a.completed.find(t=>['get_case_evidence','get_transactions'].includes(t.tool))?.result?.transactions;
-  if(evidence)proof.append(el('span',`${evidence.length} transfer${evidence.length===1?'':'s'} verified`));
-  const signals=a.completed.filter(t=>['score_models','run_fraud_detectors'].includes(t.tool));
-  if(signals.length)proof.append(el('span','Payment signals checked'));
-  if(result?.status==='revision_required')proof.append(el('span','Draft withheld by checks','activity-warning'));
-  if(report.investigation?.recommendation&&report.status!=='resolved')proof.append(el('span','Human approval required'));
-  if(proof.childNodes.length)root.append(proof);
-  return a;
 }
 export function renderPreventionFlow(job){
   const root=document.getElementById('prevention-flow'),rule=job?.rule,working=['queued','running'].includes(job?.status),failed=['failed','interrupted','budget_exhausted','rejected'].includes(job?.status);

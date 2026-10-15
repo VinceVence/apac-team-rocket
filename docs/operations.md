@@ -88,3 +88,7 @@ For a report blocked before any investigation began, **Prepare & investigate** e
 **Restart** beside Run demo asks before archiving the current scene and starting an empty continuous world. Cases, lessons and active safeguards move into the recoverable private scene archive. Spend, daily allowances and the failure circuit remain unchanged. In-flight agent/evidence work must finish first; exhausted world-step allowance cannot be reset this way. Duplicate or stale restart requests do not archive the next scene.
 
 Prevention replay counts show matched/source variants, including partial coverage. In the October 15 isolated gateway check of five newly approved Gemini rules, nine of ten changed-recipient transactions were held, all five legitimate payments settled, and no model was called for payment checks. The smaller investment-fee variant escaped a rule requiring a large amount. This is a synthetic diagnostic, not measured real-world fraud accuracy; no model was retried or rule retuned to conceal the miss.
+
+## Visible agent decisions
+
+In Run demo, **Next** from the report admits the investigation exactly once. The decision map uses native tool receipts: chosen tool, the agent's public purpose, returned evidence, uncertainty and the next recorded choice. Pending requests have no invented result. Replays and manual handoffs are labeled; private reasoning is not exposed. Next/Back retain the reader's position while new receipts arrive. Run simulation still investigates automatically. Rendering and explanations make no additional model calls.

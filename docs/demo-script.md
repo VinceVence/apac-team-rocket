@@ -1,22 +1,22 @@
 # Mint Town — 3-minute guided demo
 
-Use the public app's **Environment**, **Agent activity**, and **Agents** tabs. Run the live case before presenting if latency is uncertain. Saved timelines and the payment proof can be shown without new model calls. Starting a new world or approving a case with a remaining learner call can consume the shared allowance.
+Use the public app's **Environment**, **Agent activity**, and **Agents** tabs. The guided case starts its investigator only when you click Next from the customer report. Saved timelines and the payment proof can be shown without new model calls. Starting a new world or approving a case with a remaining learner call can consume the shared allowance.
 
 ## 0:00–0:30 — Run demo
 
 Click **Run demo** (4× speed is useful). A fresh scene begins with 100 numbered residents and zero transactions. Point to purchases and transfers, then the orange **!** above the victim. Use **Next** to move the spotlight through the report and actual recorded agent actions. Each explanation stays on screen until you choose to continue; **Back** revisits the previous step.
 
-> A customer has received a deceptive payment request, transferred money, and filed a complaint. The guided world pauses here so we can follow the investigation. Its evidence is captured in versioned snapshots, and simulator data is published to the isolated BigQuery dataset.
+> A customer has received a deceptive payment request, transferred money, and filed a complaint. The guided world pauses here so we can follow the investigation. Its evidence is captured in versioned snapshots, and analytics is batched to the isolated BigQuery dataset without blocking investigation when its quota is exhausted.
 
 For free exploration, use the separate **Run simulation** button: payments keep flowing, clickable report widgets open investigations, and **Pause / Resume simulation** preserves the same world. Green shield alerts and **Scams stopped** show real recorded holds and link to their reviewed source cases. Both modes retain the existing safety limits.
 
 ## 0:30–1:25 — Watch the resolution agent
 
-Show the actual tool timeline and detector cards. Expand one evidence entry.
+Click **Next** from the report to start the agent. Watch the decision map: agent → chosen tool → recorded result → agent. Next reviews each recorded choice at your pace; it never substitutes a scripted route. The right panel shows the agent’s public purpose from its tool call, while the map shows returned evidence and unresolved facts. This is a decision trail, not private chain-of-thought.
 
 > Gemini chooses the next tool through Google ADK. We record its purpose, validate the tool and arguments, and show the actual result. The device check can look normal while the payment message contains strong scam signals. A recorded authorization is not the same as informed intent.
 >
-> The agent combines the complaint, this customer's transaction evidence and BigQuery features. It can trace a recipient, compare behavior, request a bounded anomaly model, retrieve reviewed cases, or ask a follow-up question. We only claim the choices visible in this saved trace.
+> The agent combines the complaint, this customer's transaction evidence and frozen behavior features. It can trace a recipient, compare behavior, choose registered signal checks, retrieve reviewed cases, or ask a follow-up question. We only claim the choices visible in this saved trace.
 
 The registered detector scores are rule signals, not calibrated fraud probabilities. A fake-model rehearsal is explicitly labelled and must not be presented as Gemini.
 

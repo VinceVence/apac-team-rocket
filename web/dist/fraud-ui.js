@@ -1,7 +1,9 @@
+import {renderDecisionMap} from './decision-map.js';
 import {renderHarness,roleNames} from './harness-ui.js';
-import {agentIcon,pretty,toolLabels,cleanText,publicEvidence,renderCaseTracker,caseActivity,renderAgentActivity,renderPreventionFlow,demoAnalystState} from './agent-ui.js';
+import {agentIcon,pretty,toolLabels,cleanText,publicEvidence,renderCaseTracker,caseActivity,renderPreventionFlow,demoAnalystState} from './agent-ui.js';
 export function createFraudUI({$,api,state,setPlaying,setBusy,refresh,error,focusCustomer,onRender=()=>{},onNavigate=()=>{}}){
   let dashboard=null,report=null,working=false,starting=false,pollTimer=null,pollKey='',pollDelay=1500,pollRun='',pollStarted=0,pollProblem='';
+  let mappedCase=null,selectedDecision=null;
   const learning=()=>['queued','running'].includes(report?.prevention?.status);
   const running=()=>learning()||caseActivity(report,state.data?.demo).poll;
   const el=(tag,text,cls)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node};
@@ -149,7 +151,9 @@ export function createFraudUI({$,api,state,setPlaying,setBusy,refresh,error,focu
     $('fraud-reply-form').hidden=report.status!=='awaiting_customer';
     const stage=reviewed?(dashboard.memories.some(m=>m.source_report_id===report.id)?4:3):report.status==='awaiting_review'?2:run?1:0;
     document.querySelectorAll('[data-fraud-stage]').forEach((node,i)=>{node.classList.toggle('done',i<stage);node.classList.toggle('current',i===stage);if(i===stage)node.setAttribute('aria-current','step');else node.removeAttribute('aria-current')});
-    renderAgentActivity(report,state.data?.demo,onNavigate);
+    const mappingKey=`${report.id}:${run?.id||''}:${report.revision}`;
+    if(mappedCase!==mappingKey){mappedCase=mappingKey;selectedDecision=null}
+    renderDecisionMap($('agent-live-panel'),report,{selected:selectedDecision,onSelect:number=>{selectedDecision=number;render()}});
     $('fraud-poll-note').hidden=!pollProblem;$('fraud-poll-note').textContent=pollProblem;
     $('fraud-refresh').hidden=!pollProblem&&activity.stage!=='blocked';
     if(working){$('fraud-view').querySelectorAll('button,input,select,textarea').forEach(n=>n.disabled=true);$('fraud-refresh').disabled=false}
