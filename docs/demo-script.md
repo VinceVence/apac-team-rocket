@@ -4,7 +4,7 @@ Use the public app's **Environment**, **Agent activity**, and **Agents** tabs. R
 
 ## 0:00–0:30 — Run demo
 
-Click **Run demo** (4× speed is useful). A fresh scene begins with 100 numbered residents and zero transactions. Point to purchases and transfers, then the orange **!** above the victim. The spotlight follows the report and actual recorded agent actions automatically; pause it to discuss a result.
+Click **Run demo** (4× speed is useful). A fresh scene begins with 100 numbered residents and zero transactions. Point to purchases and transfers, then the orange **!** above the victim. Use **Next** to move the spotlight through the report and actual recorded agent actions. Each explanation stays on screen until you choose to continue; **Back** revisits the previous step.
 
 > A customer has received a deceptive payment request, transferred money, and filed a complaint. The guided world pauses here so we can follow the investigation. Its evidence is captured in versioned snapshots, and simulator data is published to the isolated BigQuery dataset.
 

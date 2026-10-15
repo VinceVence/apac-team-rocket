@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {demoBeats,mayAutoAdvance} from './dist/demo-guide.js';
+import {demoBeats,keepReadingStep,nextGuideStep} from './dist/demo-guide.js';
 
 const demo={guided:true,run_id:1,scene_id:'first',focus_report_id:'case',phase:'investigation'};
 const report={id:'case',status:'investigating',reviews:[],decision_trail:[],investigation:{status:'running'}};
@@ -52,10 +52,22 @@ test('guide shows live preparation instead of ending at the complaint',()=>{
   assert.equal(beats.some(b=>b.action==='start'),false);
 });
 
-test('autoplay only advances explanations, never human gates or a paid start',()=>{
-  assert.equal(mayAutoAdvance({id:'turn-1'},{id:'turn-2'}),true);
-  assert.equal(mayAutoAdvance({id:'complaint'},null),true);
-  for(const b of [{id:'review',manual:true},{id:'activate',manual:true},{id:'reply',manual:true},{id:'start',action:'start'},{id:'live',live:true},{id:'protected',done:true}])assert.equal(mayAutoAdvance(b,{id:'next'}),false);
+test('new results preserve the step being read until Next is clicked',()=>{
+  const waiting=[{id:'world'},{id:'complaint'},{id:'report'},{id:'live',live:true,target:'#agent-live-panel',copy:'Reading the evidence.'}];
+  const ready=[{id:'world'},{id:'complaint'},{id:'report'},{id:'turn-1'},{id:'review',manual:true}];
+  const retained=keepReadingStep(waiting,ready,'live');
+  assert.equal(retained.find(b=>b.id==='live').copy,'Reading the evidence.');
+  assert.equal(nextGuideStep(retained,'live'),'turn-1');
+  assert.equal(nextGuideStep(retained,'review'),null);
+  assert.equal(nextGuideStep(keepReadingStep(waiting,ready,'world'),'world'),'complaint');
+});
+
+test('Next from live activity visits unread tools instead of skipping to review',()=>{
+  const steps=[{id:'report'},{id:'turn-1'},{id:'turn-2'},{id:'live',live:true},{id:'review',manual:true}];
+  assert.equal(nextGuideStep(steps,'live',new Set(['report','turn-1','live'])),'turn-2');
+  assert.equal(nextGuideStep(steps,'live',new Set(['turn-1','turn-2','live'])),'review');
+  const replied=keepReadingStep([{id:'report'},{id:'reply',target:'#fraud-reply-form'}],[{id:'report'},{id:'turn-3'}],'reply');
+  assert.equal(replied[1].target,'#agent-live-panel');assert.equal(nextGuideStep(replied,'reply'),'turn-3');
 });
 
 test('a rejected safeguard ends with a visible result, never an indefinite wait',()=>{
