@@ -45,11 +45,13 @@ class WorldDemo:
             if state['guided'] and state['focus_report_id']:
                 focus=self.desk.detail(state['focus_report_id']);job=focus.get('prevention');rule=job.get('rule') if job else None
                 phase='complaint' if focus['status']=='reported' else 'investigation' if focus['status']=='investigating' else 'review' if focus['status']=='awaiting_review' else 'followup' if focus['status']=='awaiting_customer' else 'attention'
+                if focus['status']=='reported' and (focus.get('preparation',{} ) or {}).get('status') in ('blocked','interrupted'):phase='attention'
                 if focus['status']=='resolved':
                     phase='prevention' if not job or job['status'] in ('ready','queued','running') else 'activate' if rule and rule['status']=='proposed' else 'ready' if rule and rule['status']=='active' else 'attention'
                 if any(i['id']=='world-proof-'+str(state['run_id']) and i['status']=='passed' for i in incidents):phase='protected'
             scene=self.lab.db.execute('SELECT scene_id FROM demo_scene WHERE id=1').fetchone()[0] if self.resetter else 'legacy'
             restart_blocked=bool(self.runner.pending or self.lab.db.execute("SELECT 1 FROM fraud_agent_turns WHERE status IN ('reserved','responded') LIMIT 1").fetchone())
+            if self.lab.db.execute("SELECT 1 FROM fraud_case_preparation WHERE status='running' LIMIT 1").fetchone():restart_blocked=True
             if self.environment_publisher and self.lab.db.execute("SELECT 1 FROM environment_publications WHERE status!='completed' LIMIT 1").fetchone():restart_blocked=True
             return {**state,'max_steps':RUN_STEPS,'provider':provider,'incidents':incidents,'blocked_payments':blocked,
                     'knowledge_count':len(self.desk.memories()),'calls_remaining':max(0,budget['daily_call_limit']-budget['daily_calls']),
@@ -148,6 +150,7 @@ class WorldDemo:
                         except LabError:status='needs_review';settled=[]
                     if settled:
                         report=self.desk.create(cid,spec['story'],spec['message'],settled,identifier);report_id=report['id']
+                        self.desk.prepare(report_id,'running','report','The customer report is saved. Preparing its recorded evidence.')
                         if metadata['guided_demo'] and not repeat:
                             self.lab.db.execute("UPDATE world_demo_state SET focus_report_id=?,running=0,note='Customer filed a scam report. Follow the investigation.' WHERE id=1",(report_id,))
                     elif events and status!='needs_review':status='blocked'
@@ -159,14 +162,26 @@ class WorldDemo:
             self.checkpoint()
         if report_id:
             try:
-                if self.environment_publisher:self.environment_publisher.publish()
-                if self.warehouse:self.warehouse.publish()
+                if self.environment_publisher:
+                    self.desk.prepare(report_id,'running','simulation_data','Saving the simulation tables for this case.')
+                    self.environment_publisher.publish()
+                if self.warehouse:
+                    self.desk.prepare(report_id,'running','evidence_snapshot','Freezing customer history and transactions for the investigator.')
+                    self.warehouse.publish()
+                self.desk.prepare(report_id,'running','dispatch','Handing the saved evidence to the resolution agent.')
                 self.runner.start(report_id,provider)
+                self.desk.prepare(report_id,'completed','dispatched','Evidence is ready. The investigation has been handed to the agent.')
             except LabError as exc:
+                self.desk.prepare(report_id,'blocked','preparation',str(exc))
                 with self.lab.lock,self.lab.db:
                     self.lab.db.execute("UPDATE world_incidents SET status='needs_review' WHERE id=?",(identifier,))
                     self.lab.db.execute('UPDATE world_demo_state SET note=? WHERE id=1',(str(exc),))
                 self.checkpoint()
+            except Exception:
+                self.desk.prepare(report_id,'blocked','preparation','Evidence preparation failed. The case is saved; no task was retried.')
+                with self.lab.lock,self.lab.db:self.lab.db.execute("UPDATE world_incidents SET status='needs_review' WHERE id=?",(identifier,))
+                self.checkpoint()
+                raise
         return identifier
 
     def tick(self, run_id):

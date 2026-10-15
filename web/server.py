@@ -200,10 +200,22 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                     if 'report_id' not in body or set(body)-{'report_id','mode','automatic'}:raise LabError('Invalid ADK start command.')
                     automatic=body.pop('automatic',True)
                     if type(automatic) is not bool:raise LabError('Automatic must be true or false.')
-                    if fraud_desk.detail(body['report_id'])['investigation'] is None:
-                        if environment_publisher:environment_publisher.publish()
-                        if warehouse:warehouse.publish()
-                    run=(fraud_runner.start if automatic else fraud_agent.start)(**body)
+                    case=fraud_desk.detail(body['report_id'])
+                    if case['investigation'] is None:
+                        if (case.get('preparation') or {}).get('status')=='running':raise LabError('Case evidence is already being prepared. Follow its saved progress.',409)
+                        try:
+                            fraud_desk.prepare(body['report_id'],'running','simulation_data','Saving the simulation tables for this case.')
+                            if environment_publisher:environment_publisher.publish()
+                            fraud_desk.prepare(body['report_id'],'running','evidence_snapshot','Freezing customer history and transactions for the investigator.')
+                            if warehouse:warehouse.publish()
+                        except Exception:
+                            fraud_desk.prepare(body['report_id'],'blocked','preparation','Evidence preparation stopped. Review the saved state; no task was retried.')
+                            raise
+                    try:run=(fraud_runner.start if automatic else fraud_agent.start)(**body)
+                    except Exception:
+                        if case['investigation'] is None:fraud_desk.prepare(body['report_id'],'blocked','dispatch','The investigation could not be started. Review the saved status; no request was retried.')
+                        raise
+                    if case['investigation'] is None:fraud_desk.prepare(body['report_id'],'completed','dispatched','Evidence is ready. The investigation is assigned to the agent.')
                     queued=run['context'].get('execution',{}).get('status') in ('queued','running')
                     return self.reply(202 if queued else 200,run)
                 if path=='/api/prevention/learn':

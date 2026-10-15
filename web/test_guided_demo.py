@@ -2,6 +2,7 @@
 import json
 import os
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -90,6 +91,49 @@ class GuidedDemoChecks(unittest.TestCase):
         self.assertEqual(self.lab.db.execute('SELECT count(*) FROM bronze_interactions').fetchone()[0],0)
         self.assertEqual(self.server.environment_data.tables()['wallet_transactions'],[])
         self.assertTrue(self.lab.integrity())
+
+    def test_preparation_is_observable_before_agent_creation_and_dispatches_once(self):
+        entered,released=threading.Event(),threading.Event()
+        class Publisher:
+            calls=0
+            def publish(inner):
+                inner.calls+=1;entered.set()
+                if not released.wait(10):raise LabError('Test publication timed out.')
+        publisher=Publisher();demo=self.server.world_demo
+        state=demo.start(0,background=False,fresh=True);demo.environment_publisher=publisher
+        with patch('google.genai.Client.__init__',side_effect=AssertionError('No paid client')):
+            thread=threading.Thread(target=lambda:demo.incident(state['run_id'],'phishing'));thread.start()
+            try:
+                self.assertTrue(entered.wait(5));rid=demo.status()['focus_report_id'];case=self.server.fraud_desk.detail(rid)
+                self.assertIsNone(case['investigation']);self.assertEqual(case['preparation']['stage'],'simulation_data')
+                self.assertEqual(case['preparation']['status'],'running');self.assertTrue(demo.status()['restart_blocked'])
+                self.assertEqual(self.lab.db.execute('SELECT count(*) FROM fraud_agent_turns').fetchone()[0],0)
+            finally:released.set();thread.join(10)
+            self.assertFalse(thread.is_alive());case=self.wait(rid)
+            self.assertEqual(case['preparation']['status'],'completed');self.assertEqual(case['status'],'awaiting_review')
+            self.assertEqual(publisher.calls,1);self.assertEqual(case['investigation']['budget']['case_calls'],5)
+
+    def test_preparation_failure_is_a_visible_blocker_without_model_calls_or_retries(self):
+        class Publisher:
+            calls=0
+            def publish(inner):inner.calls+=1;raise LabError('Snapshot needs operator review.',503)
+        publisher=Publisher();demo=self.server.world_demo
+        state=demo.start(0,background=False,fresh=True);demo.environment_publisher=publisher
+        demo.incident(state['run_id'],'phishing');rid=demo.status()['focus_report_id'];case=self.server.fraud_desk.detail(rid)
+        self.assertEqual(case['preparation']['status'],'blocked');self.assertIsNone(case['investigation'])
+        self.assertEqual(demo.status()['phase'],'attention')
+        demo.incident(state['run_id'],'phishing');self.assertEqual(publisher.calls,1)
+        self.assertEqual(self.lab.db.execute('SELECT count(*) FROM fraud_agent_turns').fetchone()[0],0)
+
+    def test_restart_marks_unfinished_preparation_interrupted_without_restarting_it(self):
+        report=self.server.fraud_desk.demo('phishing','unfinished-preparation')
+        self.server.fraud_desk.prepare(report['id'],'running','evidence_snapshot','Preparing evidence.')
+        self.server.server_close();self.lab.db.close()
+        with patch.dict(os.environ,{'PALLET_WAREHOUSE_ENABLED':'1','MINTTOWN_CLOUD_LIVE':'0'}):
+            self.server=make_server(0,Path(self.tmp.name)/'demo.db',cloud=self.cloud)
+        self.lab=self.server.lab;case=self.server.fraud_desk.detail(report['id'])
+        self.assertEqual(case['preparation']['status'],'interrupted');self.assertIsNone(case['investigation'])
+        self.assertEqual(self.lab.db.execute('SELECT count(*) FROM fraud_agent_turns').fetchone()[0],0)
 
     def test_fresh_reset_preserves_money_calls_admission_queries_and_circuit(self):
         day=now()[:10]

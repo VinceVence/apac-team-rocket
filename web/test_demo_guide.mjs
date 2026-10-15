@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {demoBeats} from './dist/demo-guide.js';
+import {demoBeats,mayAutoAdvance} from './dist/demo-guide.js';
 
 const demo={guided:true,run_id:1,scene_id:'first',focus_report_id:'case',phase:'investigation'};
 const report={id:'case',status:'investigating',reviews:[],decision_trail:[],investigation:{status:'running'}};
@@ -43,4 +43,22 @@ test('fresh scenes and foreign cases do not carry old investigation facts',()=>{
 test('reserved and failed requests are not presented as completed tools',()=>{
   const r={...report,decision_trail:[{...turn(1,'score_models'),status:'reserved'},{...turn(2,'return_finding'),status:'failed'}]};
   assert.equal(demoBeats(demo,r).some(b=>b.tool),false);
+});
+
+test('guide shows live preparation instead of ending at the complaint',()=>{
+  const r={...report,status:'reported',investigation:null,preparation:{status:'running',stage:'simulation_data',detail:'Saving snapshots.'}};
+  const beats=demoBeats(demo,r);
+  assert.equal(beats.at(-1).id,'live');assert.equal(beats.at(-1).target,'#agent-live-panel');
+  assert.equal(beats.some(b=>b.action==='start'),false);
+});
+
+test('autoplay only advances explanations, never human gates or a paid start',()=>{
+  assert.equal(mayAutoAdvance({id:'turn-1'},{id:'turn-2'}),true);
+  assert.equal(mayAutoAdvance({id:'complaint'},null),true);
+  for(const b of [{id:'review',manual:true},{id:'activate',manual:true},{id:'reply',manual:true},{id:'start',action:'start'},{id:'live',live:true},{id:'protected',done:true}])assert.equal(mayAutoAdvance(b,{id:'next'}),false);
+});
+
+test('a rejected safeguard ends with a visible result, never an indefinite wait',()=>{
+  const beats=demoBeats(demo,{...report,status:'resolved',reviews:[{}],prevention:{status:'rejected',rule:{status:'rejected',replay:{passed:false}}}});
+  assert.equal(beats.at(-1).id,'prevention');assert.equal(beats.at(-1).done,true);assert.equal(beats.at(-1).manual,true);
 });

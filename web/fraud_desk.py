@@ -70,7 +70,17 @@ class FraudDesk:
           review_id TEXT NOT NULL UNIQUE REFERENCES fraud_reviews(id), pattern TEXT NOT NULL,
           lesson TEXT NOT NULL, next_question TEXT NOT NULL, validation TEXT NOT NULL,
           created_at TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS fraud_case_preparation(
+          report_id TEXT PRIMARY KEY REFERENCES fraud_reports(id),status TEXT NOT NULL,
+          stage TEXT NOT NULL,detail TEXT NOT NULL,updated_at TEXT NOT NULL);
         ''')
+        with lab.db:lab.db.execute("UPDATE fraud_case_preparation SET status='interrupted',detail='Evidence preparation stopped when the service restarted. Review the saved state; no work was retried.',updated_at=? WHERE status='running'",(now(),))
+
+    def prepare(self,report_id,status,stage,detail):
+        """Observable intake state; no model request, retry or extra cloud operation."""
+        with self.lab.lock,self.lab.db:
+            self.report(report_id)
+            self.lab.db.execute('INSERT OR REPLACE INTO fraud_case_preparation VALUES(?,?,?,?,?)',(report_id,status,stage,detail,now()))
 
     def memories(self,include_inactive=False):
         rows = self.lab.rows('SELECT * FROM scam_memories ORDER BY rowid DESC')
@@ -121,6 +131,8 @@ class FraudDesk:
             report.update(customer=dict(self.lab.db.execute('SELECT * FROM customers WHERE id=?', (report['customer_id'],)).fetchone()),
                           transactions=self.transactions(report), investigation=self.run(latest[0]) if latest else None,
                           reviews=reviews)
+            preparation=self.lab.db.execute('SELECT * FROM fraud_case_preparation WHERE report_id=?',(report_id,)).fetchone()
+            report['preparation']=dict(preparation) if preparation else None
             if self.agent:
                 report['decision_trail'] = self.agent.timeline(report_id)
                 report['harness']=self.agent.harness.dashboard(report['investigation'])

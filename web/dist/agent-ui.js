@@ -22,15 +22,63 @@ export function publicEvidence(value){
   if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).filter(([k])=>!/(?:cost|budget|usd|microusd|tokens|provider|model|manifest|artifact|calls|reservation)/i.test(k)).map(([k,v])=>[k,publicEvidence(v)]));
   return typeof value==='string'?cleanText(value):value;
 }
+export function caseActivity(report,demo={}){
+  const run=report?.investigation,prep=report?.preparation,execution=run?.context?.execution?.status;
+  const trail=report?.decision_trail||[],completed=trail.filter(t=>t.status==='completed'&&t.tool),last=trail.at(-1);
+  const base={completed,latest:last,poll:false,active:false,action:null,stage:'report'};
+  if(report?.status==='resolved')return {...base,stage:'review',title:'Analyst resolution recorded',detail:'The reviewed case can inform prevention.'};
+  if(report?.status==='awaiting_customer')return {...base,stage:'customer',title:'The agent needs a customer answer',detail:cleanText(run?.context?.pending_question||'Answer the saved follow-up question to continue.')};
+  if(report?.status==='awaiting_review'||run?.recommendation)return {...base,stage:'review',title:'Ready for the risk analyst',detail:'The recorded checks and proposed resolution are ready below.'};
+  if(['blocked','interrupted'].includes(prep?.status)&&!completed.length)return {...base,stage:'blocked',title:'Evidence preparation needs attention',detail:cleanText(prep.detail),action:'refresh'};
+  if(['failed','budget_exhausted','interrupted'].includes(run?.status))return {...base,stage:'blocked',title:'Investigation paused for review',detail:'The saved evidence is available. No model request will be retried automatically.',action:report?.harness?.can_resume?'start':'refresh'};
+  if(['queued','running'].includes(execution))return {...base,stage:'agent',active:true,poll:true,title:execution==='queued'?'Investigator queued':last?.status==='responded'?'Executing the chosen tool':'Resolution agent is working',detail:last?.status==='responded'&&last.tool?(toolLabels[last.tool]||pretty(last.tool)):completed.length?'Reviewing the last result and choosing the next check.':'Reading the complaint and choosing the first check.'};
+  const incident=(demo.incidents||[]).find(i=>i.report_id===report?.id);
+  if(!run&&incident?.status==='needs_review')return {...base,stage:'blocked',title:'The case needs attention',detail:cleanText(demo.note||'Evidence preparation stopped. Inspect the saved case.'),action:'refresh'};
+  if(!run&&(prep?.status==='running'||(report?.status==='reported'&&demo.focus_report_id===report?.id)))return {...base,stage:'evidence',active:true,poll:true,title:prep?.stage==='simulation_data'?'Saving simulation data':prep?.stage==='dispatch'?'Handing evidence to the agent':'Preparing the case evidence',detail:cleanText(prep?.detail||'The report is saved. Transaction snapshots are being prepared before the investigator starts.')};
+  return {...base,stage:'ready',title:'Ready to investigate',detail:'Start the investigation to let the agent choose its checks.',action:'start'};
+}
+export function renderAgentActivity(report,demo,onNavigate){
+  const a=caseActivity(report,demo),root=document.getElementById('agent-live-panel');root.replaceChildren();root.dataset.stage=a.stage;root.classList.toggle('is-live',a.active);
+  const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n};
+  const head=el('header'),heading=el('div');heading.append(el('strong',a.title),el('p',a.detail));head.append(heading,el('span',a.active?'Live':a.completed.length?'Recorded activity':'Case status','activity-state'));root.append(head);
+  const graph=el('div',undefined,'activity-route'),agentDone=['review','customer'].includes(a.stage);
+  for(const [icon,label,state] of [['human','Report','complete'],['knowledge','Evidence',a.stage==='evidence'?'active':report.investigation?.snapshot?'complete':'pending'],['resolution','Agent',a.stage==='agent'?'active':agentDone?'complete':'pending'],['human','Review',report.status==='resolved'?'complete':a.stage==='review'?'active':'pending']]){
+    const n=el('div',undefined,'activity-node '+state);n.append(agentIcon(icon),el('strong',label),el('small',state==='complete'?'Ready':state==='active'?(a.active?'Working':'Your turn'):'Next'));graph.append(n);
+  }
+  root.append(graph);
+  const task=report.harness?.tasks?.[0];
+  if(task){const handoff=el('div',undefined,'activity-delegation');handoff.append(agentIcon('specialist'),el('strong',pretty(task.role)),el('span',task.status==='completed'?'Finding returned to the lead':'Reviewing the delegated question'));root.append(handoff)}
+  if(a.completed.length||a.stage==='agent'){
+    const choices=el('div',undefined,'activity-choices');choices.append(el('small','Agent choices'));
+    for(const t of a.completed){const b=el('button',`${t.number}. ${toolLabels[t.tool]||pretty(t.tool)}`,'activity-choice');b.type='button';b.onclick=()=>{onNavigate();const step=document.getElementById('guide-turn-'+t.number);if(step){step.open=true;step.scrollIntoView({behavior:'smooth',block:'start'})}};choices.append(b)}
+    if(a.stage==='agent')choices.append(el('span',a.latest?.status==='responded'&&a.latest.tool?(toolLabels[a.latest.tool]||pretty(a.latest.tool)):'Choosing the next check…','activity-choice in-progress'));root.append(choices);
+  }
+  const result=a.completed.at(-1)?.result,proof=el('div',undefined,'activity-proof');
+  const evidence=a.completed.find(t=>['get_case_evidence','get_transactions'].includes(t.tool))?.result?.transactions;
+  if(evidence)proof.append(el('span',`${evidence.length} transfer${evidence.length===1?'':'s'} verified`));
+  const signals=a.completed.filter(t=>['score_models','run_fraud_detectors'].includes(t.tool));
+  if(signals.length)proof.append(el('span','Payment signals checked'));
+  if(result?.status==='revision_required')proof.append(el('span','Draft withheld by checks','activity-warning'));
+  if(report.investigation?.recommendation&&report.status!=='resolved')proof.append(el('span','Human approval required'));
+  if(proof.childNodes.length)root.append(proof);
+  return a;
+}
+export function renderPreventionFlow(job){
+  const root=document.getElementById('prevention-flow'),rule=job?.rule,working=['queued','running'].includes(job?.status),failed=['failed','interrupted','budget_exhausted','rejected'].includes(job?.status);
+  root.replaceChildren();root.classList.toggle('is-live',working);
+  for(const [icon,label,state] of [['knowledge','Lesson','complete'],['prevention','Candidate',rule?'complete':failed?'blocked':working?'active':'pending'],['judge','Replay',rule?(rule.replay.passed?'complete':'blocked'):'pending'],['human','Activate',rule?.status==='active'?'complete':rule?.replay.passed?'active':'pending']]){
+    const n=document.createElement('div');n.className='activity-node '+state;n.append(agentIcon(icon));const title=document.createElement('strong'),status=document.createElement('small');title.textContent=label;status.textContent=state==='complete'?'Ready':state==='blocked'?'Needs review':state==='active'?(working?'Working':'Your turn'):'Next';n.append(title,status);root.append(n);
+  }
+}
 export function caseProgress(report,demo={}){
   const run=report?.investigation,job=report?.prevention,reviewed=!!report?.reviews?.length&&report.status==='resolved';
   const stopped=['failed','interrupted','budget_exhausted'].includes(run?.status);
-  const attention=stopped||report?.status==='needs_review';
-  const current=reviewed?2:report?.status==='awaiting_review'||attention?1:0;
-  const working=['queued','running'].includes(run?.context?.execution?.status);
+  const attention=stopped||report?.status==='needs_review'||['blocked','interrupted'].includes(report?.preparation?.status);
+  const current=reviewed?2:report?.status==='awaiting_review'||stopped||report?.status==='needs_review'?1:0;
+  const working=caseActivity(report,demo).active;
   const learning=['queued','running'].includes(job?.status);
   const active=job?.rule?.status==='active',protectedCase=active&&demo.focus_report_id===report?.id&&demo.phase==='protected';
-  const statuses=[reviewed||report?.status==='awaiting_review'?'Investigation complete':attention?'Needs attention':report?.status==='awaiting_customer'?'Waiting for customer':working?'Investigating':'Ready',
+  const statuses=[reviewed||report?.status==='awaiting_review'?'Investigation complete':attention?'Needs attention':report?.status==='awaiting_customer'?'Waiting for customer':working?(run?'Investigating':'Preparing evidence'):'Ready',
     reviewed?'Reviewed':current===1?'Your decision':'Waiting for evidence',
     protectedCase?'Protection verified':active?'Safeguard active':job?.status==='rejected'?'Needs revision':learning?'Learning':job?.status==='awaiting_activation'?'Ready to enable':job&&['failed','interrupted','budget_exhausted'].includes(job.status)?'Needs attention':reviewed?'Ready to learn':'Waiting for review'];
   return {current,statuses,working:working||learning,protected:protectedCase};
