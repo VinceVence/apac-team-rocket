@@ -112,12 +112,14 @@ def replay(signals,source):
         controls.append({'name':'Only '+signal.replace('_',' '),'features':{**blank,signal:True}})
     outcomes=[{'name':c['name'],'flagged':matches(signals,c['features'])} for c in controls]
     hits=sum(matches(signals,row) for row in positive)
-    return {'passed':hits>0 and not any(c['flagged'] for c in outcomes),'changed_recipient_matches':hits,
+    from policy_replay import compare
+    paired=compare(signals,source)
+    return {'passed':hits>0 and not any(c['flagged'] for c in outcomes) and (not paired['available'] or paired['passed']),'changed_recipient_matches':hits,
             'feature_schema_version':FEATURE_SCHEMA_VERSION,
             'source_variants':len(positive),'legitimate_controls':len(controls),
             'false_flags':sum(c['flagged'] for c in outcomes),'controls':outcomes,
             'scope':'Synthetic source variants and legitimate feature controls. Not real-world accuracy.',
-            'message_availability':source['feature_provenance']}
+            'message_availability':source['feature_provenance'],'paired':paired}
 
 
 class PreventionAgent:
@@ -168,7 +170,7 @@ class PreventionAgent:
         return {'report':report,'memory':memory,'review':review,'transactions':self.desk.transactions(report)}
 
     def source(self,basis):
-        report,memory,review=basis['report'],basis['memory'],basis['review'];inputs=[];reconstructed=False
+        report,memory,review=basis['report'],basis['memory'],basis['review'];inputs=[];requests=[];reconstructed=False
         for tx in basis['transactions']:
             if 'prevention_features' in tx['metadata']:
                 values={k:tx['metadata']['prevention_features'].get(k) is True for k in FEATURES}
@@ -179,12 +181,19 @@ class PreventionAgent:
                 meta={**tx['metadata'],'payment_context':{'before_payment':True,'kind':'payment_request','message':report['message']}}
                 values=features(tx['to_account'],tx['amount_minor'],meta,tx['occurred_at'],self.history(report['customer_id'],tx['occurred_at']))
             inputs.append({'event_id':tx['id'],'features':values})
+            meta=tx['metadata']
+            if meta.get('payment_context',{}).get('before_payment') is True:
+                requests.append({'payee':tx['to_account'],'amount_minor':tx['amount_minor'],'occurred_at':tx['occurred_at'],
+                    'history':self.history(report['customer_id'],tx['occurred_at']),
+                    'metadata':{k:meta[k] for k in ('device_known','authorization_verified','payment_context') if k in meta}})
         request=json.loads(self.lab.db.execute('SELECT request_json FROM fraud_reports WHERE id=?',(report['id'],)).fetchone()[0])
         family=request.get('scenario') or next((t['metadata'].get('scenario') for t in basis['transactions'] if t['metadata'].get('scenario')),None)
         family={'first':'phishing','repeat':'phishing'}.get(family,family)
         return {'customer_id':report['customer_id'],'report_id':report['id'],'review_id':review['id'],
             'memory_id':memory['id'],'family':family,'reviewed_lesson':memory['lesson'],'reviewed_message':report['message'],
-            'resolution':json.loads(review['resolution']),'source_inputs':inputs,
+            'resolution':json.loads(review['resolution']),'source_inputs':inputs,'requests':requests,
+            'baseline_rules':[{'rule_id':r['id'],'signals':r['signals']} for r in self.active()],
+            'baseline_recipients':sorted({p for m in self.desk.memories() for p in m['pattern']['recipient_accounts']}),
             'feature_provenance':'Reconstructed from an approved complaint; not all context was recorded before the original transfer.' if reconstructed else 'Signals recorded at the payment gateway before the source transfers.'}
 
     def start(self,report_id,provider):
@@ -253,7 +262,9 @@ class PreventionAgent:
         if job['status']!='running':return job
         from fraud_adk import FakeInvestigator,run_turn
         if not self.model_factory:self.model_factory=lambda:FakeInvestigator(chooser=fake_choice)
-        packet={**job['source'],'available_signals':FEATURES,'strong_signals':sorted(STRONG),'remaining_generations':1}
+        packet={k:v for k,v in job['source'].items() if k not in ('requests','baseline_rules','baseline_recipients','family')}
+        packet['source_inputs']=[{'features':r['features']} for r in packet['source_inputs']]
+        packet.update(available_signals=FEATURES,strong_signals=sorted(STRONG),remaining_generations=1)
         try:
             async def invoke():
                 return await asyncio.wait_for(run_turn(self,{'id':job_id,'context':{'provider':job['provider']}},packet,

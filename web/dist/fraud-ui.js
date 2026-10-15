@@ -53,6 +53,17 @@ export function createFraudUI({$,api,state,setPlaying,setBusy,refresh,error,focu
     for(const signal of rule?.signals||[])$('prevention-signals').append(el('li',pretty(signal)));
     $('prevention-test-summary').replaceChildren();
     if(rule){for(const [value,label,bad] of [[`${rule.replay.changed_recipient_matches} / ${rule.replay.source_variants}`,'similar requests held',rule.replay.changed_recipient_matches<rule.replay.source_variants],[`${rule.replay.false_flags} / ${rule.replay.legitimate_controls}`,'legitimate payments held',rule.replay.false_flags>0]]){const metric=el('div',undefined,'replay-metric'+(bad?' warning':''));metric.append(el('strong',String(value)),el('span',label));$('prevention-test-summary').append(metric)}$('prevention-test-summary').append(el('small','Synthetic replay · not real-world accuracy','replay-note'))}
+    const paired=rule?.replay?.paired;
+    if(paired?.available){
+      const comparison=el('section',undefined,'policy-comparison');comparison.append(el('h3','Before → after this safeguard'));
+      const metrics=el('div',undefined,'policy-comparison-metrics');
+      for(const [value,label] of [[`${paired.before_stopped} → ${paired.after_stopped} / ${paired.scam_variants}`,'scam variants held'],[`${paired.before_false_holds} → ${paired.after_false_holds} / ${paired.legitimate_controls}`,'legitimate requests held']]){const item=el('div');item.append(el('strong',value),el('span',label));metrics.append(item)}
+      comparison.append(metrics,el('p',`Rejected comparison: holding every new recipient flags ${paired.rejected_baseline.false_holds} of ${paired.rejected_baseline.controls} legitimate controls.`,'surface-note'));
+      for(const reason of paired.reasons)comparison.append(el('p',reason,'risk-reason'));
+      const details=el('details',undefined,'world-details');details.append(el('summary','Inspect matched requests'));
+      for(const item of paired.cases){const row=el('div',undefined,'policy-comparison-row');row.append(el('span',pretty(item.name)),el('strong',item.before+' → '+item.after));details.append(row)}
+      comparison.append(details);$('prevention-test-summary').append(comparison);
+    }
     $('prevention-activate').hidden=!rule||!rule.replay.passed||active;
     $('prevention-disable').hidden=!active;
     $('prevention-prove').hidden=!active||!state.data?.demo.guided||state.data?.demo.focus_report_id!==report.id;

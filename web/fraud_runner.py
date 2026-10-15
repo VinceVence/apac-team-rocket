@@ -57,10 +57,10 @@ class InvestigationRunner:
         run['context']['execution'] = {'mode': 'automatic', 'status': status, 'updated_at': now()}
         self.lab.db.execute('UPDATE fraud_investigations SET context=? WHERE id=?', (encoded(run['context']), run_id))
 
-    def start(self, report_id, mode='fake'):
+    def start(self, report_id, mode='fake',experiment_arm=None):
         with self.lab.lock:
             if self.closed: raise LabError('The investigation worker is stopping.', 503)
-            run = self.agent.start(report_id, mode)
+            run = self.agent.start(report_id, mode,experiment_arm=experiment_arm)
             if run['status'] != 'running' or run['id'] in self.pending: return run
             if len(self.pending) >= MAX_PENDING: raise LabError('The investigation queue is full. Retry starting this saved report shortly.', 429)
             with self.lab.db: self.execution(run['id'], 'queued')

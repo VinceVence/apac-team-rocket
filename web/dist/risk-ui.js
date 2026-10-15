@@ -37,6 +37,7 @@ export function createRiskUI({$,state,error,onCases}){
       }
       card.append(numbers,el('p','Held-out '+(study.source==='benchmark'?'synthetic ':'')+'test · '+c.test.rows+' examples','surface-note'));
       card.append(el('p',c.preselected?'Selected using validation data':'Comparison only · not selected for review','surface-note'));
+      if(c.ablation){const a=c.ablation,delta=Math.round(a.validation_recall_delta*100);card.append(el('p',`${a.removed_group} features: ${delta>=0?'+':''}${delta} points validation recall; ${a.validation_false_hold_delta>=0?'+':''}${a.validation_false_hold_delta} legitimate holds.`, 'ablation-result'))}
       const meter=el('meter');meter.min=0;meter.max=1;meter.value=c.test.recall;meter.setAttribute('aria-label',c.name+' synthetic scam recall');card.append(meter);
       const reasons=el('ul');for(const reason of c.reasons)reasons.append(el('li',reason));card.append(reasons);
       const details=el('details',undefined,'world-details');details.append(el('summary','Features, metrics & counterexamples'));

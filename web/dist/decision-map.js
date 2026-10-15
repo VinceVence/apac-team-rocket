@@ -18,9 +18,11 @@ export function decisionResult(turn){
   if(r.transactions){
     facts.push(`${r.transactions.length} payment${r.transactions.length===1?'':'s'} verified`);
     const source=r.warehouse?.source;
-    if(source)facts.push(source.analytics_sync==='deferred'?'Frozen ledger · analytics sync deferred':source.analytics_sync==='matched_completed_publication'?'Matching publication reused':'Pinned customer history');
+    if(source)facts.push(source.provider==='BigQuery'?`BigQuery aggregated ${source.record_count} scoped records`:source.analytics_sync==='deferred'?'Frozen ledger · analytics sync deferred':source.analytics_sync==='matched_completed_publication'?'Matching publication reused':'Pinned customer history');
+    if(r.warehouse?.features?.payment_count!==undefined)facts.push(`${r.warehouse.features.payment_count} outgoing payments · ₱${Number(r.warehouse.features.spend_php).toLocaleString('en-PH')} in scope`);
   }else if(r.receipts){
     for(const p of r.receipts.slice(0,2))facts.push(`${text(p.manifest?.name)||'Signal check'}: ${text(p.prediction?.result)||pretty(p.status)}`);
+    if(r.decision_context?.observations?.length)facts.push(text(r.decision_context.observations[0]));
   }else if(r.matches)facts.push(`${r.matches.length} approved lesson${r.matches.length===1?'':'s'} found`);
   else if(r.related_transfers)facts.push(`${r.related_transfers.length} related transfer${r.related_transfers.length===1?'':'s'} found`);
   else if(r.models)facts.push(`${r.models.length} registered checks available`);
@@ -29,7 +31,7 @@ export function decisionResult(turn){
   else if(turn.tool==='ask_customer')facts.push(text(r.question));
   else if(['submit_case_resolution','submit_for_review'].includes(turn.tool))facts.push(r.status==='revision_required'?'Draft withheld by validation':'Proposal sent for analyst review');
   else if(r.features)facts.push(`${r.features.payment_count??'Unknown'} recorded payments in scope`);
-  const unknowns=[...(r.uncertainties||r.finding?.uncertainties||r.recommendation?.uncertainties||[])];
+  const unknowns=[...(r.uncertainties||r.finding?.uncertainties||r.recommendation?.uncertainties||[]),...(r.decision_context?.open_questions||[])];
   if(r.receipts)for(const p of r.receipts)if(p.missing_inputs?.length)unknowns.push('Missing inputs: '+[...new Set(p.missing_inputs.flatMap(i=>i.fields||[]))].map(pretty).join(', '));
   if(r.harness_judges?.passed===false)unknowns.push(...r.harness_judges.judges.flatMap(j=>j.blockers||[]));
   return {facts:facts.filter(Boolean),summary:text(turn.finding)||facts.filter(Boolean).join('. ')||'Tool receipt recorded.',unknowns:unknowns.map(text).filter(Boolean)};

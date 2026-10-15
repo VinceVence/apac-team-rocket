@@ -24,6 +24,8 @@ def initialize(lab):
         id TEXT PRIMARY KEY,created_at TEXT NOT NULL,status TEXT NOT NULL,
         row_count INTEGER NOT NULL,size_bytes INTEGER NOT NULL,counts TEXT NOT NULL,
         jobs TEXT NOT NULL,completed_at TEXT)''')
+    lab.db.execute('''CREATE TABLE IF NOT EXISTS environment_feature_coverage(
+        publication_id TEXT PRIMARY KEY,transaction_ids TEXT NOT NULL)''')
     lab.db.commit()
 
 
@@ -140,8 +142,13 @@ class EnvironmentPublisher:
             manifest={'contract':CONTRACT_VERSION,'batch_id':fingerprint,'counts':counts,'jobs':jobs,
                 'private_evaluation_labels':True,'completed_at':now()}
             self.cloud.upload(prefix+'manifest.json.gz',gzip.compress(encoded(manifest).encode(),mtime=0),'0')
-            with self.lab.lock,self.lab.db:self.lab.db.execute(
-                "UPDATE environment_publications SET status='completed',completed_at=? WHERE id=?",(manifest['completed_at'],fingerprint))
+            with self.lab.lock,self.lab.db:
+                self.lab.db.execute("UPDATE environment_publications SET status='completed',completed_at=? WHERE id=?",(manifest['completed_at'],fingerprint))
+                # Only the current mirror can answer queries. Retain one bounded index,
+                # so reports with newer, unpublished payments do not waste BQ queries.
+                self.lab.db.execute('DELETE FROM environment_feature_coverage')
+                self.lab.db.execute('INSERT INTO environment_feature_coverage VALUES(?,?)',
+                    (fingerprint,encoded(sorted(r['transaction_id'] for r in tables['wallet_transactions']))))
         except Exception:
             with self.lab.lock,self.lab.db:self.lab.db.execute("UPDATE environment_publications SET status='uncertain' WHERE id=?",(fingerprint,))
             self.cloud.save(self.lab)

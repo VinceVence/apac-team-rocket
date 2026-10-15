@@ -8,7 +8,7 @@ from settings import DAILY_REPORTS, DAILY_WRITES, DAILY_WORLD_STEPS, READS_PER_M
 POST_PATHS = frozenset(('/api/world/step','/api/world/start','/api/world/restart','/api/world/stop','/api/world/prove','/api/world/demo-action','/api/world/demo-approve','/api/cloud/export','/api/fraud-desk/demo',
     '/api/fraud-desk/report','/api/fraud-desk/reply','/api/fraud-desk/review','/api/fraud-desk/revoke-memory',
     '/api/fraud-agent/start','/api/fraud-agent/recheck','/api/fraud-agent/handoff',
-    '/api/prevention/learn','/api/prevention/activate','/api/risk-lab/seed','/api/risk-lab/curate','/api/risk-lab/start'))
+    '/api/prevention/learn','/api/prevention/activate','/api/risk-lab/seed','/api/risk-lab/curate','/api/risk-lab/start','/api/risk-lab/evaluate-case'))
 GET_PATHS = frozenset(('/api/state','/api/cloud','/api/fraud-desk','/api/risk-lab','/api/environment-data'))
 
 
@@ -44,7 +44,7 @@ class DemoGuard:
             if path=='/api/fraud-agent/start' and (body.get('mode','fake') not in (('fake','gemini') if self.live_enabled else ('fake',)) or body.get('automatic',True) is not True):
                 raise LabError('Use the approved automatic investigation mode.',409)
             day=self.clock()[:10]
-            is_report=path in ('/api/fraud-desk/demo','/api/fraud-desk/report')
+            is_report=path in ('/api/fraud-desk/demo','/api/fraud-desk/report','/api/risk-lab/evaluate-case')
             if is_report and isinstance(body.get('request_id'),str):
                 is_report=not self.lab.db.execute('SELECT 1 FROM fraud_reports WHERE request_id=?',(body['request_id'],)).fetchone()
             is_step=path=='/api/world/step'

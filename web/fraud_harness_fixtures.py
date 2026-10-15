@@ -29,7 +29,7 @@ def choose(packet):
     receipts=observed['score_models']['receipts'];ids=[r['receipt_id'] for r in receipts]
     if not suspected and not legitimate and not packet['customer_replies']:
         return 'ask_customer',{'question':'Who requested the payment, and did you receive the goods or verify the recipient independently?','purpose':'Resolve the missing transaction purpose before a conclusion.'}
-    if suspected and not packet.get('delegation_used') and packet['remaining_generations']>=4:
+    if suspected and packet.get('experiment_arm')!='single' and not packet.get('delegation_used') and packet['remaining_generations']>=4:
         role='device_specialist' if device_issue else 'transaction_specialist' if any(k in narrative for k in ('invoice','supplier')) else 'resolution_critic' if 'withdrawal tax' in narrative or 'withdrawal fee' in narrative else 'scam_specialist'
         return 'delegate_question',{'role':role,'question':{'device_specialist':'What does the observed device and authorization evidence establish, and which login facts are missing?', 'transaction_specialist':'Do the payment and recipient records establish the supplier identity, or is independent verification missing?', 'scam_specialist':'Does recorded authorization resolve the reported deception, and what legitimate alternatives remain?', 'resolution_critic':'Challenge the proposed suspicion: does this indicate investment deception or an ordinary loss, and what is unverified?'}[role],
             'evidence_ids':packet['event_ids'],'receipt_ids':ids,'purpose':'Get a scoped second interpretation of the unresolved mechanism.'}

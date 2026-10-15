@@ -13,6 +13,8 @@
 | Curate cases and compare model experiments | [Risk scientist and validator](risk-lab.md) |
 | Understand the evidence and research proposals | [Research](research.md) |
 | See what actually passed, failed or remains unmeasured | [Evaluation](evaluation.md) |
+| Review the implemented competition upgrades and current results | [Upgrade evidence](competition-upgrades.md) |
+| Contribute Karlo's trained model | [Model artifact contract](model-artifacts.md) |
 | Find a backend file or endpoint | [Application map](../web/README.md) |
 
 Start with one complete case. A normal demo follows **Run world → complaint → selected tools → analyst review → approved knowledge → later payment hold**. A stopped investigation is a visible result, not a reason to silently retry it.

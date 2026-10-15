@@ -19,8 +19,8 @@ from fraud_models import manifests
 from fraud_knowledge import redact as redact_memory
 
 MODEL = 'gemini-3.5-flash-lite'
-PROMPT_VERSION = 'fraud-investigator-v8'
-TOOL_CONTRACT_VERSION = 8
+PROMPT_VERSION = 'fraud-investigator-v9'
+TOOL_CONTRACT_VERSION = 9
 MAX_INPUT_BYTES = 16000
 MAX_OUTPUT_TOKENS = 512
 RESERVE_MICROUSD = 10000
@@ -145,7 +145,7 @@ class FraudAgent:
         data = {'transactions': transactions, 'history': history, 'recipients': recipients, 'memories': memories,
                 'warehouse_snapshot':latest['id'] if latest else None}
         if self.warehouse:
-            data['customer_features']=self.warehouse.frozen_features(report['customer_id'],max(t['occurred_at'] for t in transactions),latest)
+            data['customer_features']=self.warehouse.case_features.cached(report) or self.warehouse.frozen_features(report['customer_id'],max(t['occurred_at'] for t in transactions),latest)
         as_of=self.lab.clock_day
         if prior_snapshot:
             prior=self.snapshot(prior_snapshot)
@@ -223,9 +223,10 @@ class FraudAgent:
                 'actual_usd': 0 if mode == 'fake' else case[1] / 1e6,
                 'estimated_usd': case[1] / 1e6, 'simulated': mode == 'fake', 'day_utc': day}
 
-    def start(self, report_id, mode='fake'):
+    def start(self, report_id, mode='fake',experiment_arm=None):
         report_id = text(report_id, 'Report ID', 1, 80)
         if mode not in ('fake', 'gemini'): raise LabError('Choose fake or gemini.')
+        if experiment_arm not in (None,'single','selective'):raise LabError('Choose a registered evaluation arm.')
         if mode == 'gemini' and not self.live_enabled(): raise LabError('Live Gemini is off. No model request was made.', 409)
         if not self.runtime()['version']: raise LabError('Run uv sync --locked, then start with uv run --locked python web/server.py.', 409)
         with self.lab.lock, self.lab.db:
@@ -235,6 +236,7 @@ class FraudAgent:
                 raise LabError('The provider is pinned to this case. Use a separate report for a comparison.', 409)
             run = self.desk.start(report_id)
             if run['context'].get('controller') == 'adk':
+                if experiment_arm and run['context'].get('experiment_arm','selective')!=experiment_arm:raise LabError('The evaluation arm is pinned to this case.',409)
                 if self.harness.can_resume(run):
                     run['context'].pop('stop_reason',None);run['context'].pop('execution',None)
                     self.lab.db.execute("UPDATE fraud_investigations SET status='running',context=? WHERE id=?",(encoded(run['context']),run['id']))
@@ -264,12 +266,14 @@ class FraudAgent:
             context.setdefault('observations', []); context.setdefault('memories', [])
             if self.harness_enabled:
                 context.setdefault('harness_version',HARNESS_VERSION);context.setdefault('model_manifests',manifests())
+                context.setdefault('evidence_reference_version',2);context.setdefault('experiment_arm',experiment_arm or 'selective')
             self.lab.db.execute('UPDATE fraud_investigations SET context=? WHERE id=?', (encoded(context), run['id']))
             return self.desk.run(run['id'])
 
     def packet(self, run):
         report = self.desk.report(run['report_id'])
         snapshot = self.snapshot(run['context'].get('snapshot_id'))
+        budget=self.budget(report['id'],run['context']['provider'])
         packet={'report_id': report['id'], 'customer_id': report['customer_id'],
                 'currency':'PHP', 'minor_units_per_unit':100,
                 'canonical_amounts_php':{'payments':[{'event_id':t['id'],'amount_php':t['amount_minor']/100} for t in snapshot['data']['transactions']],
@@ -279,6 +283,10 @@ class FraudAgent:
                 'available_detectors':DETECTORS,
                 'harness_version':run['context'].get('harness_version'),'active_role':'case_lead',
                 'available_models':run['context'].get('model_manifests',{}),
+                'experiment_arm':run['context'].get('experiment_arm','selective'),
+                'decision_context':run['context'].get('decision_context',{}),
+                'citation_contract':{'transaction_ids':report['event_ids'],'snapshot_is_not_a_transaction':True,
+                    'instruction':'Use only transaction_ids for evidence_ids. Snapshot IDs identify a bundle and cannot be submitted as transaction citations.'},
                 'specialist_findings':run['context'].get('specialist_findings',[]),
                 'delegation_used':bool(self.lab.db.execute('SELECT 1 FROM fraud_delegations WHERE report_id=?',(report['id'],)).fetchone()),
                 'guided_demo':any(t['metadata'].get('guided_demo') for t in snapshot['data']['transactions']),
@@ -286,7 +294,7 @@ class FraudAgent:
                 'evidence_snapshot': {'id': snapshot['id'], 'as_of': snapshot['as_of'], 'event_watermark': snapshot['event_watermark']},
                 'ingestion_flags': [f for t in snapshot['data']['transactions'] for f in t['metadata'].get('review_flags', [])],
                 'observations': run['context'].get('observations', []),
-                'remaining_generations': max(0, self.max_case_calls - self.budget(report['id'], run['context']['provider'])['case_calls'])}
+                'remaining_generations': max(0,min(self.max_case_calls-budget['case_calls'],budget['daily_call_limit']-budget['daily_calls']))}
         return self.harness.compact(packet) if run['context'].get('harness_version') else packet
 
     @staticmethod

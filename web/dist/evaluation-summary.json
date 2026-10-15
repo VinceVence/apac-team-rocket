@@ -1,0 +1,96 @@
+{
+  "generated_at": "2026-10-15T14:06:18.827658+00:00",
+  "mode": "offline",
+  "paid_model_calls": 0,
+  "scope": "Synthetic evaluation. Real CPU inference and ledger checks; agent choices use a fake model. Gemini quality comparison is still pending.",
+  "investigations": {
+    "contracts_passed": true,
+    "arms": {
+      "single": {
+        "cases": 12,
+        "review_ready": 12,
+        "calls": 39
+      },
+      "selective": {
+        "cases": 12,
+        "review_ready": 12,
+        "calls": 51
+      }
+    }
+  },
+  "payments": {
+    "cases": 100,
+    "scams_before": 0,
+    "scams_after": 34,
+    "legitimate_held": 0,
+    "legitimate_settled": 50,
+    "zero_debit_when_held": true,
+    "families": [
+      {
+        "family": "phishing",
+        "candidate_rejected": false,
+        "scams_stopped": 7,
+        "legitimate_held": 0
+      },
+      {
+        "family": "payment_burst",
+        "candidate_rejected": false,
+        "scams_stopped": 10,
+        "legitimate_held": 0
+      },
+      {
+        "family": "invoice_redirect",
+        "candidate_rejected": false,
+        "scams_stopped": 10,
+        "legitimate_held": 0
+      },
+      {
+        "family": "task_scam",
+        "candidate_rejected": false,
+        "scams_stopped": 7,
+        "legitimate_held": 0
+      },
+      {
+        "family": "investment_scam",
+        "candidate_rejected": true,
+        "scams_stopped": 0,
+        "legitimate_held": 0
+      }
+    ]
+  },
+  "trained_model": {
+    "source": "Generator-labelled synthetic benchmark, not analyst-reviewed production data.",
+    "selection": "Validation only; ties favor simpler logistic. No test-driven promotion.",
+    "validation": {
+      "rows": 200,
+      "positives": 60,
+      "negatives": 140,
+      "caught": 48,
+      "false_holds": 0,
+      "recall": 0.8,
+      "false_positive_rate": 0.0,
+      "precision": 1.0,
+      "average_precision": 0.9071,
+      "brier": 0.0642,
+      "threshold": 0.75
+    },
+    "test": {
+      "rows": 200,
+      "positives": 60,
+      "negatives": 140,
+      "caught": 36,
+      "false_holds": 0,
+      "recall": 0.6,
+      "false_positive_rate": 0.0,
+      "precision": 1.0,
+      "average_precision": 0.8085,
+      "brier": 0.1212,
+      "threshold": 0.75
+    },
+    "prevention_gate_passed": false,
+    "reasons": [
+      "Fewer than 80% of held-out synthetic scams were detected."
+    ]
+  },
+  "reproduce": "uv run --locked python -B web/evaluate_upgrade.py --mode fake"
+}

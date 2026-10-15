@@ -4,6 +4,7 @@ from pathlib import Path
 
 from fraud_detectors import REGISTRY, predict_case
 from lab import LabError, encoded
+import trained_models
 
 FEATURE_VERSION='prepayment-signals-v1'
 CONTRACT_VERSION='fraud-model-contract-v1'
@@ -17,13 +18,14 @@ TARGETS={
 def manifests():
     # Pin both the predictor and feature implementation, not merely a display version.
     artifact=hashlib.sha256((Path(__file__).read_bytes()+Path(__file__).with_name('fraud_detectors.py').read_bytes()+Path(__file__).with_name('prevention.py').read_bytes())).hexdigest()
-    return {identifier:{'model_id':identifier,'version':card['version'],'name':card['name'],
+    rules={identifier:{'model_id':identifier,'version':card['version'],'name':card['name'],
         'task':TARGETS[identifier],'positive_class':None,'score_kind':'rule_signal','calibrated':False,
         'release_status':'registered_demo_rule','training_cutoff':None,'artifact_sha256':artifact,
         'feature_version':FEATURE_VERSION,'required_inputs':list(card['features']),
         'eligible_population':'Synthetic wallet payments with the declared prepayment inputs',
         'missing_input_behavior':'not_available; never zero risk','evaluation_reference':'web/test_fraud_models.py',
         'contract_version':CONTRACT_VERSION} for identifier,card in REGISTRY.items()}
+    return rules|trained_models.manifests()
 
 
 def input_records(model_id,transactions):
@@ -54,23 +56,30 @@ def predict(model_ids,event_ids,snapshot,pinned,customer_id):
     if any(t['occurred_at'][:10]>snapshot['as_of'] for t in selected):raise LabError('Prediction evidence is beyond the pinned cutoff.',422)
     results=[]
     for model_id in model_ids:
-        card=current[model_id];inputs=input_records(model_id,selected)
+        card=current[model_id]
         stale=pinned.get(model_id)!=card
-        result=predict_case([model_id],selected)['detectors'][0] if not stale else None
+        learned=model_id not in REGISTRY
+        if learned and not stale and card.get('available'):
+            result,inputs=trained_models.predict(model_id,selected)
+        else:
+            inputs=input_records(model_id,selected) if not learned else []
+            result=predict_case([model_id],selected)['detectors'][0] if not learned and not stale else None
         missing=[{'event_id':r['event_id'],'fields':r['missing_inputs']} for r in inputs if r['missing_inputs']]
-        if result:
+        if result and not learned:
             missing_ids={r['event_id'] for r in missing}
             for row in result['predictions']:
                 if row['event_id'] in missing_ids:row.update(available=False,signal_score=None,matched_features=[])
             valid=[row for row in result['predictions'] if row['available']]
             result.update(available=bool(valid),signal_score=max((row['signal_score'] for row in valid),default=None),
                 result='verification signal' if any(row['signal_score']==1 for row in valid) else 'no combined signal' if valid else 'insufficient evidence')
-        results.append({'model_id':model_id,'model_version':card['version'],'feature_version':FEATURE_VERSION,
+        results.append({'model_id':model_id,'model_version':card['version'],'feature_version':card['feature_version'],
             'manifest':card,'manifest_hash':hashlib.sha256(encoded(card).encode()).hexdigest(),
             'input_hash':hashlib.sha256(encoded(inputs).encode()).hexdigest(),'event_ids':[t['id'] for t in selected],
             'snapshot_id':snapshot['id'],'snapshot_hash':snapshot['evidence_hash'],'as_of':snapshot['as_of'],
             'score_kind':card['score_kind'],'target':card['task'],'calibrated':False,'missing_inputs':missing,
-            'status':'not_available' if stale or not result['available'] else 'partial' if missing else 'scored',
-            'reason':'Pinned model or feature implementation changed.' if stale else 'Required evidence is missing.' if missing else None,
-            'prediction':result,'input_fields':list(card['required_inputs'])})
+            'status':'not_available' if stale or not result or not result['available'] else 'partial' if missing else 'scored',
+            'reason':'Pinned model or feature implementation changed.' if stale else card.get('unavailable_reason','Registered artifact is unavailable.') if learned and not card.get('available') else 'Required evidence is missing.' if missing else None,
+            'prediction':result,'input_fields':list(card['required_inputs']),
+            'input_source':'Versioned prepayment feature snapshot' if learned else 'Frozen payment observations',
+            'case_feature_source':snapshot['data'].get('customer_features',{}).get('source')})
     return results

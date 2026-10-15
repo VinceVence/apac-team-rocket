@@ -79,6 +79,21 @@ class RiskChecks(unittest.TestCase):
             self.lab.db.execute('UPDATE risk_candidates SET data_json=? WHERE id=?',(json.dumps(data),candidate['id']))
         with self.assertRaisesRegex(LabError,'non-preselected'):
             self.team.decide(result['id'],'validator','recommend_candidate',{'candidate_id':candidate['id'],'summary':'Cannot choose another model after seeing final test results.','risks':['Synthetic data'],'purpose':'Check the preselection constraint.'})
+
+    def test_scientist_ablation_runs_through_the_same_bounded_validator(self):
+        self.team.seed()
+        def ablation(packet):
+            return 'design_ablation',{'hypothesis':'Request context should improve detection compared with transaction features alone.',
+                'recipe':'logistic','feature_groups':['transaction','request'],'remove_group':'request',
+                'purpose':'Measure the contribution of request features with one paired ablation.'}
+        self.team.model_factories['scientist']=lambda:FakeInvestigator(chooser=ablation)
+        with patch('google.genai.Client.__init__',side_effect=AssertionError('No paid SDK')):
+            result=self.settle(self.team.start('risk-ablation','benchmark','fake'))
+        self.assertEqual(result['status'],'rejected',result['error']);self.assertEqual(result['budget']['case_calls'],2)
+        self.assertEqual(result['trace'][0]['tool'],'design_ablation');self.assertEqual(len(result['candidates']),4)
+        full=next(c for c in result['candidates'] if c['recipe']=='logistic')
+        self.assertEqual(full['ablation']['removed_group'],'request');self.assertTrue(full['preselected'])
+        self.assertFalse(result['verdict']['serving_changed'])
     def test_final_test_labels_cannot_change_selection_or_threshold(self):
         rows=synthetic_examples(['C'+str(n).zfill(3) for n in range(1,101)])
         payload={'rows':rows,'plan':{'recipes':['logistic','boosted_tree'],'feature_groups':['transaction','request']}}
@@ -136,7 +151,12 @@ class RiskChecks(unittest.TestCase):
             r=urllib.request.Request(base+'/api/risk-lab/seed',data=b'{}',headers=headers)
             with self.assertRaises(urllib.error.HTTPError) as caught:urllib.request.urlopen(r)
             self.assertEqual(caught.exception.code,403)
+            r=urllib.request.Request(base+'/api/risk-lab/evaluate-case',data=b'{}',headers=headers)
+            with self.assertRaises(urllib.error.HTTPError) as caught:urllib.request.urlopen(r)
+            self.assertEqual(caught.exception.code,403)
             self.assertNotIn(TOKEN,urllib.request.urlopen(base+'/api/risk-lab').read().decode())
+            self.assertIn('showEvaluation',urllib.request.urlopen(base+'/evaluation-ui.js').read().decode())
+            self.assertEqual(json.load(urllib.request.urlopen(base+'/evaluation-summary.json'))['paid_model_calls'],0)
             headers['X-MintTown-Operator']=TOKEN
             result=json.load(urllib.request.urlopen(urllib.request.Request(base+'/api/risk-lab/seed',data=b'{}',headers=headers)))
             self.assertEqual(result['added'],1000)

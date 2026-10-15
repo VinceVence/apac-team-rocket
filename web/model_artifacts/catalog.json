@@ -1,0 +1,18 @@
+{
+  "models": [
+    {
+      "model_id": "synthetic_triage_v1",
+      "version": "1.0",
+      "name": "Learned payment patterns",
+      "task": "Similarity to scam patterns in a synthetic payment-request benchmark",
+      "positive_class": "Generator-labelled scam request",
+      "release_status": "synthetic_advisory_only",
+      "training_cutoff": "2026-07-11T19:00:00+00:00",
+      "eligible_population": "Synthetic wallet payments with complete risk-features-v1 snapshots",
+      "file": "synthetic_triage_v1.json",
+      "artifact_sha256": "eec77654963ead3ecb00bd5ec7a7e82c0f2fe62e0e7ffdf0e37ac7826fa7d49e",
+      "evaluation_reference": "web/model_artifacts/synthetic_triage_evaluation.json",
+      "limitation": "Synthetic-only, uncalibrated advisory score. Not DS-approved for prevention or real customer decisions. Final-test gate: failed"
+    }
+  ]
+}

@@ -1,5 +1,7 @@
 # Mint Town — two-day competition plan
 
+Implementation update: [shipped upgrades, measured results and remaining DS/live-evaluation work](competition-upgrades.md). The assessment below records the pre-upgrade baseline.
+
 Reviewed 15 October 2026 against application `5b5a107`, the three earlier research reports, saved evaluations, and current official competition pages. This is a focused review and implementation proposal; it is not a new Hyperresearch run or a claim that the proposed upgrades already work. No subagents or new paid model evaluations were used for this review.
 
 **The strongest proposition:** Mint Town helps an analyst investigate a scam, then turns the reviewed finding into a tested prevention control. The simulator makes both the benefit and the mistakes observable: an unseen-recipient scam should be held, while a legitimate lookalike should still settle.

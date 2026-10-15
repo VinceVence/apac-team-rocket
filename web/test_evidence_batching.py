@@ -68,7 +68,9 @@ class EvidenceBatchChecks(unittest.TestCase):
             self.assertEqual(self.cloud.daily_exports(self.lab),2 if n<5 else 4)
         self.assertEqual(self.lab.db.execute('SELECT count(*) FROM warehouse_snapshots').fetchone()[0],2)
         self.assertEqual(self.lab.db.execute('SELECT count(*) FROM environment_publications').fetchone()[0],2)
-        self.assertEqual(self.lab.db.execute('SELECT count(*) FROM warehouse_queries').fetchone()[0],0)
+        # Only reports whose records are in the two completed batches query BQ.
+        self.assertEqual(self.lab.db.execute('SELECT count(*) FROM warehouse_queries').fetchone()[0],2)
+        self.assertEqual(self.lab.db.execute('SELECT count(*) FROM environment_feature_coverage').fetchone()[0],1)
 
     def test_exact_completed_snapshot_reuses_at_cap_but_stale_uncertain_and_expired_do_not(self):
         _,rid=self.incident('phishing');self.wait(rid)

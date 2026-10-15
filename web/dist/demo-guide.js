@@ -102,7 +102,7 @@ export function createDemoGuide({state,openCase,showWorld,error,demoAction,resid
     if(['world','payments','complaint','repeat','protected'].includes(b.id)){
       const heading=el('div',undefined,'demo-scene-label');heading.append(agentIcon(['repeat','protected'].includes(b.id)?'prevention':b.id==='complaint'?'human':'knowledge'),el('strong',b.id==='protected'?'The next payment was protected':b.id==='repeat'?'Resident 2 receives a suspicious request':b.id==='complaint'?'Resident '+Number((d.focus_customer_id||'C001').slice(1))+' asks for help':'Watch the town transact'));visual.append(heading);sceneCanvas();
       const results=el('div',undefined,'demo-world-results');
-      if(b.id==='protected')facts(results,[['Suspicious payment','Held before debit'],['Legitimate payment','Completed'],['Check location','Local payment gateway']]);
+      if(b.id==='protected')facts(results,[['Scam payment','Held before debit'],['Normal payment','Completed'],['Gateway','Local check']]);
       else if(b.id==='repeat')facts(results,[['Resident','Resident 2'],['Request','₱900 transfer'],['Recipient',actions.activate?.mode==='behavioral_safeguard'?'Different recipient':'Previously reviewed']]);
       else facts(results,[['Residents',state.data.customers?.length||100],['Transactions',state.data.environment_data?.counts.wallet_transactions||0],['Scam report',d.focus_report_id?'Filed':'Not yet']]);visual.append(results);return;
     }
@@ -120,7 +120,8 @@ export function createDemoGuide({state,openCase,showWorld,error,demoAction,resid
     if(b.id==='knowledge'){const c=card('knowledge','Reviewed case → shared knowledge',report?.approved_lesson?.lesson||'No published lesson is available yet.');chips(c,report?.approved_lesson?.pattern?.cues||[]);facts(c,[['Source','Demo analyst resolution'],['Scope','Reviewed recipient + case signals'],['Use','Check future payments']]);return}
     if(b.id==='prevention'){
       const waiting=['ready','queued','running'].includes(job?.status),passed=rule?.replay?.passed;const c=card('prevention',waiting?'Prevention agent is testing':passed?'A narrow safeguard is ready':'Reviewed recipient watch is ready',waiting?'The approved lesson is being tested against similar requests and legitimate payments.':passed?'Combine the reviewed signals before a future payment is debited.':'The approved recipient is watched locally. A broader unapproved candidate is not used.');if(waiting)c.classList.add('demo-working');if(passed)chips(c,rule.signals);
-      facts(c,passed?[['Similar requests',`${rule.replay.changed_recipient_matches} / ${rule.replay.source_variants} held`],['Legitimate controls',rule.replay.false_flags+' held / '+rule.replay.legitimate_controls],['Activation','Assumed demo analyst approval']]:[['Knowledge','Approved recipient'],['Broader candidate',job?'Not activated':'Not requested'],['Payment check','Local; no model call']]);return;
+      const paired=rule?.replay?.paired;
+      facts(c,paired?.available?[['Scams held: before → after',`${paired.before_stopped} → ${paired.after_stopped} / ${paired.scam_variants}`],['Legitimate requests held',`${paired.before_false_holds} → ${paired.after_false_holds}`],['Broad baseline','Rejected · '+paired.rejected_baseline.false_holds+' false holds']]:passed?[['Similar requests',`${rule.replay.changed_recipient_matches} / ${rule.replay.source_variants} held`],['Legitimate controls',rule.replay.false_flags+' held / '+rule.replay.legitimate_controls],['Activation','Assumed demo analyst approval']]:[['Knowledge','Approved recipient'],['Broader candidate',job?'Not activated':'Not requested'],['Payment check','Local; no model call']]);return;
     }
     card('resolution',b.title,b.copy);
   }

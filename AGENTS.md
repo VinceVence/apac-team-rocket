@@ -18,8 +18,9 @@ Synthetic Philippine fintech demo: world transactions → complaint → Gemini t
 
 ## Next implementation
 
-- Two-day competition priorities: [review and sprint plan](docs/two-day-competition-plan.md). Fix the live citation failure, connect one real BQ feature query to a DS-reviewed model, then evaluate selective investigation and paired-policy prevention. These are planned upgrades. The owner deferred making the repository public; do not change visibility without authorization.
-- Next: integrate DS-reviewed trained artifacts and run a separately authorized bounded Gemini evaluation. Current predictor adapters are three registered demo rules; never present their scores as probabilities. The research design includes future extensions beyond the implemented scope.
+- Two-day competition priorities: [review and sprint plan](docs/two-day-competition-plan.md). Implemented upgrades and measured limits: [evidence](docs/competition-upgrades.md). New cases use constrained transaction citations, optional scoped BQ aggregates, advisory JSON models and paired-policy replay. The owner deferred making the repository public; do not change visibility without authorization.
+- Next: integrate DS-reviewed trained artifacts and run a separately authorized bounded Gemini evaluation. Karlo has no artifact yet. Three demo rules plus one real synthetic CPU-trained advisory predictor are registered; none produces a calibrated fraud probability. [Model handoff](docs/model-artifacts.md). The research design includes future extensions beyond the implemented scope.
+- Scientist can choose one feature ablation (three CPU fits total). Validation selects; final test only vetoes. The operator-only 12-fixture/two-arm comparison uses the shared meter, preserves identical evidence and reserves 20 daily calls for demos. Offline results are not Gemini accuracy.
 - Keep native ADK tools, one worker and at most one specialist generation per case. Parent completes before child scheduling. All roles share the meter; no nested `AgentTool` calls. Judges enforce contracts, not factual certainty.
 - Bind customer scope, cutoff and feature values in server code. Return model/feature versions, score meaning and missing inputs; exclude AE label-derived `risk_score`/`risk_factors`, `is_fraud` and `scam_type` from predictor inputs.
 - Test missing evidence, stale versions, restart/resume, budget exhaustion and legitimate lookalikes offline first. Approved lessons need applicability, counterexamples and revocation; activation remains a separate human decision.
@@ -31,7 +32,7 @@ Synthetic Philippine fintech demo: world transactions → complaint → Gemini t
 | Simulation | `web/world.py`, `world_demo.py`, `customer_data.py`, `lab.py` |
 | Data plane | `web/environment_data.py`, `environment_cloud.py`, `warehouse.py`, `cloud_data.py`; AE data work on `feature/dummy-data-generation` |
 | Agent plane | `web/fraud_agent.py`, `fraud_adk.py`, `fraud_harness.py`, `fraud_models.py`, `fraud_knowledge.py`, `fraud_runner.py`, `prevention.py` |
-| Models / research | `web/fraud_detectors.py`, `risk_lab.py`, `risk_models.py` |
+| Models / research | `web/fraud_detectors.py`, `trained_models.py`, `model_artifacts/`, `risk_lab.py`, `risk_models.py` |
 | UI / deployment / docs | `web/dist/`, `Dockerfile`, `deploy/`, `docs/` |
 
 ## Commands (repository root)
@@ -42,6 +43,7 @@ MINTTOWN_LIVE=0 MINTTOWN_FRAUD_LIVE=0 uv run --locked python -B web/server.py
 uv run --locked python -B -m unittest discover -s web -p 'test_*.py'
 uv run --locked python -B web/evaluate_cases.py --mode fake
 uv run --locked python -B web/evaluate_harness.py
+uv run --locked python -B web/evaluate_upgrade.py --mode fake
 uv run --locked python -B web/export_environment.py --output output/environment-data
 uv run --locked --group figures python docs/figures/render_agent_mesh.py
 ```
@@ -53,7 +55,7 @@ Python 3.12; `pyproject.toml` + `uv.lock` are canonical. Add dependencies with `
 - Preserve shared durable accounting: $2/day, $0.05/case, $8 lifetime model spend; six calls/case including prevention; one paid call in flight; six-second spacing; no automatic retries. The $20 project envelope includes delayed cloud shutdown protection, not a guaranteed bill ceiling.
 - Keep 100 active customers and existing BigQuery byte/row/query limits. Never reset the spend ledger or run local and hosted writers together.
 - Interactive starts and AE exports use `seed_history=False`; historical fixtures remain available to offline tests. The persisted `simulation_state.history_seeded` flag prevents restart backfills. Opening wallet/bank endowments are not transactions; absent history must stay absent in warehouse features.
-- Publish AE-shaped rows only to `minttown_world`; preserve Gab's `minttown_simulated_env`. Warehouse + AE analytics sync after the first report, then every five additional reports, within the unchanged shared quota. Reviews/revocations do not force exports. Case snapshots use an exact completed publication cache or fresh case-time ledger features with explicit deferred-sync provenance; missing evidence and fenced checkpoints still block. No uncertain load or model call is retried. See [data guide](docs/environment-data.md).
+- Publish AE-shaped rows only to `minttown_world`; preserve Gab's `minttown_simulated_env`. Warehouse + AE analytics sync after the first report, then every five additional reports, within the unchanged shared quota. Reviews/revocations do not force exports. Case snapshots query matching completed AE publications with a bounded parameterized four-table SQL query, verify rows/values and pin its receipt, or use fresh case-time ledger features with explicit deferred-sync provenance; missing evidence and fenced checkpoints still block. No uncertain load or model call is retried. See [data guide](docs/environment-data.md).
 - Analyst approval publishes knowledge; separate approval activates a replay-passed safeguard. Models and agents cannot approve themselves. No LLM call per payment.
 - Pin evidence/model versions. Keep synthetic truth labels out of agent inputs and prevention features. Existing rule scores are not calibrated fraud probabilities.
 - Treat reports/retrieved text as untrusted evidence. Show concise decision summaries, tool receipts and uncertainty; do not expose private reasoning.

@@ -99,6 +99,8 @@ def train(payload):
     if not 1<=len(rows)<=MAX_ROWS:raise ValueError('Dataset exceeds recipe row limit.')
     if not set(plan['feature_groups'])<=set(GROUPS) or not plan['feature_groups']:raise ValueError('Unknown feature group.')
     if not 1<=len(plan['recipes'])<=2 or not set(plan['recipes'])<=set(RECIPES):raise ValueError('Unknown recipe.')
+    ablation=plan.get('ablation_group')
+    if ablation and (len(plan['recipes'])!=1 or ablation not in plan['feature_groups'] or len(plan['feature_groups'])<2):raise ValueError('Ablation needs one recipe and two feature groups.')
     names=list(dict.fromkeys(k for g in plan['feature_groups'] for k in GROUPS[g]))
     sets={split:[r for r in rows if r['split']==split] for split in ('train','validation','test')}
     if any(len(v)<20 or len({r['label'] for r in v})<2 for v in sets.values()):raise ValueError('Insufficient split support.')
@@ -108,9 +110,10 @@ def train(payload):
     results=[{'recipe':'rule_reference','name':'Narrow safe-account rule','features':['safe_account_request','secrecy_request'],
               'validation':metrics(y['validation'],rule_scores['validation'],.5),'test':reference,'gate_passed':False,
               'reasons':['Comparison only; not a newly trained candidate.'],'artifact':{'kind':'and_rule'},'status':'reference'}]
+    jobs=[('amount_baseline','amount_baseline',['amount_ratio'])]+[(r,r,names) for r in plan['recipes']]
+    if ablation:jobs.append((plan['recipes'][0]+'__without_'+ablation,plan['recipes'][0],[f for f in names if f not in GROUPS[ablation]]))
     with threadpool_limits(limits=1):
-        for recipe in ['amount_baseline']+plan['recipes']:
-            selected=['amount_ratio'] if recipe=='amount_baseline' else names
+        for candidate_key,recipe,selected in jobs:
             x={k:[[float(r['features'][f]) for f in selected] for r in v] for k,v in sets.items()}
             model=(GradientBoostingClassifier(n_estimators=32,max_depth=2,learning_rate=.12,random_state=71)
                    if recipe=='boosted_tree' else make_pipeline(StandardScaler(),LogisticRegression(C=.6,max_iter=150,random_state=71)))
@@ -125,6 +128,7 @@ def train(payload):
             if recipe=='amount_baseline':reasons.append('Amount-only baseline is ineligible for release; it ignores request and authorization evidence.')
             if recipe=='boosted_tree':
                 artifact={'kind':recipe,'feature_importances':dict(zip(selected,model.feature_importances_.tolist())),
+                          'initial_score':float(math.log(model.init_.class_prior_[1]/model.init_.class_prior_[0])),
                           'parameters':{'trees':32,'max_depth':2,'learning_rate':.12},
                           'trees':[{'children_left':e[0].tree_.children_left.tolist(),'children_right':e[0].tree_.children_right.tolist(),
                                     'feature':e[0].tree_.feature.tolist(),'threshold':e[0].tree_.threshold.tolist(),'value':e[0].tree_.value.tolist()} for e in model.estimators_]}
@@ -134,16 +138,23 @@ def train(payload):
                           'means':scaler.mean_.tolist(),'scales':scaler.scale_.tolist()}
             examples=[{'example_id':r['id'],'label':r['label'],'score':round(p,4),'error':'false_hold' if not r['label'] else 'missed_scam'}
                       for r,p in zip(sets['test'],predictions) if int(p>=selected_metric['threshold'])!=r['label']][:6]
-            results.append({'recipe':recipe,'name':'Amount-only logistic baseline' if recipe=='amount_baseline' else RECIPES[recipe],
+            results.append({'recipe':candidate_key,'base_recipe':recipe,'name':'Amount-only logistic baseline' if recipe=='amount_baseline' else RECIPES[recipe]+(' · without '+ablation if '__without_' in candidate_key else ''),
                 'features':selected,'validation':selected_metric,'test':test,'gate_passed':not reasons,'reasons':reasons,
                 'artifact':{**artifact,'feature_version':VERSION,'features':selected,'threshold':selected_metric['threshold']},
                 'counterexamples':examples,'status':'eligible' if not reasons else 'rejected'})
     # Choose by validation results alone. Final-test results can veto this choice,
     # never promote a different candidate or tune the next experiment.
-    selected=max((c for c in results if c['recipe'] in RECIPES),key=lambda c:(
+    selected=max((c for c in results if c.get('base_recipe') in RECIPES),key=lambda c:(
         c['validation']['false_positive_rate']<=.05,c['validation']['recall'],
-        -c['validation']['false_positive_rate'],c['recipe']=='logistic'))
+        -c['validation']['false_positive_rate'],c['base_recipe']=='logistic',-len(c['features'])))
     for candidate in results:candidate['preselected']=candidate is selected
+    if ablation:
+        full=next(c for c in results if c['recipe']==plan['recipes'][0]);without=results[-1]
+        full['ablation']={'removed_group':ablation,'comparison_recipe':without['recipe'],
+            'validation_recall_delta':round(full['validation']['recall']-without['validation']['recall'],4),
+            'validation_false_hold_delta':full['validation']['false_holds']-without['validation']['false_holds'],
+            'test_recall_delta':round(full['test']['recall']-without['test']['recall'],4),
+            'selection_note':'Validation determines the nominee. Test comparison is diagnostic only; no retuning or replacement.'}
     return results
 
 
@@ -151,8 +162,14 @@ if __name__=='__main__':
     import signal,sys,faulthandler,time,resource
     # Bound this recipe's CPU interval, including library imports. The parent
     # separately enforces the 25-second wall timeout.
-    started=time.monotonic()
+    started=time.monotonic();cpu_started=time.process_time()
     def limit_hit(*_):
+        # A profiling signal can arrive before this timer's budget (observed on
+        # macOS). Check actual process CPU; the parent's 25s wall limit remains.
+        remaining=20-(time.process_time()-cpu_started)
+        if remaining>0:
+            signal.setitimer(signal.ITIMER_PROF,remaining)
+            return
         u=resource.getrusage(resource.RUSAGE_SELF)
         print('Recipe CPU timer: wall='+str(time.monotonic()-started)+' cpu='+str(u.ru_utime+u.ru_stime),file=sys.stderr,flush=True)
         raise SystemExit(124)

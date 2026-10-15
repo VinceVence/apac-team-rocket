@@ -1,7 +1,7 @@
 """Five synthetic, source-grounded cases. Expected outcomes never enter model context."""
 import uuid
 
-from lab import LabError, encoded
+from lab import LabError, encoded,now
 
 SCENARIOS = {
     'phishing': {
@@ -87,14 +87,22 @@ def create_scenario(desk, scenario, request_id):
         desk.lab.db.execute('INSERT OR IGNORE INTO accounts(id,label,kind,opening_minor,balance_minor) VALUES(?,?,?,0,0)',
                             (payee,'Synthetic transfer recipient','counterparty'))
         events=[]
+        prefix='control_' if control else ''
         for n,amount in enumerate(amounts):
             eid='reported-payment-'+uuid.uuid4().hex[:12];events.append(eid)
             metadata={'device_id':'device-'+cid if control or spec['device_known'] else 'unrecognized-device',
                       'device_known':True if control else spec['device_known'],
                       'authorization_verified':True if control else spec['authorization_verified'],
-                      'authorized_payee':payee,'rail':'Wallet','review_flags':desk.screen(cid,payee)}
+                      'authorized_payee':payee,'rail':'Wallet','review_flags':desk.screen(cid,payee),
+                      'payment_context':{'before_payment':True,'kind':'payment_request','message':spec[prefix+'message']}}
+            at=desk.lab.clock_day+'T%02d:%02d:%02dZ'%(desk.world.status()['hour'],0 if key=='payment_burst' else n,n*4 if key=='payment_burst' else 0)
+            if desk.world.prevention:
+                from prevention import features,FEATURE_SCHEMA_VERSION
+                from risk_models import vector,VERSION
+                history=desk.world.prevention.history(cid,at)
+                metadata.update(prevention_features=features(payee,amount,metadata,at,history),prevention_schema_version=FEATURE_SCHEMA_VERSION,
+                    risk_features=vector(metadata,amount,history,payee,at),risk_feature_version=VERSION,risk_recorded_at=now())
             desk.lab.post(eid,cid,'payment',amount,desk.lab.clock_day,cid+':wallet',payee,metadata)
             desk.lab.db.execute('UPDATE financial_events SET occurred_at=? WHERE id=?',
-                (desk.lab.clock_day+'T%02d:%02d:%02dZ'%(desk.world.status()['hour'],0 if key=='payment_burst' else n,n*4 if key=='payment_burst' else 0),eid))
-        prefix='control_' if control else ''
+                (at,eid))
         return desk._create(cid,spec[prefix+'story'],spec[prefix+'message'],events,request_id,encoded(payload))

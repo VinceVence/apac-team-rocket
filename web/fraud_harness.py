@@ -12,7 +12,7 @@ from fraud_desk import text
 from fraud_models import manifests, predict
 from lab import LabError, encoded, now
 
-VERSION='fraud-harness-v1'
+VERSION='fraud-harness-v2'
 ROLES={
  'transaction_specialist':('Transaction specialist','Check payment timing, spending and recipient evidence. Separate unusual behavior from proof of a scam.'),
  'device_specialist':('Device & identity specialist','Check observed device and authorization facts. A known device does not prove informed consent. Missing authentication evidence must remain unknown.'),
@@ -80,10 +80,22 @@ class FraudHarness:
             self.lab.db.execute('INSERT INTO fraud_model_receipts VALUES(?,?,?,?,?,?)',
                 (identifier,run['id'],report['id'],snapshot['evidence_hash'],encoded(result),now()))
             result['receipt_id']=identifier
-        return {'receipts':results,'rule_scores_are_probabilities':False,'bank_action_executed':False}
+        questions=[];observations=[]
+        payment_facts=snapshot['data']['transactions']
+        normal_device=all(t['metadata'].get('device_known') is True and t['metadata'].get('authorization_verified') is True for t in payment_facts)
+        request_signal=any(r['model_id']=='message_intent_v1' and r.get('prediction',{}).get('signal_score')==1 for r in results if r.get('prediction'))
+        if normal_device and request_signal:
+            observations.append('Recorded authorization looks normal while the payment request contains deception indicators. These checks answer different questions.')
+            questions.append('Was the payment request independently verified through a trusted contact?')
+        missing=[field for r in results for row in r.get('missing_inputs',[]) for field in row['fields']]
+        if missing:questions.append('Obtain the missing evidence: '+', '.join(sorted(set(missing)))+'.')
+        decision={'observations':observations,'open_questions':questions,'score_fusion':'No averaging of incompatible model targets. Scores do not establish fraud.'}
+        run['context']['decision_context']=decision
+        return {'receipts':results,'decision_context':decision,'rule_scores_are_probabilities':False,'bank_action_executed':False}
 
     def delegate(self,run,report,snapshot,args):
         role=args['role'];context=run['context']
+        if context.get('experiment_arm')=='single':raise LabError('This evaluation arm does not allow delegation.',403)
         if role not in ROLES:raise LabError('This specialist role is not allowlisted.',403)
         if self.task(context):raise LabError('Nested delegation is not permitted.',403)
         if self.lab.db.execute('SELECT 1 FROM fraud_delegations WHERE report_id=?',(report['id'],)).fetchone():
@@ -117,6 +129,9 @@ class FraudHarness:
         identifiers={t['id'] for t in data['transactions']+data['history']}
         identifiers.update(t['id'] for rows in data['recipients'].values() for t in rows)
         identifiers.update(e for m in data['memories'] for e in m['pattern'].get('evidence_ids',[]))
+        if run['context'].get('evidence_reference_version')==2:
+            prefix='EVT-'+self.lab.fingerprint([run['report_id'],run['context']['snapshot_id']])[:6]+'-'
+            return {identifier:prefix+str(i+1) for i,identifier in enumerate(sorted(identifiers))}
         return {identifier:'EVT-'+self.lab.fingerprint([run['report_id'],identifier])[:20] for identifier in identifiers}
 
     @staticmethod
@@ -147,11 +162,14 @@ class FraudHarness:
         """Keep full receipts in SQLite; put only decision-relevant fields in each prompt."""
         packet=dict(packet)
         packet.pop('available_detectors',None)
-        packet['available_models']={k:{f:v[f] for f in ('model_id','version','name','task','score_kind','required_inputs','missing_input_behavior')} for k,v in packet['available_models'].items()}
+        # The menu identifies each target and release boundary. Full input
+        # contracts remain available through list_eligible_models and receipts.
+        packet['available_models']={k:{f:v[f] for f in ('version','name','task','score_kind','release_status','available','limitation') if f in v} for k,v in packet['available_models'].items()}
         observations=[]
         for item in packet['observations']:
             result=dict(item['result'])
             if item['tool']=='score_models':result={'receipts':[self.compact_receipt(r) for r in result['receipts']]}
+            if item['tool']=='return_finding':result={'task_id':result['task_id'],'finding_location':'specialist_findings'}
             if item['tool']=='get_case_evidence':
                 g=result['guidance'];result['guidance']={'version':g['version'],'steps':g['steps'],'do_not_collect':g['do_not_collect']}
             observations.append({'tool':item['tool'],'result':result})

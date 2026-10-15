@@ -6,3 +6,5 @@
 !web/*.py
 !web/dist/
 !web/dist/**
+!web/model_artifacts/
+!web/model_artifacts/*.json

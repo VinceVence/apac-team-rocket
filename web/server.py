@@ -82,6 +82,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
     initialize_environment_publications(lab)
     environment_publisher=EnvironmentPublisher(environment_data,cloud,os.environ['MINTTOWN_ENV_DATASET']) if cloud and os.getenv('MINTTOWN_ENV_DATASET') else None
     world_demo.environment_publisher=environment_publisher
+    if warehouse:warehouse.case_features.data=environment_data;warehouse.case_features.publisher=environment_publisher
     operator_token=os.getenv('MINTTOWN_RISK_OPERATOR_TOKEN','')
     if cloud: cloud.initialize(lab)
     csrf=secrets.token_urlsafe(32)
@@ -151,7 +152,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                     with lab.lock: run=agents.public_run(path.rsplit('/',1)[-1])
                     return self.reply(200,run)
                 if path.startswith('/api/'): return self.reply(404,{'error':'Endpoint not found.'})
-                if path not in ('/','/index.html','/app.js','/mesh-ui.js','/customer-ui.js','/fraud-ui.js','/harness-ui.js','/demo-guide.js','/demo-replay.js','/demo-recording.json','/decision-map.js','/agent-ui.js','/risk-ui.js','/town.js','/town-art.js','/resident-sprites.js','/styles.css','/mark.svg','/favicon.svg') and not path.startswith('/fonts/'):
+                if path not in ('/','/index.html','/app.js','/mesh-ui.js','/customer-ui.js','/fraud-ui.js','/harness-ui.js','/demo-guide.js','/demo-replay.js','/demo-recording.json','/evaluation-ui.js','/evaluation-summary.json','/decision-map.js','/agent-ui.js','/risk-ui.js','/town.js','/town-art.js','/resident-sprites.js','/styles.css','/mark.svg','/favicon.svg') and not path.startswith('/fonts/'):
                     return self.reply(404,{'error':'File not found.'})
                 if '..' in path or '%' in path: return self.reply(404,{'error':'File not found.'})
                 return super().do_GET()
@@ -176,6 +177,15 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                 if path=='/api/risk-lab/seed':
                     if body!={}:raise LabError('The benchmark uses the fixed simulator recipe.')
                     return self.reply(200,risk_lab.seed())
+                if path=='/api/risk-lab/evaluate-case':
+                    from evaluate_upgrade import stage_case
+                    if set(body)!={'fixture','request_id','pair_id','arm','mode'} or body['mode'] not in ('fake','gemini'):raise LabError('Choose a registered bounded evaluation request.')
+                    if world_demo.status()['running'] or fraud_runner.pending:raise LabError('Pause the world and wait for existing work before an evaluation case.',409)
+                    case,created=stage_case(fraud_desk,body['fixture'],body['request_id'],body['pair_id'],body['arm'])
+                    if created:
+                        notice=world_demo.prepare_evidence(case['id']);fraud_runner.start(case['id'],body['mode'],experiment_arm=body['arm'])
+                        fraud_desk.prepare(case['id'],'completed','dispatched',notice)
+                    return self.reply(200,fraud_desk.detail(case['id']))
                 if path=='/api/risk-lab/curate':
                     if set(body)!={'report_id','label','note'}:raise LabError('Choose a reviewed case, explicit label and curation rationale.')
                     return self.reply(200,risk_lab.curate(**body))
@@ -208,7 +218,9 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                         warehouse.publish();return self.reply(200,warehouse.latest())
                     return self.reply(200,cloud.export(lab,body['request_id']))
                 if path=='/api/fraud-agent/start':
-                    if 'report_id' not in body or set(body)-{'report_id','mode','automatic'}:raise LabError('Invalid ADK start command.')
+                    if 'report_id' not in body or set(body)-{'report_id','mode','automatic','experiment_arm'}:raise LabError('Invalid ADK start command.')
+                    if 'experiment_arm' in body and (len(operator_token)<24 or not secrets.compare_digest(self.headers.get('X-MintTown-Operator',''),operator_token)):
+                        raise LabError('Evaluation configuration requires operator authorization.',403)
                     automatic=body.pop('automatic',True)
                     if type(automatic) is not bool:raise LabError('Automatic must be true or false.')
                     case=fraud_desk.detail(body['report_id'])

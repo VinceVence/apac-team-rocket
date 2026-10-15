@@ -38,6 +38,8 @@ class Warehouse:
         CREATE TABLE IF NOT EXISTS behavior_models(id TEXT PRIMARY KEY,created_at TEXT NOT NULL,
           artifact TEXT NOT NULL,report TEXT NOT NULL);
         ''')
+        from case_features import CaseFeatures
+        self.case_features=CaseFeatures(self)
 
     def provision(self):
         """Seven-day table TTL; historical event-date partitions must not expire at ingestion."""
@@ -201,7 +203,8 @@ class Warehouse:
         with self.lab.lock,self.lab.db:self.lab.db.execute('UPDATE warehouse_snapshots SET status=? WHERE id=?',(status,snapshot))
         self.cloud.save(self.lab);return snapshot
 
-    def query(self,sql,parameters):
+    def query(self,sql,parameters,location=None):
+        location=location or self.cloud.location
         identifier='pallet_query_'+uuid.uuid4().hex
         params=[{'name':k,'parameterType':{'type':'DATE' if k in ('day','since') else 'STRING'},'parameterValue':{'value':v}} for k,v in parameters.items()]
         with self.lab.lock,self.lab.db:
@@ -212,12 +215,12 @@ class Warehouse:
             self.lab.db.execute('INSERT INTO warehouse_queries(id,created_at,status) VALUES(?,?,?)',(identifier,now(),'reserved'))
         self.cloud.save(self.lab)
         try:
-            response=self.cloud.request('POST',self.cloud.job_url(),json={'jobReference':{'projectId':self.cloud.project,'jobId':identifier,'location':self.cloud.location},
+            response=self.cloud.request('POST',self.cloud.job_url(),json={'jobReference':{'projectId':self.cloud.project,'jobId':identifier,'location':location},
                 'configuration':{'jobTimeoutMs':'15000','query':{'query':sql,'useLegacySql':False,'maximumBytesBilled':str(MAX_QUERY_BYTES),
                     'parameterMode':'NAMED','queryParameters':params}}})
-            response.raise_for_status();job=self.wait_job(identifier,response.json())
+            response.raise_for_status();job=wait_job(self.cloud,identifier,response.json(),location=location)
             url=f'https://bigquery.googleapis.com/bigquery/v2/projects/{self.cloud.project}/queries/{identifier}'
-            response=self.cloud.request('GET',url,params={'location':self.cloud.location,'maxResults':100});response.raise_for_status();result=response.json()
+            response=self.cloud.request('GET',url,params={'location':location,'maxResults':100});response.raise_for_status();result=response.json()
             if not result.get('jobComplete') or result.get('pageToken'):raise LabError('BigQuery result exceeds the bounded result envelope.',413)
             rows=[json.loads(r['f'][0]['v']) for r in result.get('rows',[])]
             billed=int(job.get('statistics',{}).get('query',{}).get('totalBytesBilled',0))

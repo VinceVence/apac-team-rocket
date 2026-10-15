@@ -120,21 +120,23 @@ class WorldDemoChecks(unittest.TestCase):
             self.server.agents.config.daily_calls=10  # Lower boundary for this two-case gate check.
             with self.server:
                 state=self.demo.start(0,background=False)
-                for kind in ('phishing','payment_burst'):
+                for kind,expected_calls in (('phishing',5),('payment_burst',3)):
                     self.demo.incident(state['run_id'],kind)
                     incident=self.demo.status()['incidents'][0]
                     self.assertEqual(incident['status'],'investigating')
                     case=self.wait(incident['report_id'],timeout=40);run=case['investigation']
                     self.assertEqual(run['context']['provider'],'gemini')
                     self.assertEqual(run['status'],'awaiting_review',run['context'].get('stop_reason'))
-                    self.assertEqual(run['budget']['case_calls'],5)
-                self.assertEqual(self.server.agents.budget()['calls_today'],10)
+                    self.assertEqual(run['budget']['case_calls'],expected_calls)
+                # The second lead skips delegation to preserve the daily allowance.
+                self.assertEqual(self.server.agents.budget()['calls_today'],8)
                 self.assertLess(self.server.agents.budget()['committed_usd_today'],.1)
                 self.assertEqual(self.server.demo_guard.status()['used']['reports'],2)
+                self.server.agents.config.daily_calls=8
                 self.demo.stop(state['run_id']);state=self.demo.start(state['run_id'],background=False)
                 self.demo.incident(state['run_id'],'phishing')
                 self.assertEqual(self.demo.status()['incidents'][0]['status'],'budget_limited')
-                self.assertEqual(client.call_count,10);self.assertEqual(len(model_options),10)
+                self.assertEqual(client.call_count,8);self.assertEqual(len(model_options),8)
                 for call in client.call_args_list:
                     self.assertTrue(call.kwargs['vertexai'])
                     self.assertEqual(call.kwargs['http_options'].retry_options.attempts,1)

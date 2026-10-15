@@ -258,6 +258,7 @@ class WorldDemo:
         if not self.desk.transactions(report):raise LabError('The reported payment evidence is missing.',409)
         self.desk.prepare(report_id,'running','ledger_snapshot','Freezing the recorded payments and case-time behavior.')
         notice=self.sync_analytics()
+        if self.warehouse and self.warehouse.case_features.prepare(report):notice='BigQuery aggregated and verified the scoped AE records. The feature receipt is ready.'
         self.desk.prepare(report_id,'running','dispatch',notice)
         return notice
 

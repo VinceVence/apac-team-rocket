@@ -1,0 +1,339 @@
+{
+  "source": "Generator-labelled synthetic benchmark, not analyst-reviewed production data.",
+  "training_customers": 60,
+  "validation_customers": 20,
+  "test_customers": 20,
+  "selection": "Validation only; ties favor simpler logistic. No test-driven promotion.",
+  "selected": "logistic",
+  "validation": {
+    "rows": 200,
+    "positives": 60,
+    "negatives": 140,
+    "caught": 48,
+    "false_holds": 0,
+    "recall": 0.8,
+    "false_positive_rate": 0.0,
+    "precision": 1.0,
+    "average_precision": 0.9071,
+    "brier": 0.0642,
+    "threshold": 0.75
+  },
+  "test": {
+    "rows": 200,
+    "positives": 60,
+    "negatives": 140,
+    "caught": 36,
+    "false_holds": 0,
+    "recall": 0.6,
+    "false_positive_rate": 0.0,
+    "precision": 1.0,
+    "average_precision": 0.8085,
+    "brier": 0.1212,
+    "threshold": 0.75
+  },
+  "prevention_gate_passed": false,
+  "reasons": [
+    "Fewer than 80% of held-out synthetic scams were detected."
+  ],
+  "candidates": [
+    {
+      "recipe": "rule_reference",
+      "name": "Narrow safe-account rule",
+      "features": [
+        "safe_account_request",
+        "secrecy_request"
+      ],
+      "validation": {
+        "rows": 200,
+        "positives": 60,
+        "negatives": 140,
+        "caught": 12,
+        "false_holds": 0,
+        "recall": 0.2,
+        "false_positive_rate": 0.0,
+        "precision": 1.0,
+        "average_precision": 0.44,
+        "brier": 0.24,
+        "threshold": 0.5
+      },
+      "test": {
+        "rows": 200,
+        "positives": 60,
+        "negatives": 140,
+        "caught": 12,
+        "false_holds": 0,
+        "recall": 0.2,
+        "false_positive_rate": 0.0,
+        "precision": 1.0,
+        "average_precision": 0.44,
+        "brier": 0.24,
+        "threshold": 0.5
+      },
+      "gate_passed": false,
+      "reasons": [
+        "Comparison only; not a newly trained candidate."
+      ],
+      "status": "reference",
+      "preselected": false
+    },
+    {
+      "recipe": "amount_baseline",
+      "name": "Amount-only logistic baseline",
+      "features": [
+        "amount_ratio"
+      ],
+      "validation": {
+        "rows": 200,
+        "positives": 60,
+        "negatives": 140,
+        "caught": 0,
+        "false_holds": 0,
+        "recall": 0.0,
+        "false_positive_rate": 0.0,
+        "precision": 0.0,
+        "average_precision": 0.3394,
+        "brier": 0.2098,
+        "threshold": 0.95
+      },
+      "test": {
+        "rows": 200,
+        "positives": 60,
+        "negatives": 140,
+        "caught": 0,
+        "false_holds": 0,
+        "recall": 0.0,
+        "false_positive_rate": 0.0,
+        "precision": 0.0,
+        "average_precision": 0.2955,
+        "brier": 0.2101,
+        "threshold": 0.95
+      },
+      "gate_passed": false,
+      "reasons": [
+        "Fewer than 80% of held-out synthetic scams were detected.",
+        "No recall improvement over the narrow reference rule.",
+        "Amount-only baseline is ineligible for release; it ignores request and authorization evidence."
+      ],
+      "counterexamples": [
+        {
+          "example_id": "BENCH-C081-0",
+          "label": 1,
+          "score": 0.3048,
+          "error": "missed_scam"
+        },
+        {
+          "example_id": "BENCH-C081-3",
+          "label": 1,
+          "score": 0.3009,
+          "error": "missed_scam"
+        },
+        {
+          "example_id": "BENCH-C081-6",
+          "label": 1,
+          "score": 0.3013,
+          "error": "missed_scam"
+        },
+        {
+          "example_id": "BENCH-C082-0",
+          "label": 1,
+          "score": 0.2998,
+          "error": "missed_scam"
+        },
+        {
+          "example_id": "BENCH-C082-3",
+          "label": 1,
+          "score": 0.2958,
+          "error": "missed_scam"
+        },
+        {
+          "example_id": "BENCH-C082-6",
+          "label": 1,
+          "score": 0.3081,
+          "error": "missed_scam"
+        }
+      ],
+      "status": "rejected",
+      "preselected": false
+    },
+    {
+      "recipe": "logistic",
+      "name": "L2 logistic regression",
+      "features": [
+        "new_recipient",
+        "unknown_device",
+        "unverified_authorization",
+        "rapid_payments",
+        "large_amount",
+        "amount_ratio",
+        "safe_account_request",
+        "secrecy_request",
+        "urgent_request",
+        "beneficiary_change",
+        "callback_discouraged",
+        "unlock_earnings",
+        "guaranteed_returns",
+        "withdrawal_fee",
+        "message_available"
+      ],
+      "validation": {
+        "rows": 200,
+        "positives": 60,
+        "negatives": 140,
+        "caught": 48,
+        "false_holds": 0,
+        "recall": 0.8,
+        "false_positive_rate": 0.0,
+        "precision": 1.0,
+        "average_precision": 0.9071,
+        "brier": 0.0642,
+        "threshold": 0.75
+      },
+      "test": {
+        "rows": 200,
+        "positives": 60,
+        "negatives": 140,
+        "caught": 36,
+        "false_holds": 0,
+        "recall": 0.6,
+        "false_positive_rate": 0.0,
+        "precision": 1.0,
+        "average_precision": 0.8085,
+        "brier": 0.1212,
+        "threshold": 0.75
+      },
+      "gate_passed": false,
+      "reasons": [
+        "Fewer than 80% of held-out synthetic scams were detected."
+      ],
+      "counterexamples": [
+        {
+          "example_id": "BENCH-C081-0",
+          "label": 1,
+          "score": 0.0214,
+          "error": "missed_scam"
+        },
+        {
+          "example_id": "BENCH-C081-3",
+          "label": 1,
+          "score": 0.0057,
+          "error": "missed_scam"
+        },
+        {
+          "example_id": "BENCH-C083-3",
+          "label": 1,
+          "score": 0.0214,
+          "error": "missed_scam"
+        },
+        {
+          "example_id": "BENCH-C083-6",
+          "label": 1,
+          "score": 0.0047,
+          "error": "missed_scam"
+        },
+        {
+          "example_id": "BENCH-C084-0",
+          "label": 1,
+          "score": 0.0057,
+          "error": "missed_scam"
+        },
+        {
+          "example_id": "BENCH-C085-6",
+          "label": 1,
+          "score": 0.0261,
+          "error": "missed_scam"
+        }
+      ],
+      "status": "rejected",
+      "preselected": true
+    },
+    {
+      "recipe": "boosted_tree",
+      "name": "Gradient boosting \u00b7 32 trees \u00b7 depth 2",
+      "features": [
+        "new_recipient",
+        "unknown_device",
+        "unverified_authorization",
+        "rapid_payments",
+        "large_amount",
+        "amount_ratio",
+        "safe_account_request",
+        "secrecy_request",
+        "urgent_request",
+        "beneficiary_change",
+        "callback_discouraged",
+        "unlock_earnings",
+        "guaranteed_returns",
+        "withdrawal_fee",
+        "message_available"
+      ],
+      "validation": {
+        "rows": 200,
+        "positives": 60,
+        "negatives": 140,
+        "caught": 48,
+        "false_holds": 0,
+        "recall": 0.8,
+        "false_positive_rate": 0.0,
+        "precision": 1.0,
+        "average_precision": 0.86,
+        "brier": 0.0838,
+        "threshold": 0.45
+      },
+      "test": {
+        "rows": 200,
+        "positives": 60,
+        "negatives": 140,
+        "caught": 48,
+        "false_holds": 0,
+        "recall": 0.8,
+        "false_positive_rate": 0.0,
+        "precision": 1.0,
+        "average_precision": 0.86,
+        "brier": 0.0952,
+        "threshold": 0.45
+      },
+      "gate_passed": true,
+      "reasons": [],
+      "counterexamples": [
+        {
+          "example_id": "BENCH-C081-3",
+          "label": 1,
+          "score": 0.0985,
+          "error": "missed_scam"
+        },
+        {
+          "example_id": "BENCH-C083-6",
+          "label": 1,
+          "score": 0.0985,
+          "error": "missed_scam"
+        },
+        {
+          "example_id": "BENCH-C084-0",
+          "label": 1,
+          "score": 0.0985,
+          "error": "missed_scam"
+        },
+        {
+          "example_id": "BENCH-C086-3",
+          "label": 1,
+          "score": 0.0985,
+          "error": "missed_scam"
+        },
+        {
+          "example_id": "BENCH-C088-6",
+          "label": 1,
+          "score": 0.0985,
+          "error": "missed_scam"
+        },
+        {
+          "example_id": "BENCH-C089-0",
+          "label": 1,
+          "score": 0.0985,
+          "error": "missed_scam"
+        }
+      ],
+      "status": "eligible",
+      "preselected": false
+    }
+  ]
+}
