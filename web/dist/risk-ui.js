@@ -1,9 +1,9 @@
-import {cleanText,publicEvidence} from './agent-ui.js';
+import {cleanText,publicEvidence,agentIcon} from './agent-ui.js';
 export function createRiskUI({$,state,error,onCases}){
   let data=null,study=null,token='',busy=false,timer=null,selected='',visible=false,polls=0,initialized=false;
   const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n};
-  const active=()=>study&&['queued','scientist','planned','training','validator'].includes(study.status);
-  const names={queued:'Queued',scientist:'Scientist choosing an experiment',planned:'Experiment planned',training:'Fitting models on the CPU',validator:'Validator checking results',needs_data:'More curated data needed',awaiting_model_review:'Candidate ready for human model review',rejected:'Study rejected',failed:'Study stopped',interrupted:'Study interrupted'};
+  const active=()=>study&&['queued','scientist','planned','training','refiner','refined','validator'].includes(study.status);
+  const names={queued:'Queued',scientist:'Scientist choosing an experiment',planned:'Experiment planned',training:'Fitting models on the CPU',refiner:'Refiner examining validation errors',refined:'Targeted change selected',validator:'Validator checking results',needs_data:'More curated data needed',awaiting_model_review:'Candidate ready for human model review',rejected:'Payment release withheld',failed:'Study stopped',interrupted:'Study interrupted'};
   async function request(path='',body){
     const response=await fetch('/api/risk-lab'+path,body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-MintTown-Token':state.data.csrf_token,'X-MintTown-Operator':token},body:JSON.stringify(body)});
     const result=await response.json();if(!response.ok)throw Error(result.error||'Research request failed.');return result;
@@ -23,25 +23,43 @@ export function createRiskUI({$,state,error,onCases}){
     $('risk-study-select').replaceChildren();for(const s of data.studies)$('risk-study-select').add(new Option(`${s.id} · ${names[s.status]||s.status}`,s.id));
     if(study)$('risk-study-select').value=study.id;
     $('risk-mode').textContent=study?.provider==='fake'?'Offline rehearsal':'Research workspace';
-    $('risk-study-status').textContent=study?(names[study.status]||study.status)+' · '+(study.source==='benchmark'?'synthetic benchmark':'curated cases')+(study.error?' — '+cleanText(study.error):''):'No saved experiments yet.';
+    $('risk-study-status').textContent=study?(names[study.status]||study.status)+' · '+(study.source==='reviewed'?'curated cases':study.source==='request_benchmark'?'MLE search & refinement':'synthetic benchmark')+(study.error?' — '+cleanText(study.error):''):'No saved experiments yet.';
     $('risk-hypothesis').textContent=study?.plan?.hypothesis||'The scientist chooses a hypothesis and model recipes after the dataset passes its checks.';
     $('risk-trail').replaceChildren();
-    for(const t of study?.trace||[]){const row=el('li');row.append(el('strong',t.role.replaceAll('_',' ')+' · '+t.tool.replaceAll('_',' ')),el('p',t.purpose));$('risk-trail').append(row)}
+    const timeline=study?.trace||[],roles=study?.source==='request_benchmark'?['scientist','refiner','validator']:['scientist','validator'];
+    $('risk-trail').dataset.roleCount=String(roles.length);
+    if(study)for(const role of roles){
+      const at=timeline.findIndex(t=>t.role===role),t=timeline[at],row=el('li');
+      row.append(agentIcon(role==='validator'?'judge':role==='refiner'?'specialist':'scientist'),el('strong',role),el('p',t?.purpose||'Waiting for this role.'));
+      if(t){const end=timeline.findIndex((n,i)=>i>at&&n.role!=='training_tool'),receipts=timeline.slice(at,end<0?undefined:end),details=el('details',undefined,'world-details');details.append(el('summary','Tool receipts'));
+        for(const receipt of receipts)details.append(el('p',receipt.tool.replaceAll('_',' ')+' · '+receipt.purpose));
+        const change=receipts.find(r=>r.tool==='sealed_test')?.result;if(change)row.append(el('p',`${Math.round(change.validation_recall_delta*100)} points validation recall change · ${change.validation_false_hold_delta} additional legitimate flags`,'ablation-result'));
+        row.append(details);
+      }
+      $('risk-trail').append(row);
+    }
     $('risk-candidates').replaceChildren();
     for(const c of study?.candidates||[]){
       const card=el('article',undefined,'risk-candidate '+c.status),head=el('div',undefined,'risk-candidate-heading');
       head.append(el('h3',c.name),el('span',c.status==='eligible'?'Gate passed':c.status==='reference'?'Reference':'Rejected','risk-result'));card.append(head);
       const numbers=el('div',undefined,'risk-score-pair');
-      for(const [value,total,label] of [[c.test.caught,c.test.positives,'scams detected'],[c.test.false_holds,c.test.negatives,'legitimate requests held']]){
+      for(const [value,total,label] of [[c.test.caught,c.test.positives,'scams detected'],[c.test.false_holds,c.test.negatives,'legitimate requests flagged']]){
         const item=el('div');item.append(el('strong',`${value} / ${total}`),el('span',label));numbers.append(item);
       }
-      card.append(numbers,el('p','Held-out '+(study.source==='benchmark'?'synthetic ':'')+'test · '+c.test.rows+' examples','surface-note'));
+      card.append(numbers,el('p','Held-out '+(study.source!=='reviewed'?'synthetic ':'')+'test · '+c.test.rows+' examples','surface-note'));
       card.append(el('p',c.preselected?'Selected using validation data':'Comparison only · not selected for review','surface-note'));
-      if(c.ablation){const a=c.ablation,delta=Math.round(a.validation_recall_delta*100);card.append(el('p',`${a.removed_group} features: ${delta>=0?'+':''}${delta} points validation recall; ${a.validation_false_hold_delta>=0?'+':''}${a.validation_false_hold_delta} legitimate holds.`, 'ablation-result'))}
+      if(Array.isArray(c.ablation)){for(const a of c.ablation)card.append(el('p',`Without ${a.component}: ${-Math.round(a.validation_recall_drop*100)} points validation recall.`, 'ablation-result'))}
+      else if(c.ablation){const a=c.ablation,delta=Math.round(a.validation_recall_delta*100);card.append(el('p',`${a.removed_group} features: ${delta>=0?'+':''}${delta} points validation recall; ${a.validation_false_hold_delta>=0?'+':''}${a.validation_false_hold_delta} legitimate holds.`, 'ablation-result'))}
       const meter=el('meter');meter.min=0;meter.max=1;meter.value=c.test.recall;meter.setAttribute('aria-label',c.name+' synthetic scam recall');card.append(meter);
       const reasons=el('ul');for(const reason of c.reasons)reasons.append(el('li',reason));card.append(reasons);
       const details=el('details',undefined,'world-details');details.append(el('summary','Features, metrics & counterexamples'));
-      const pre=el('pre',JSON.stringify({features:c.features,validation:c.validation,test:c.test,counterexamples:c.counterexamples,artifact_hash:c.artifact_hash},null,2),'science-evidence');details.append(pre);card.append(details);$('risk-candidates').append(card);
+      const pre=el('pre',JSON.stringify({features:c.features,validation:c.validation,test:c.test,counterexamples:c.counterexamples,artifact_hash:c.artifact_hash},null,2),'science-evidence');details.append(pre);card.append(details);
+      if(study.source==='request_benchmark'&&c.preselected&&!active()){
+        const button=el('button',c.registered_tool_id?'Registered for investigation':'Use as advisory investigation tool','secondary-button');button.disabled=busy||!token||!!c.registered_tool_id;
+        button.onclick=()=>write('/register',{study_id:study.id,candidate_id:c.id,note:'Operator reviewed the synthetic evaluation and its limitations. Register as advisory investigation evidence only; no payment-serving approval.'});
+        card.append(button,el('p','Operator review required. A failed payment-release gate remains failed.','surface-note'));
+      }
+      $('risk-candidates').append(card);
     }
     $('risk-verdict').hidden=!study?.verdict;$('risk-verdict').replaceChildren();
     if(study?.verdict){$('risk-verdict').append(el('h3','Validator decision'),el('p',study.verdict.summary||study.verdict.reason));for(const risk of study.verdict.risks||[])$('risk-verdict').append(el('p',risk,'surface-note'));$('risk-verdict').append(el('strong','Current payment protection is unchanged.'))}
@@ -55,7 +73,7 @@ export function createRiskUI({$,state,error,onCases}){
   async function load(){
     clearTimeout(timer);data=await request();
     study=selected?await request('/studies/'+encodeURIComponent(selected)):data.latest;
-    if(!initialized){$('risk-source').value=study?.source||(data.datasets.benchmark.rows?'benchmark':'reviewed');initialized=true}
+    if(!initialized){$('risk-source').value=study?.source||(data.datasets.request_benchmark?.rows?'request_benchmark':data.datasets.benchmark.rows?'benchmark':'reviewed');initialized=true}
     if(study)selected=study.id;render();
     if(active()&&visible&&!document.hidden&&polls++<45)timer=setTimeout(()=>load().catch(e=>error(e.message)),3000);
   }
@@ -74,7 +92,7 @@ export function createRiskUI({$,state,error,onCases}){
   $('risk-source').onchange=render;
   $('risk-study-select').onchange=()=>{selected=$('risk-study-select').value;polls=0;load().catch(e=>error(e.message))};
   $('risk-unlock').onsubmit=e=>{e.preventDefault();token=$('risk-token').value;$('risk-token').value='';render()};
-  $('risk-seed').onclick=()=>{$('risk-source').value='benchmark';write('/seed',{})};
+  $('risk-seed').onclick=()=>{const source=$('risk-source').value==='request_benchmark'?'request_benchmark':'benchmark';$('risk-source').value=source;write('/seed',{source})};
   $('risk-start').onclick=()=>write('/start',{request_id:crypto.randomUUID(),source:$('risk-source').value,provider:$('risk-provider').value});
   $('risk-curate').onsubmit=e=>{e.preventDefault();write('/curate',{report_id:$('risk-case').value,label:Number($('risk-label').value),note:$('risk-curation-note').value})};
   document.addEventListener('visibilitychange',()=>{if(document.hidden)clearTimeout(timer);else if(visible){polls=0;load().catch(e=>error(e.message))}});

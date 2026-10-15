@@ -74,7 +74,7 @@ class FraudHarness:
             (row['report_id'],context.get('snapshot_hash')))]
 
     def score(self,run,report,snapshot,args):
-        results=predict(args['model_ids'],args['event_ids'],snapshot,run['context']['model_manifests'],report['customer_id'])
+        results=predict(args['model_ids'],args['event_ids'],snapshot,run['context']['model_manifests'],report['customer_id'],self.lab)
         for result in results:
             identifier='PRED-'+self.lab.fingerprint([run['id'],run['step'],result])[:20]
             self.lab.db.execute('INSERT INTO fraud_model_receipts VALUES(?,?,?,?,?,?)',
@@ -83,9 +83,10 @@ class FraudHarness:
         questions=[];observations=[]
         payment_facts=snapshot['data']['transactions']
         normal_device=all(t['metadata'].get('device_known') is True and t['metadata'].get('authorization_verified') is True for t in payment_facts)
-        request_signal=any(r['model_id']=='message_intent_v1' and r.get('prediction',{}).get('signal_score')==1 for r in results if r.get('prediction'))
+        request_signal=any((r['model_id']=='message_intent_v1' and r['prediction'].get('signal_score')==1) or
+            ('recorded_prepayment_message' in r['manifest']['required_inputs'] and r['prediction'].get('result')=='elevated learned signal') for r in results if r.get('prediction'))
         if normal_device and request_signal:
-            observations.append('Recorded authorization looks normal while the payment request contains deception indicators. These checks answer different questions.')
+            observations.append('Recorded authorization looks normal while a request check flagged a possible deception pattern. These checks answer different questions.')
             questions.append('Was the payment request independently verified through a trusted contact?')
         missing=[field for r in results for row in r.get('missing_inputs',[]) for field in row['fields']]
         if missing:questions.append('Obtain the missing evidence: '+', '.join(sorted(set(missing)))+'.')
@@ -164,12 +165,14 @@ class FraudHarness:
         packet.pop('available_detectors',None)
         # The menu identifies each target and release boundary. Full input
         # contracts remain available through list_eligible_models and receipts.
-        packet['available_models']={k:{f:v[f] for f in ('version','name','task','score_kind','release_status','available','limitation') if f in v} for k,v in packet['available_models'].items()}
+        packet['available_models']={k:{f:v[f] for f in ('version','name','task','score_kind','release_status','available') if f in v} for k,v in packet['available_models'].items()}
         observations=[]
         for item in packet['observations']:
             result=dict(item['result'])
             if item['tool']=='score_models':result={'receipts':[self.compact_receipt(r) for r in result['receipts']]}
             if item['tool']=='return_finding':result={'task_id':result['task_id'],'finding_location':'specialist_findings'}
+            if item['tool']=='list_eligible_models':
+                result={'models':[{k:v for k,v in m.items() if k in ('model_id','name','task','required_inputs','score_kind','release_status','limitation','available')} for m in result['models']]}
             if item['tool']=='get_case_evidence':
                 g=result['guidance'];result['guidance']={'version':g['version'],'steps':g['steps'],'do_not_collect':g['do_not_collect']}
             observations.append({'tool':item['tool'],'result':result})
@@ -223,7 +226,7 @@ safeguard, determine liability or claim that funds were recovered. Keep prose un
         known={r['receipt_id']:r for r in self.receipts(run['id'])}
         cited=list(known) if receipt_ids is None else string_list(receipt_ids,'model receipt citations')
         if not set(cited)<=known.keys():models.append('A cited model receipt does not belong to this run.')
-        current=manifests()
+        current=manifests(self.lab)
         for identifier in cited:
             r=known.get(identifier)
             if not r:continue

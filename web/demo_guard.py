@@ -8,7 +8,7 @@ from settings import DAILY_REPORTS, DAILY_WRITES, DAILY_WORLD_STEPS, READS_PER_M
 POST_PATHS = frozenset(('/api/world/step','/api/world/start','/api/world/restart','/api/world/stop','/api/world/prove','/api/world/demo-action','/api/world/demo-approve','/api/cloud/export','/api/fraud-desk/demo',
     '/api/fraud-desk/report','/api/fraud-desk/reply','/api/fraud-desk/review','/api/fraud-desk/revoke-memory',
     '/api/fraud-agent/start','/api/fraud-agent/recheck','/api/fraud-agent/handoff',
-    '/api/prevention/learn','/api/prevention/activate','/api/risk-lab/seed','/api/risk-lab/curate','/api/risk-lab/start','/api/risk-lab/evaluate-case'))
+    '/api/prevention/learn','/api/prevention/activate','/api/risk-lab/seed','/api/risk-lab/curate','/api/risk-lab/start','/api/risk-lab/evaluate-case','/api/risk-lab/register'))
 GET_PATHS = frozenset(('/api/state','/api/cloud','/api/fraud-desk','/api/risk-lab','/api/environment-data'))
 
 

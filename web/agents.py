@@ -101,6 +101,9 @@ class Agents:
         return min(affordable,self.config.daily_calls) if self.config.daily_calls is not None else affordable
 
     def budget(self, day=None):
+        with self.lab.lock:return self._budget(day)
+
+    def _budget(self, day=None):
         db=self.lab.db; day=day or now()[:10]
         sources=["SELECT created_at,coalesce(cost_usd,reserved_usd) amount FROM agent_runs WHERE provider='gemini'"]
         if db.execute("SELECT 1 FROM sqlite_master WHERE name='macro_decisions'").fetchone():sources.append("SELECT created_at,coalesce(cost_usd,reserved_usd) amount FROM macro_decisions WHERE provider='gemini'")

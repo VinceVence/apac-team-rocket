@@ -1,0 +1,25 @@
+{
+  "kind": "request_logistic",
+  "feature_version": "request-risk-v1",
+  "blocks": [
+    "transaction"
+  ],
+  "coefficients": [
+    0.2767502002465511,
+    0.29553518457217576,
+    0.0,
+    0.06924495350398593,
+    1.0706741899500232
+  ],
+  "intercept": -0.3604471133326524,
+  "regularization": 0.6,
+  "numeric_features": [
+    "unknown_device",
+    "unverified_authorization",
+    "rapid_payments",
+    "new_recipient",
+    "amount_ratio"
+  ],
+  "hash_dimensions": 1024,
+  "threshold": 0.6
+}

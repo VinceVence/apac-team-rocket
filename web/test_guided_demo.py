@@ -176,7 +176,9 @@ class GuidedDemoChecks(unittest.TestCase):
 
     def test_rejected_prevention_candidate_stays_rejected_in_the_demo(self):
         from fraud_adk import FakeInvestigator
-        self.server.prevention.model_factory=lambda:FakeInvestigator(chooser=lambda p:('propose_prevention_rule',{'name':'Too broad urgency rule','signals':['urgent_request'],'explanation':'Deliberately invalid single-signal rule for this offline check.','purpose':'Verify that failed validation cannot become active.'}))
+        self.server.prevention.model_factory=lambda:FakeInvestigator(chooser=lambda p:('propose_playbook',{'name':'Too broad urgency rule','signals':['urgent_request'],'explanation':'Deliberately invalid single-signal rule for this offline check.','purpose':'Verify that failed validation cannot become active.',
+            'investigation_tip':'Verify the request using an independently obtained contact.','recommended_models':['message_intent_v1'],
+            'verification_question':'Did you independently verify this request?','counterexample':'An urgent but independently verified invoice may be legitimate.'}))
         demo=self.server.world_demo;state=demo.start(0,background=False,fresh=True,mode='demo')
         for _ in range(6):demo.tick(state['run_id'])
         rid=demo.status()['focus_report_id'];self.wait(rid)
@@ -233,7 +235,7 @@ class GuidedDemoChecks(unittest.TestCase):
                 self.assertEqual(self.lab.db.execute('SELECT count(*) FROM fraud_agent_turns').fetchone()[0],0)
             finally:released.set();thread.join(10)
             self.assertFalse(thread.is_alive());case=self.wait(rid)
-            self.assertEqual(case['preparation']['status'],'completed');self.assertEqual(case['status'],'awaiting_review')
+            self.assertEqual(case['preparation']['status'],'completed');self.assertEqual(case['status'],'awaiting_review',case['investigation']['context'].get('stop_reason'))
             self.assertEqual(publisher.calls,1);self.assertEqual(case['investigation']['budget']['case_calls'],5)
 
     def test_analytics_failure_does_not_block_durable_ledger_evidence(self):

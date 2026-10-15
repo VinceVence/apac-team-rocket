@@ -19,8 +19,8 @@ from fraud_models import manifests
 from fraud_knowledge import redact as redact_memory
 
 MODEL = 'gemini-3.5-flash-lite'
-PROMPT_VERSION = 'fraud-investigator-v9'
-TOOL_CONTRACT_VERSION = 9
+PROMPT_VERSION = 'fraud-investigator-v10'
+TOOL_CONTRACT_VERSION = 10
 MAX_INPUT_BYTES = 16000
 MAX_OUTPUT_TOKENS = 512
 RESERVE_MICROUSD = 10000
@@ -141,8 +141,14 @@ class FraudAgent:
         recipients = {payee: self.lab.rows("SELECT id,amount_minor,to_account,occurred_at FROM financial_events WHERE to_account=? AND kind='payment' AND status='settled' AND occurred_at<=? ORDER BY rowid DESC LIMIT 10", (payee, self.lab.clock_day + 'T23:59:59.999Z'))
                       for payee in sorted({t['to_account'] for t in transactions if t['to_account']})}
         memories = [m for m in self.desk.memories() if m['source_report_id'] != report['id'] and m['validation']['passed']][:100]
+        # Only the operator evaluation endpoint writes this structured condition.
+        request=json.loads(self.lab.db.execute('SELECT request_json FROM fraud_reports WHERE id=?',(report['id'],)).fetchone()[0])
+        knowledge_mode=request.get('evaluation',{}).get('knowledge_mode','reviewed')
+        if knowledge_mode=='withheld':memories=[]
+        from fraud_playbook import for_memory
+        for memory in memories:memory['playbook']=for_memory(self.lab,memory['id'])
         latest=self.warehouse.matching_snapshot() if self.warehouse else None
-        data = {'transactions': transactions, 'history': history, 'recipients': recipients, 'memories': memories,
+        data = {'transactions': transactions, 'history': history, 'recipients': recipients, 'memories': memories,'knowledge_condition':knowledge_mode,
                 'warehouse_snapshot':latest['id'] if latest else None}
         if self.warehouse:
             data['customer_features']=self.warehouse.case_features.cached(report) or self.warehouse.frozen_features(report['customer_id'],max(t['occurred_at'] for t in transactions),latest)
@@ -205,6 +211,9 @@ class FraudAgent:
         return max(0,next_at-dt.datetime.fromisoformat(self.clock()).timestamp())
 
     def budget(self, report_id, mode):
+        with self.lab.lock:return self._budget(report_id,mode)
+
+    def _budget(self, report_id, mode):
         day = self.clock()[:10]
         case = self.lab.db.execute('SELECT count(*),coalesce(sum(coalesce(cost_microusd,reserved_microusd)),0) FROM fraud_agent_turns WHERE report_id=? AND provider=?', (report_id, mode)).fetchone()
         if mode == 'gemini':
@@ -265,7 +274,7 @@ class FraudAgent:
             context.pop('execution', None)
             context.setdefault('observations', []); context.setdefault('memories', [])
             if self.harness_enabled:
-                context.setdefault('harness_version',HARNESS_VERSION);context.setdefault('model_manifests',manifests())
+                context.setdefault('harness_version',HARNESS_VERSION);context.setdefault('model_manifests',manifests(self.lab))
                 context.setdefault('evidence_reference_version',2);context.setdefault('experiment_arm',experiment_arm or 'selective')
             self.lab.db.execute('UPDATE fraud_investigations SET context=? WHERE id=?', (encoded(context), run['id']))
             return self.desk.run(run['id'])
@@ -291,6 +300,7 @@ class FraudAgent:
                 'delegation_used':bool(self.lab.db.execute('SELECT 1 FROM fraud_delegations WHERE report_id=?',(report['id'],)).fetchone()),
                 'guided_demo':any(t['metadata'].get('guided_demo') for t in snapshot['data']['transactions']),
                 'reviewed_memory_count':len(snapshot['data']['memories']),
+                'reviewed_playbook_count':sum(bool(m.get('playbook')) for m in snapshot['data']['memories']),
                 'evidence_snapshot': {'id': snapshot['id'], 'as_of': snapshot['as_of'], 'event_watermark': snapshot['event_watermark']},
                 'ingestion_flags': [f for t in snapshot['data']['transactions'] for f in t['metadata'].get('review_flags', [])],
                 'observations': run['context'].get('observations', []),
@@ -392,6 +402,17 @@ class FraudAgent:
             self.lab.db.execute('UPDATE '+self.turn_table+' SET decision=? WHERE id=?', (encoded(decision), turn_id))
         if not isinstance(calls[0].args, dict) or set(calls[0].args) != arg_fields[calls[0].name]:
             raise LabError('Function-call arguments do not match the allowed schema.', 422)
+
+    @staticmethod
+    def accounted_rejection(exc,turn):
+        """A rejected case with known usage must not disable unrelated cases.
+
+        Provider/timeouts/usage-envelope failures still trip the shared circuit.
+        This never replays the failed turn or refunds its reservation.
+        """
+        return bool(isinstance(exc,LabError) and 400<=exc.status<500 and turn and
+            turn['cost_microusd'] is not None and 0<=turn['cost_microusd']<=RESERVE_MICROUSD and
+            0<turn['input_tokens']<=MAX_INPUT_BYTES+4096 and 0<=turn['output_tokens']<=MAX_OUTPUT_TOKENS)
 
     def tool(self, run_id, name, args, purpose):
         purpose = text(purpose, 'Tool purpose', 5, 250)
@@ -504,7 +525,14 @@ class FraudAgent:
                     aliases=[' '+' '.join(re.findall(r'[a-z0-9]+',p.split(':',1)[-1].casefold()))+' ' for p in m['pattern']['recipient_accounts']]
                     if tokens & set(m['pattern']['cues']) or any(alias.strip() and alias in query_words for alias in aliases):
                         matches.append(m)
-                context['memories'] = matches[:3]
+                # Prefer reviewed deltas, deduplicate repeated strategies and keep
+                # the immutable entry revision that was captured with this case.
+                matches.sort(key=lambda m:(bool(m.get('playbook')),m.get('playbook',{}).get('feedback',{}).get('helpful',0) if m.get('playbook') else 0),reverse=True)
+                unique=[];seen=set()
+                for memory in matches:
+                    fingerprint=(memory.get('playbook') or {}).get('fingerprint',memory['id'])
+                    if fingerprint not in seen:unique.append(memory);seen.add(fingerprint)
+                context['memories'] = unique[:3]
                 output = {'matches': [redact_memory(self.desk,m) for m in context['memories']]}
                 memory_ids = [m['id'] for m in context['memories']]
                 finding = '%d analyst-approved case(s) matched. Retrieved lessons are leads to verify.' % len(memory_ids)
@@ -653,7 +681,8 @@ class FraudAgent:
                 if run['context'].get('harness_version'):self.harness.record_error(run,message)
                 if task:self.lab.db.execute("UPDATE fraud_delegations SET status='failed' WHERE id=? AND status!='completed'",(task['id'],))
                 self.lab.db.execute("UPDATE fraud_agent_turns SET status='failed',error=? WHERE run_id=? AND seq=? AND status!='completed'", (message, run_id, expected_step))
-                if run['context']['provider']=='gemini' and self.lab.db.execute('SELECT 1 FROM fraud_agent_turns WHERE run_id=? AND seq=?',(run_id,expected_step)).fetchone():
+                failed_turn=self.lab.db.execute('SELECT * FROM fraud_agent_turns WHERE run_id=? AND seq=?',(run_id,expected_step)).fetchone()
+                if run['context']['provider']=='gemini' and failed_turn and not self.accounted_rejection(exc,failed_turn):
                     self.lab.db.execute('UPDATE fraud_live_control SET blocked_reason=? WHERE id=1',
                                         ('A live turn failed. Review its receipt before enabling further calls.',))
                 return self.desk.run(run_id)

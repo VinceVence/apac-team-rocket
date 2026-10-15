@@ -106,3 +106,11 @@ October 15 local verification: case `SC-0d6adcff67` generated 13 transactions an
 The explicitly authorized live mode is `uv run --locked python -B web/evaluate_upgrade.py --mode gemini --output output/upgrades/live-comparison.json --max-cases 12`. Supply `MINTTOWN_RISK_OPERATOR_TOKEN` through the local environment, never a command argument or commit. Pause the world first. The command uses the hosted shared worker and meter; do not run a second local shared-state writer. It reserves 20 calls for demos, at most 12 new runs per UTC day, and saves attempted cases for explicit resumption. HTTP uncertainty stops for reconciliation; it does not retry an investigation. Reuse the same output file across days. No live comparison was run by the upgrade verification.
 
 New feature queries share the 100/day and 50 MiB/query limits. Only covered transactions in the latest completed AE publication are queried. Frozen values and query provenance stay with the case. No extra export is forced when quota is exhausted.
+
+## Spend-based admission and learning loops
+
+The owner authorized removal of fixed daily call/report/start/export/query count gates. Default `daily_call_limit` in the API is now a rolling ceiling derived from the remaining dollar reservation; it is not a 100-call cap. All counters survive restarts. Monetary caps, token/row/byte caps, one paid call at a time, pacing, per-minute HTTP throttles and no automatic retries remain. Background simulation has a renewable 15-minute lease.
+
+The new operator-only source is `request_benchmark`: seed it using `/api/risk-lab/seed` with `source`, then start with the same source and `provider: gemini`. Its scientist, refiner and validator share the durable model meter. The refiner never sees final-test examples or metrics. Only operator review can register its selected artifact as an advisory investigation tool. No payment-serving deployment occurs.
+
+A known, fully accounted tool rejection ends its case without stopping unrelated investigations. Missing/uncertain usage or exceeded provider envelopes still trips the shared circuit. Circuit reconciliation is an audited operator action; it never refunds usage or replays a failed request.

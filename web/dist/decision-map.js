@@ -23,7 +23,11 @@ export function decisionResult(turn){
   }else if(r.receipts){
     for(const p of r.receipts.slice(0,2))facts.push(`${text(p.manifest?.name)||'Signal check'}: ${text(p.prediction?.result)||pretty(p.status)}`);
     if(r.decision_context?.observations?.length)facts.push(text(r.decision_context.observations[0]));
-  }else if(r.matches)facts.push(`${r.matches.length} approved lesson${r.matches.length===1?'':'s'} found`);
+  }else if(r.matches){
+    facts.push(`${r.matches.length} approved lesson${r.matches.length===1?'':'s'} found`);
+    const learned=r.matches.find(m=>m.playbook)?.playbook;
+    if(learned){facts.push('Reviewed playbook reused: '+learned.id);facts.push(text(learned.strategy))}
+  }
   else if(r.related_transfers)facts.push(`${r.related_transfers.length} related transfer${r.related_transfers.length===1?'':'s'} found`);
   else if(r.models)facts.push(`${r.models.length} registered checks available`);
   else if(turn.tool==='delegate_question')facts.push(roleNames[r.role]||pretty(r.role)||'Scoped specialist requested');

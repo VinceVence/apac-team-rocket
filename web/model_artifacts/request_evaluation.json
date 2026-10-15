@@ -1,0 +1,279 @@
+{
+  "corpus": "request-corpus-v1",
+  "scope": "Synthetic development benchmark. No production or bank accuracy claim.",
+  "selection": "Initial word recipe and one predeclared word+character refinement; validation chooses before final test. No test-driven retuning.",
+  "candidates": [
+    {
+      "recipe": "transaction",
+      "name": "Observed payment behavior only",
+      "validation": {
+        "rows": 200,
+        "positives": 60,
+        "negatives": 140,
+        "caught": 7,
+        "false_holds": 3,
+        "recall": 0.1167,
+        "false_positive_rate": 0.0214,
+        "precision": 0.7,
+        "average_precision": 0.3818,
+        "brier": 0.2489,
+        "threshold": 0.6
+      },
+      "ablation": [
+        {
+          "component": "transaction",
+          "validation_recall_drop": 0.1167,
+          "validation_false_hold_change": -3
+        }
+      ],
+      "preselected": false,
+      "features": [
+        "transaction"
+      ],
+      "counterexamples": [
+        {
+          "example_id": "REQUEST-C081-0",
+          "label": 1,
+          "score": 0.4739,
+          "error": "missed_scam"
+        },
+        {
+          "example_id": "REQUEST-C081-3",
+          "label": 1,
+          "score": 0.4711,
+          "error": "missed_scam"
+        },
+        {
+          "example_id": "REQUEST-C081-6",
+          "label": 1,
+          "score": 0.4442,
+          "error": "missed_scam"
+        },
+        {
+          "example_id": "REQUEST-C082-0",
+          "label": 1,
+          "score": 0.5068,
+          "error": "missed_scam"
+        },
+        {
+          "example_id": "REQUEST-C082-3",
+          "label": 1,
+          "score": 0.5989,
+          "error": "missed_scam"
+        },
+        {
+          "example_id": "REQUEST-C082-6",
+          "label": 1,
+          "score": 0.5291,
+          "error": "missed_scam"
+        }
+      ],
+      "test": {
+        "rows": 200,
+        "positives": 60,
+        "negatives": 140,
+        "caught": 6,
+        "false_holds": 4,
+        "recall": 0.1,
+        "false_positive_rate": 0.0286,
+        "precision": 0.6,
+        "average_precision": 0.3588,
+        "brier": 0.2531,
+        "threshold": 0.6
+      },
+      "gate_passed": false,
+      "reasons": [
+        "Behavior-only reference; cannot establish payment-request deception.",
+        "Final-test synthetic recall is below 80%."
+      ],
+      "status": "rejected"
+    },
+    {
+      "recipe": "word",
+      "name": "Word phrases + payment behavior",
+      "validation": {
+        "rows": 200,
+        "positives": 60,
+        "negatives": 140,
+        "caught": 41,
+        "false_holds": 0,
+        "recall": 0.6833,
+        "false_positive_rate": 0.0,
+        "precision": 1.0,
+        "average_precision": 0.9116,
+        "brier": 0.1379,
+        "threshold": 0.6
+      },
+      "ablation": [
+        {
+          "component": "word",
+          "validation_recall_drop": 0.6833,
+          "validation_false_hold_change": 0
+        },
+        {
+          "component": "transaction",
+          "validation_recall_drop": 0.0166,
+          "validation_false_hold_change": 0
+        }
+      ],
+      "preselected": false,
+      "features": [
+        "word",
+        "transaction"
+      ],
+      "counterexamples": [
+        {
+          "example_id": "REQUEST-C081-6",
+          "label": 1,
+          "score": 0.5845,
+          "error": "missed_scam"
+        },
+        {
+          "example_id": "REQUEST-C082-3",
+          "label": 1,
+          "score": 0.542,
+          "error": "missed_scam"
+        },
+        {
+          "example_id": "REQUEST-C083-6",
+          "label": 1,
+          "score": 0.5784,
+          "error": "missed_scam"
+        },
+        {
+          "example_id": "REQUEST-C084-6",
+          "label": 1,
+          "score": 0.5517,
+          "error": "missed_scam"
+        },
+        {
+          "example_id": "REQUEST-C085-0",
+          "label": 1,
+          "score": 0.5569,
+          "error": "missed_scam"
+        },
+        {
+          "example_id": "REQUEST-C085-6",
+          "label": 1,
+          "score": 0.5923,
+          "error": "missed_scam"
+        }
+      ],
+      "test": {
+        "rows": 200,
+        "positives": 60,
+        "negatives": 140,
+        "caught": 44,
+        "false_holds": 20,
+        "recall": 0.7333,
+        "false_positive_rate": 0.1429,
+        "precision": 0.6875,
+        "average_precision": 0.8568,
+        "brier": 0.1445,
+        "threshold": 0.6
+      },
+      "gate_passed": false,
+      "reasons": [
+        "Final-test synthetic recall is below 80%.",
+        "Final-test legitimate flags exceed 5%."
+      ],
+      "status": "rejected"
+    },
+    {
+      "recipe": "word_char",
+      "name": "Word phrases + character fragments + payment behavior",
+      "validation": {
+        "rows": 200,
+        "positives": 60,
+        "negatives": 140,
+        "caught": 44,
+        "false_holds": 0,
+        "recall": 0.7333,
+        "false_positive_rate": 0.0,
+        "precision": 1.0,
+        "average_precision": 0.9114,
+        "brier": 0.1268,
+        "threshold": 0.6
+      },
+      "ablation": [
+        {
+          "component": "word",
+          "validation_recall_drop": 0.3333,
+          "validation_false_hold_change": 0
+        },
+        {
+          "component": "char",
+          "validation_recall_drop": 0.3166,
+          "validation_false_hold_change": 0
+        },
+        {
+          "component": "transaction",
+          "validation_recall_drop": 0.0,
+          "validation_false_hold_change": 0
+        }
+      ],
+      "preselected": true,
+      "features": [
+        "word",
+        "char",
+        "transaction"
+      ],
+      "counterexamples": [
+        {
+          "example_id": "REQUEST-C082-3",
+          "label": 1,
+          "score": 0.5696,
+          "error": "missed_scam"
+        },
+        {
+          "example_id": "REQUEST-C084-6",
+          "label": 1,
+          "score": 0.5766,
+          "error": "missed_scam"
+        },
+        {
+          "example_id": "REQUEST-C085-0",
+          "label": 1,
+          "score": 0.5781,
+          "error": "missed_scam"
+        },
+        {
+          "example_id": "REQUEST-C086-2",
+          "label": 0,
+          "score": 0.6332,
+          "error": "false_hold"
+        },
+        {
+          "example_id": "REQUEST-C087-2",
+          "label": 0,
+          "score": 0.6578,
+          "error": "false_hold"
+        },
+        {
+          "example_id": "REQUEST-C087-3",
+          "label": 1,
+          "score": 0.5565,
+          "error": "missed_scam"
+        }
+      ],
+      "test": {
+        "rows": 200,
+        "positives": 60,
+        "negatives": 140,
+        "caught": 48,
+        "false_holds": 20,
+        "recall": 0.8,
+        "false_positive_rate": 0.1429,
+        "precision": 0.7059,
+        "average_precision": 0.9462,
+        "brier": 0.113,
+        "threshold": 0.6
+      },
+      "gate_passed": false,
+      "reasons": [
+        "Final-test legitimate flags exceed 5%."
+      ],
+      "status": "rejected"
+    }
+  ]
+}

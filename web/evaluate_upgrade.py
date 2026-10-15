@@ -14,10 +14,12 @@ FIXTURES=[s+suffix for s in SCENARIOS for suffix in ('','.control')]+['missing_e
 ARMS=('single','selective')
 
 
-def stage_case(desk,fixture,request_id,pair_id,arm):
+def stage_case(desk,fixture,request_id,pair_id,arm,knowledge_mode='reviewed'):
     if fixture not in FIXTURES or arm not in ARMS or not isinstance(pair_id,str) or not 8<=len(pair_id)<=80:raise LabError('Choose a registered evaluation fixture and arm.')
+    if knowledge_mode not in ('reviewed','withheld'):raise LabError('Choose a registered knowledge comparison condition.')
     base='phishing' if fixture in ('missing_evidence','adversarial_report') else fixture
     payload={'scenario':base,'evaluation':{'fixture':fixture,'pair_id':pair_id,'arm':arm,'version':'competition-eval-v1'}}
+    if knowledge_mode!='reviewed':payload['evaluation']['knowledge_mode']=knowledge_mode
     with desk.lab.lock,desk.lab.db:
         previous=desk.existing_request(request_id,payload)
         if previous:return previous,False

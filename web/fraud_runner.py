@@ -88,6 +88,7 @@ class InvestigationRunner:
                 self.agent.step(run_id, run['step'], automatic=True,timeout=min(TURN_TIMEOUT_SECONDS,remaining))
                 self.agent.checkpoint()
         except Exception:
+            logging.getLogger(__name__).exception('Investigation worker stopped for %s',run_id)
             with self.lab.lock, self.lab.db:
                 self.agent.stop(run_id, 'failed', 'The background investigation stopped. Review the saved evidence; no automatic retry was made.')
         finally:

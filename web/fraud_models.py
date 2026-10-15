@@ -15,7 +15,7 @@ TARGETS={
 }
 
 
-def manifests():
+def manifests(lab=None):
     # Pin both the predictor and feature implementation, not merely a display version.
     artifact=hashlib.sha256((Path(__file__).read_bytes()+Path(__file__).with_name('fraud_detectors.py').read_bytes()+Path(__file__).with_name('prevention.py').read_bytes())).hexdigest()
     rules={identifier:{'model_id':identifier,'version':card['version'],'name':card['name'],
@@ -25,7 +25,7 @@ def manifests():
         'eligible_population':'Synthetic wallet payments with the declared prepayment inputs',
         'missing_input_behavior':'not_available; never zero risk','evaluation_reference':'web/test_fraud_models.py',
         'contract_version':CONTRACT_VERSION} for identifier,card in REGISTRY.items()}
-    return rules|trained_models.manifests()
+    return rules|trained_models.manifests(lab)
 
 
 def input_records(model_id,transactions):
@@ -45,8 +45,8 @@ def input_records(model_id,transactions):
     return records
 
 
-def predict(model_ids,event_ids,snapshot,pinned,customer_id):
-    current=manifests();tx=snapshot['data']['transactions'];allowed={t['id'] for t in tx}
+def predict(model_ids,event_ids,snapshot,pinned,customer_id,lab=None):
+    current=manifests(lab);tx=snapshot['data']['transactions'];allowed={t['id'] for t in tx}
     if not isinstance(model_ids,list) or not 1<=len(model_ids)<=3 or any(not isinstance(m,str) or m not in current for m in model_ids) or len(set(model_ids))!=len(model_ids):
         raise LabError('Choose one to three registered local predictors.',422)
     if not isinstance(event_ids,list) or len(event_ids)>10 or any(not isinstance(e,str) or e not in allowed for e in event_ids):
@@ -60,7 +60,7 @@ def predict(model_ids,event_ids,snapshot,pinned,customer_id):
         stale=pinned.get(model_id)!=card
         learned=model_id not in REGISTRY
         if learned and not stale and card.get('available'):
-            result,inputs=trained_models.predict(model_id,selected)
+            result,inputs=trained_models.predict(model_id,selected,lab)
         else:
             inputs=input_records(model_id,selected) if not learned else []
             result=predict_case([model_id],selected)['detectors'][0] if not learned and not stale else None

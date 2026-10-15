@@ -84,10 +84,12 @@ class FraudDesk:
             self.lab.db.execute('INSERT OR REPLACE INTO fraud_case_preparation VALUES(?,?,?,?,?)',(report_id,status,stage,detail,now()))
 
     def memories(self,include_inactive=False):
+        from fraud_playbook import for_memory
         rows = self.lab.rows('SELECT * FROM scam_memories ORDER BY rowid DESC')
         for row in rows:
             for key in ('pattern', 'validation'): row[key] = json.loads(row[key])
             row['lifecycle']=fraud_knowledge.lifecycle(self.lab,row)
+            row['playbook']=for_memory(self.lab,row['id']) if row['lifecycle']['active'] else None
         return rows if include_inactive else [r for r in rows if r['lifecycle']['active']]
 
     def screen(self, customer_id, payee):
@@ -123,6 +125,9 @@ class FraudDesk:
         return result
 
     def detail(self, report_id):
+        with self.lab.lock:return self._detail(report_id)
+
+    def _detail(self, report_id):
         with self.lab.lock:
             report = self.report(report_id)
             latest = self.lab.db.execute('SELECT id FROM fraud_investigations WHERE report_id=? ORDER BY rowid DESC LIMIT 1', (report_id,)).fetchone()
@@ -361,6 +366,8 @@ class FraudDesk:
                 fraud_knowledge.publish(self.lab,memory_id,pattern,run)
             self.lab.db.execute('UPDATE fraud_reports SET status=? WHERE id=?', ('awaiting_customer' if disposition == 'needs_information' else 'resolved', report_id))
             self.lab.db.execute("UPDATE fraud_investigations SET status='reviewed' WHERE id=?", (investigation_id,))
+            from fraud_playbook import feedback
+            feedback(self.lab,run,rid,disposition)
             return self.detail(report_id)
 
     def revoke_memory(self,memory_id,reason):

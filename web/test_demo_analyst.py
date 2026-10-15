@@ -86,8 +86,11 @@ class DemoAnalystChecks(unittest.TestCase):
 
     def test_rejected_candidate_is_never_activated_or_retried(self):
         report = self.case()
-        proposal=('propose_prevention_rule', {'name':'Demo candidate', 'signals':['safe_account_request','secrecy_request'],
-            'explanation':'Test a source-supported pair.', 'purpose':'Check a candidate.'})
+        proposal=('propose_playbook', {'name':'Demo candidate', 'signals':['safe_account_request','secrecy_request'],
+            'explanation':'Test a source-supported pair.', 'purpose':'Check a candidate.',
+            'investigation_tip':'Verify the request through an independently obtained contact.',
+            'recommended_models':['message_intent_v1'],'verification_question':'Did you independently contact the bank?',
+            'counterexample':'An independently initiated savings transfer may be legitimate.'})
         with patch('prevention.fake_choice', return_value=proposal), patch('prevention.replay', return_value={'passed':False,'feature_schema_version':'prepayment-signals-v1','false_flags':1}):
             self.approve(report); self.wait()
         result = self.desk.detail(report['id'])

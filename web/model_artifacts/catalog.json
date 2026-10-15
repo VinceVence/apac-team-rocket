@@ -13,6 +13,34 @@
       "artifact_sha256": "eec77654963ead3ecb00bd5ec7a7e82c0f2fe62e0e7ffdf0e37ac7826fa7d49e",
       "evaluation_reference": "web/model_artifacts/synthetic_triage_evaluation.json",
       "limitation": "Synthetic-only, uncalibrated advisory score. Not DS-approved for prevention or real customer decisions. Final-test gate: failed"
+    },
+    {
+      "model_id": "payment_behavior_v1",
+      "version": "1.0",
+      "name": "Learned payment behavior",
+      "task": "Observed payment behavior compared with generator-labelled scam examples; cannot rule out deception",
+      "positive_class": "Generator-labelled suspicious payment",
+      "release_status": "synthetic_advisory_only",
+      "training_cutoff": "2026-07-11T19:00:00+00:00",
+      "eligible_population": "Synthetic payments with versioned prepayment inputs",
+      "file": "payment_behavior_v1.json",
+      "artifact_sha256": "84ea6e4d92c9b901c6f3c1f1af53de8db97553529f4a166a90ba1c6abd306254",
+      "evaluation_reference": "web/model_artifacts/request_evaluation.json",
+      "limitation": "Advisory only; uncalibrated and not approved to block payments. Failed the synthetic prevention gate."
+    },
+    {
+      "model_id": "payment_request_v1",
+      "version": "1.0",
+      "name": "Learned request patterns",
+      "task": "Learned prepayment request and channel patterns in a synthetic corpus",
+      "positive_class": "Generator-labelled suspicious payment",
+      "release_status": "synthetic_advisory_only",
+      "training_cutoff": "2026-07-11T19:00:00+00:00",
+      "eligible_population": "Synthetic payments with versioned prepayment inputs",
+      "file": "payment_request_v1.json",
+      "artifact_sha256": "786ca1ab9d083eca0c06aeddaa9ef0fb7a3598f1e60158c15c0486cab85306d5",
+      "evaluation_reference": "web/model_artifacts/request_evaluation.json",
+      "limitation": "Advisory only; uncalibrated and not approved to block payments. Failed the synthetic prevention gate."
     }
   ]
 }

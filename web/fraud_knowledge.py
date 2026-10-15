@@ -8,6 +8,8 @@ VERSION='reviewed-lesson-v1'
 
 
 def initialize(lab):
+    import fraud_playbook
+    fraud_playbook.initialize(lab)
     lab.db.execute('''CREATE TABLE IF NOT EXISTS fraud_lesson_controls(memory_id TEXT PRIMARY KEY,
       version TEXT NOT NULL,applicability TEXT NOT NULL,counterexamples TEXT NOT NULL,
       source_receipts TEXT NOT NULL,expires_at TEXT NOT NULL,revoked_at TEXT,revocation_reason TEXT)''')
@@ -52,14 +54,16 @@ def revoke(lab,memory_id,reason):
     lab.db.execute('UPDATE fraud_lesson_controls SET revoked_at=?,revocation_reason=? WHERE memory_id=?',(now(),reason.strip(),memory_id))
     if lab.db.execute("SELECT 1 FROM sqlite_master WHERE name='prevention_rules'").fetchone():
         lab.db.execute("UPDATE prevention_rules SET status='revoked' WHERE memory_id=?",(memory_id,))
+    lab.db.execute("UPDATE fraud_playbook_entries SET status='revoked' WHERE memory_id=?",(memory_id,))
     return lifecycle(lab,memory)
 
 
 def redact(desk,memory):
+    from fraud_playbook import public_entry
     report=desk.report(memory['source_report_id']);name=desk.lab.db.execute('SELECT name FROM customers WHERE id=?',(report['customer_id'],)).fetchone()[0]
     controls=memory.get('lifecycle') or lifecycle(desk.lab,memory)
     clean=lambda value:re.sub(r'\bC\d{3}\b','[customer]',value.replace(name,'[prior customer]'))
     return {'id':memory['id'],'source_report_id':memory['source_report_id'],'review_id':memory['review_id'],
         'lesson':clean(memory['lesson']),'next_question':clean(memory['next_question']),
         'applicability':controls['applicability'],'counterexamples':controls['counterexamples'],
-        'version':controls['version'],'expires_at':controls['expires_at']}
+        'version':controls['version'],'expires_at':controls['expires_at'],'playbook':public_entry(memory.get('playbook'))}

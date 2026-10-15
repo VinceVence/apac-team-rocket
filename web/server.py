@@ -152,7 +152,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                     with lab.lock: run=agents.public_run(path.rsplit('/',1)[-1])
                     return self.reply(200,run)
                 if path.startswith('/api/'): return self.reply(404,{'error':'Endpoint not found.'})
-                if path not in ('/','/index.html','/app.js','/mesh-ui.js','/customer-ui.js','/fraud-ui.js','/harness-ui.js','/demo-guide.js','/demo-replay.js','/demo-recording.json','/evaluation-ui.js','/evaluation-summary.json','/decision-map.js','/agent-ui.js','/risk-ui.js','/town.js','/town-art.js','/resident-sprites.js','/styles.css','/mark.svg','/favicon.svg') and not path.startswith('/fonts/'):
+                if path not in ('/','/index.html','/app.js','/mesh-ui.js','/customer-ui.js','/fraud-ui.js','/harness-ui.js','/demo-guide.js','/demo-replay.js','/demo-recording.json','/evaluation-ui.js','/evaluation-summary.json','/learning-architecture.svg','/decision-map.js','/agent-ui.js','/risk-ui.js','/town.js','/town-art.js','/resident-sprites.js','/styles.css','/mark.svg','/favicon.svg') and not path.startswith('/fonts/'):
                     return self.reply(404,{'error':'File not found.'})
                 if '..' in path or '%' in path: return self.reply(404,{'error':'File not found.'})
                 return super().do_GET()
@@ -175,13 +175,13 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                     raise LabError('Research writes require the operator token. Public visitors can inspect saved experiments.',403)
                 if guard:guard.allow('POST',path,body)
                 if path=='/api/risk-lab/seed':
-                    if body!={}:raise LabError('The benchmark uses the fixed simulator recipe.')
-                    return self.reply(200,risk_lab.seed())
+                    if set(body)-{'source'}:raise LabError('The benchmark uses a fixed simulator recipe.')
+                    return self.reply(200,risk_lab.seed(body.get('source','benchmark')))
                 if path=='/api/risk-lab/evaluate-case':
                     from evaluate_upgrade import stage_case
-                    if set(body)!={'fixture','request_id','pair_id','arm','mode'} or body['mode'] not in ('fake','gemini'):raise LabError('Choose a registered bounded evaluation request.')
+                    if set(body)-{'fixture','request_id','pair_id','arm','mode','knowledge_mode'} or not {'fixture','request_id','pair_id','arm','mode'}<=set(body) or body['mode'] not in ('fake','gemini'):raise LabError('Choose a registered bounded evaluation request.')
                     if world_demo.status()['running'] or fraud_runner.pending:raise LabError('Pause the world and wait for existing work before an evaluation case.',409)
-                    case,created=stage_case(fraud_desk,body['fixture'],body['request_id'],body['pair_id'],body['arm'])
+                    case,created=stage_case(fraud_desk,body['fixture'],body['request_id'],body['pair_id'],body['arm'],body.get('knowledge_mode','reviewed'))
                     if created:
                         notice=world_demo.prepare_evidence(case['id']);fraud_runner.start(case['id'],body['mode'],experiment_arm=body['arm'])
                         fraud_desk.prepare(case['id'],'completed','dispatched',notice)
@@ -189,6 +189,10 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                 if path=='/api/risk-lab/curate':
                     if set(body)!={'report_id','label','note'}:raise LabError('Choose a reviewed case, explicit label and curation rationale.')
                     return self.reply(200,risk_lab.curate(**body))
+                if path=='/api/risk-lab/register':
+                    from risk_search import register
+                    if set(body)!={'study_id','candidate_id','note'}:raise LabError('Review one validated candidate for advisory registration.')
+                    return self.reply(200,register(risk_lab,**body))
                 if path=='/api/risk-lab/start':
                     if set(body)!={'request_id','source','provider'}:raise LabError('Choose a fixed dataset source and allowed provider.')
                     return self.reply(202,risk_lab.start(**body))

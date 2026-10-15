@@ -26,3 +26,9 @@ The built-in adapter accepts only `risk-features-v1` fields from `risk_models.GR
 For a new feature set, add a versioned trusted builder and adapter with cutoff/availability checks and tests. Merely adding a catalog entry does not make a differently trained model compatible. BigQuery investigation aggregates are a separate contract in `case_features.py`; do not relabel them as prepayment observations.
 
 Run the offline tests and compare JSON inference with the original estimator before merging. Registration enables investigation only. Promotion to payment serving requires a separate reviewed operating threshold, replay evidence, human activation and revocation path. Training and uploading an artifact never release it automatically.
+
+## Request-learning tools
+
+`request_models.py` exports `request_logistic`: fixed word/character hashing blocks plus observed transaction features, bounded coefficients and a validation-selected threshold. `train_request_predictors.py` builds our two additional advisory tools. The model input is the recorded prepayment request, not the later complaint.
+
+A three-role request study may register its validation-selected model via operator-only `POST /api/risk-lab/register` with `study_id`, `candidate_id`, and a review `note`. This creates an immutable, versioned investigation tool in the durable registry. It never approves payment release; a failed release gate stays failed. At most two reviewed request tools are active in this demo. See [learning loops](learning-loops.md).

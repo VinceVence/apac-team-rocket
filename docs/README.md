@@ -14,6 +14,7 @@
 | Understand the evidence and research proposals | [Research](research.md) |
 | See what actually passed, failed or remains unmeasured | [Evaluation](evaluation.md) |
 | Review the implemented competition upgrades and current results | [Upgrade evidence](competition-upgrades.md) |
+| Follow ACE playbooks and MLE-STAR model refinement | [Two learning loops](learning-loops.md) |
 | Contribute Karlo's trained model | [Model artifact contract](model-artifacts.md) |
 | Find a backend file or endpoint | [Application map](../web/README.md) |
 

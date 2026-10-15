@@ -17,9 +17,10 @@ from fraud_desk import text
 from lab import LabError, encoded, now
 from risk_models import VERSION, GROUPS, ALLOWED, RECIPES, MAX_ROWS, synthetic_examples
 
-TABLES=('risk_examples','risk_studies','risk_candidates','risk_agent_turns')
-MAX_STUDIES_DAILY=2
+TABLES=('risk_examples','risk_studies','risk_candidates','risk_agent_turns','risk_search_checkpoints','risk_model_registry')
+MAX_STUDIES_DAILY=None
 MAX_STUDIES=20
+MAX_STORED_ROWS=4000
 STUDY_CALLS=2
 SCIENTIST_TOOLS=('design_experiment','design_ablation','request_labels')
 VALIDATOR_TOOLS=('recommend_candidate','reject_candidates')
@@ -62,9 +63,11 @@ class StudyRole(FraudAgent):
     def __init__(self,team,study_id,role):
         self.team,self.lab,self.agents=team,team.lab,team.meter.agents
         self.checkpoint,self.clock=team.meter.checkpoint,now
-        self.case_limit,self.max_case_calls=20000,STUDY_CALLS
+        self.search=team.lab.db.execute('SELECT source FROM risk_studies WHERE id=?',(study_id,)).fetchone()[0]=='request_benchmark'
+        self.case_limit,self.max_case_calls=(30000,3) if self.search else (20000,STUDY_CALLS)
         self.study_id,self.role=study_id,role
-        self.model_factory=team.model_factories.get(role,lambda:FakeInvestigator(chooser=fake_choice))
+        from risk_search import fake_choice as search_choice
+        self.model_factory=team.model_factories.get(role,lambda:FakeInvestigator(chooser=search_choice if self.search else fake_choice))
     def reserve(self,run_id,request):
         with self.lab.lock:
             job=self.team.study(self.study_id)
@@ -75,13 +78,18 @@ class StudyRole(FraudAgent):
             return self._reserve_turn(self.study_id,self.study_id,seq,job['provider'],request,self.role,self.study_id+':'+self.role)
     def budget(self,report_id,mode):return self.team.budget(report_id,mode)
     def record_response(self,turn_id,response):
-        super().record_response(turn_id,response,SCIENTIST_TOOLS if self.role=='scientist' else VALIDATOR_TOOLS,ARG_FIELDS)
+        if self.search:
+            from risk_search import TOOLS,FIELDS
+            super().record_response(turn_id,response,TOOLS[self.role],FIELDS)
+        else:super().record_response(turn_id,response,SCIENTIST_TOOLS if self.role=='scientist' else VALIDATOR_TOOLS,ARG_FIELDS)
 
 
 class RiskLab:
     def __init__(self,meter,runner):
         self.meter,self.runner,self.lab=meter,runner,meter.lab
         self.model_factories={}
+        from risk_search import initialize
+        initialize(self.lab)
         self.lab.db.executescript('''
         CREATE TABLE IF NOT EXISTS risk_examples(id TEXT PRIMARY KEY,origin TEXT NOT NULL,created_at TEXT NOT NULL,data_json TEXT NOT NULL);
         CREATE TRIGGER IF NOT EXISTS immutable_risk_example BEFORE UPDATE ON risk_examples
@@ -101,7 +109,7 @@ class RiskLab:
         ''')
         with self.lab.db:
             self.lab.db.execute("UPDATE risk_agent_turns SET status='uncertain',error='Worker restarted; reservation retained, no retry.' WHERE status IN ('reserved','responded')")
-            self.lab.db.execute("UPDATE risk_studies SET status='interrupted',error='Worker restarted; no study was retried.' WHERE status IN ('queued','scientist','training','validator')")
+            self.lab.db.execute("UPDATE risk_studies SET status='interrupted',error='Worker restarted; no study was retried.' WHERE status IN ('queued','scientist','training','refiner','refined','validator')")
             if self.lab.db.execute("SELECT 1 FROM risk_agent_turns WHERE provider='gemini' AND status='uncertain'").fetchone():
                 self.lab.db.execute("UPDATE fraud_live_control SET blocked_reason='A research call is unconfirmed. Operator reconciliation is required.' WHERE id=1")
         runner.risk_lab=self
@@ -114,7 +122,9 @@ class RiskLab:
                 usage=self.lab.db.execute("SELECT count(*),coalesce(sum(coalesce(cost_microusd,reserved_microusd)),0) FROM risk_agent_turns WHERE provider='fake'").fetchone()
                 calls,total=usage;daily=total
             else:calls,daily,total=shared['calls_today'],shared['committed_microusd_today'],shared['committed_microusd_total']
-            return {'case_calls':row[0],'max_case_calls':STUDY_CALLS,'case_committed_microusd':row[1],'case_limit_microusd':20000,
+            search=self.lab.db.execute('SELECT source FROM risk_studies WHERE id=?',(study_id,)).fetchone()
+            calls_per_study=3 if search and search[0]=='request_benchmark' else STUDY_CALLS
+            return {'case_calls':row[0],'max_case_calls':calls_per_study,'case_committed_microusd':row[1],'case_limit_microusd':calls_per_study*10000,
                 'daily_calls':calls,'daily_call_limit':shared['daily_call_limit'],'daily_committed_microusd':daily,
                 'daily_limit_microusd':micro(shared['daily_usd_limit']),'total_committed_microusd':total,
                 'total_limit_microusd':micro(shared['total_usd_limit']),'actual_usd':row[1]/1e6 if mode=='gemini' else 0,'simulated':mode=='fake'}
@@ -123,15 +133,19 @@ class RiskLab:
         with self.lab.lock,self.lab.db:
             existing=self.lab.db.execute('SELECT count(*) FROM risk_examples').fetchone()[0]
             new=[r for r in rows if not self.lab.db.execute('SELECT 1 FROM risk_examples WHERE id=?',(r['id'],)).fetchone()]
-            if existing+len(new)>MAX_ROWS:raise LabError('Curated dataset row limit reached.',429)
+            if existing+len(new)>MAX_STORED_ROWS:raise LabError('Curated dataset storage limit reached.',429)
             for row in new:self.lab.db.execute('INSERT INTO risk_examples VALUES(?,?,?,?)',(row['id'],row['origin'],now(),json.dumps(row,allow_nan=False,sort_keys=True,separators=(',',':'))))
         self.meter.checkpoint();return len(new)
 
-    def seed(self):
+    def seed(self,source='benchmark'):
+        if source not in ('benchmark','request_benchmark'):raise LabError('Choose a fixed synthetic benchmark.')
         customers=[r['id'] for r in self.lab.rows('SELECT id FROM customers ORDER BY id LIMIT 100')]
-        rows=synthetic_examples(customers)
+        if source=='request_benchmark':
+            from request_corpus import examples
+            rows=examples(customers)
+        else:rows=synthetic_examples(customers)
         for row in rows:row.update(curated_by='operator',curated_at=now(),curation_note='Explicitly loaded simulator benchmark. Generator labels; not analyst-reviewed incidents.')
-        added=self.add_examples(rows);return {'added':added,'dataset':self.dataset('benchmark')[1]}
+        added=self.add_examples(rows);return {'added':added,'dataset':self.dataset(source)[1]}
 
     def curate(self,report_id,label,note):
         if type(label) is not int or label not in (0,1):raise LabError('Choose an explicit legitimate or scam label.')
@@ -155,8 +169,8 @@ class RiskLab:
         added=self.add_examples(rows);return {'added':added,'dataset':self.dataset('reviewed')[1]}
 
     def dataset(self,source):
-        if source not in ('reviewed','benchmark'):raise LabError('Choose reviewed cases or the synthetic benchmark.')
-        origin='reviewed_case' if source=='reviewed' else 'synthetic_benchmark'
+        if source not in ('reviewed','benchmark','request_benchmark'):raise LabError('Choose a registered curated dataset.')
+        origin={'reviewed':'reviewed_case','benchmark':'synthetic_benchmark','request_benchmark':'request_benchmark'}[source]
         rows=[json.loads(r['data_json']) for r in self.lab.rows('SELECT data_json FROM risk_examples WHERE origin=? ORDER BY id',(origin,))]
         eligible=[];excluded=[]
         for row in rows:
@@ -177,6 +191,11 @@ class RiskLab:
             (excluded if reason else eligible).append({'id':row['id'],'reason':reason} if reason else row)
         parts={k:[r for r in eligible if r['split']==k] for k in ('train','validation','test')}
         problems=[]
+        if len(eligible)>MAX_ROWS:problems.append('Dataset exceeds the per-study row limit.')
+        if source=='request_benchmark':
+            messages={k:{r.get('request_text','') for r in v} for k,v in parts.items()}
+            if any(messages[a]&messages[b] for a,b in (('train','validation'),('train','test'),('validation','test'))):problems.append('Request wording overlaps across splits.')
+            if any(not isinstance(r.get('request_text'),str) or not 1<=len(r['request_text'])<=2000 for r in eligible):problems.append('Missing bounded prepayment text.')
         for key,items in parts.items():
             pos=sum(r['label'] for r in items);neg=len(items)-pos
             if pos<(20 if key=='train' else 10) or neg<(40 if key=='train' else 20):problems.append(key.title()+': need more labelled scams and legitimate controls.')
@@ -188,9 +207,9 @@ class RiskLab:
             'excluded_examples':excluded[:8],'customers':len({r['customer_id'] for r in rows}),'feature_version':VERSION,
             'splits':{k:{'rows':len(v),'scams':sum(r['label'] for r in v),'customers':len(ids[k]),
                           'first_event':min((r['event_time'] for r in v),default=None),'last_label':max((r['label_available_at'] for r in v),default=None)} for k,v in parts.items()},
-            'problems':problems,'eligible':not problems,'study_contract':'risk-study-v2-ablation',
-            'dataset_hash':self.lab.fingerprint({'source':source,'feature_version':VERSION,'contract':'risk-study-v2-ablation','rows':rows}),
-            'scope':'Generator-labelled simulator benchmark; not measured real-world fraud accuracy.' if source=='benchmark' else 'Operator-curated reviews with recorded prepayment features; unreviewed public approvals are excluded.'}
+            'problems':problems,'eligible':not problems,'study_contract':'mle-search-v1' if source=='request_benchmark' else 'risk-study-v2-ablation',
+            'dataset_hash':self.lab.fingerprint({'source':source,'feature_version':VERSION,'contract':'mle-search-v1' if source=='request_benchmark' else 'risk-study-v2-ablation','rows':rows}),
+            'scope':'Generator-labelled synthetic benchmark; not measured real-world fraud accuracy.' if source!='reviewed' else 'Operator-curated reviews with recorded prepayment features; unreviewed public approvals are excluded.'}
         return eligible,manifest
 
     def start(self,request_id,source,provider):
@@ -207,7 +226,7 @@ class RiskLab:
             if prior:return self.study(prior['id'])
             if self.runner.closed or len(self.runner.pending)>=2:raise LabError('The shared agent worker is full or stopping.',429)
             used=self.lab.db.execute('SELECT count(*) FROM risk_studies WHERE substr(created_at,1,10)=?',(now()[:10],)).fetchone()[0]
-            if used>=MAX_STUDIES_DAILY or self.lab.db.execute('SELECT count(*) FROM risk_studies').fetchone()[0]>=MAX_STUDIES:raise LabError('Research study allowance reached.',429)
+            if (MAX_STUDIES_DAILY is not None and used>=MAX_STUDIES_DAILY) or self.lab.db.execute('SELECT count(*) FROM risk_studies').fetchone()[0]>=MAX_STUDIES:raise LabError('Research storage limit reached.',429)
             identifier='RISK-'+uuid.uuid4().hex[:10];status='queued' if manifest['eligible'] else 'needs_data'
             with self.lab.db:self.lab.db.execute('INSERT INTO risk_studies(id,request_id,source,dataset_hash,provider,status,dataset_json,manifest_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)',
                 (identifier,request_id,source,manifest['dataset_hash'],provider,status,encoded(rows),encoded(manifest),now()))
@@ -228,6 +247,8 @@ class RiskLab:
             item['candidates']=[]
             for row in self.lab.rows('SELECT id,data_json FROM risk_candidates WHERE study_id=? ORDER BY rowid',(identifier,)):
                 candidate=json.loads(row['data_json']);candidate['id']=row['id'];candidate.pop('artifact',None);item['candidates'].append(candidate)
+                registered=self.lab.db.execute('SELECT id FROM risk_model_registry WHERE candidate_id=?',(row['id'],)).fetchone()
+                candidate['registered_tool_id']=registered[0] if registered else None
             item['budget']=self.budget(identifier,item['provider']);item['model']=MODEL if item['provider']=='gemini' else 'Fake research agents'
             return item
 
@@ -236,13 +257,17 @@ class RiskLab:
             reports=self.lab.rows("SELECT r.id,r.customer_id,r.status,v.id review_id,v.disposition FROM fraud_reports r JOIN fraud_reviews v ON v.report_id=r.id WHERE r.status='resolved' ORDER BY v.created_at DESC LIMIT 15")
             studies=self.lab.rows('SELECT id,source,provider,status,created_at FROM risk_studies ORDER BY created_at DESC LIMIT 20')
             latest=self.study(studies[0]['id']) if studies else None
-            return {'datasets':{s:self.dataset(s)[1] for s in ('reviewed','benchmark')},'studies':studies,'latest':latest,'reviewed_cases':reports,
-                'live_available':self.meter.live_enabled(),'limits':{'studies_per_day':MAX_STUDIES_DAILY,'model_calls_per_study':STUDY_CALLS,'fits_per_study':3,'max_rows':MAX_ROWS},
+            return {'datasets':{s:self.dataset(s)[1] for s in ('reviewed','benchmark','request_benchmark')},'studies':studies,'latest':latest,'reviewed_cases':reports,
+                'live_available':self.meter.live_enabled(),'limits':{'studies_per_day':MAX_STUDIES_DAILY,'model_calls_per_study':STUDY_CALLS,'search_model_calls_per_study':3,'fits_per_study':3,'max_rows':MAX_ROWS},
                 'notice':'Research candidates never change the live payment gate. Human model release is a later stage.'}
 
     def decide(self,identifier,role,name,args):
         with self.lab.lock,self.lab.db:
-            job=self.study(identifier);expected='scientist' if role=='scientist' else 'validator'
+            job=self.study(identifier)
+            if job['source']=='request_benchmark' and role!='validator':
+                from risk_search import decide
+                return decide(self,identifier,role,name,args)
+            expected='scientist' if role=='scientist' else 'validator'
             if job['status']!=expected:raise LabError('Study stage changed.',409)
             purpose=text(args['purpose'],'Public purpose',5,250)
             if name in ('design_experiment','design_ablation'):
@@ -277,14 +302,22 @@ class RiskLab:
         job=self.study(identifier)
         if self.runner.stopping.wait(self.meter.live_delay({'context':{'provider':job['provider']}})):raise LabError('Worker is stopping.',503)
         controller=StudyRole(self,identifier,role)
+        instruction=SCIENTIST_SYSTEM if role=='scientist' else VALIDATOR_SYSTEM
+        allowed=SCIENTIST_TOOLS if role=='scientist' else VALIDATOR_TOOLS
+        if job['source']=='request_benchmark':
+            from risk_search import INSTRUCTIONS,TOOLS
+            instruction=INSTRUCTIONS.get(role,VALIDATOR_SYSTEM);allowed=TOOLS[role]
         async def once():
             return await asyncio.wait_for(run_turn(controller,{'id':identifier,'context':{'provider':job['provider']}},
-                {'customer_id':'risk-team','role':role,**packet},instruction=SCIENTIST_SYSTEM if role=='scientist' else VALIDATOR_SYSTEM,
-                tools_factory=tools_for,allowed_tools=SCIENTIST_TOOLS if role=='scientist' else VALIDATOR_TOOLS,agent_name='risk_'+role),timeout=TURN_TIMEOUT_SECONDS)
+                {'customer_id':'risk-team','role':role,**packet},instruction=instruction,
+                tools_factory=tools_for,allowed_tools=allowed,agent_name='risk_'+role),timeout=TURN_TIMEOUT_SECONDS)
         asyncio.run(once())
 
     def work(self,identifier):
         try:
+            if self.study(identifier)['source']=='request_benchmark':
+                from risk_search import work
+                return work(self,identifier)
             with self.lab.lock,self.lab.db:self.lab.db.execute("UPDATE risk_studies SET status='scientist' WHERE id=?",(identifier,))
             self.meter.checkpoint();job=self.study(identifier,True)
             stats={f:{str(y):round(sum(r['features'][f] for r in job['rows'] if r['split']=='train' and r['label']==y)/max(1,sum(r['split']=='train' and r['label']==y for r in job['rows'])),3) for y in (0,1)} for f in sorted(ALLOWED)}
@@ -324,12 +357,12 @@ class RiskLab:
             message=str(exc) if isinstance(exc,LabError) else 'Study stopped; no automatic retry was made.'
             with self.lab.lock,self.lab.db:
                 self.lab.db.execute("UPDATE risk_studies SET status='failed',error=? WHERE id=?",(message,identifier))
-                pending=self.lab.db.execute("SELECT 1 FROM risk_agent_turns WHERE run_id=? AND provider='gemini' AND status IN ('reserved','responded')",(identifier,)).fetchone()
+                pending=self.lab.db.execute("SELECT * FROM risk_agent_turns WHERE run_id=? AND provider='gemini' AND status IN ('reserved','responded')",(identifier,)).fetchone()
                 self.lab.db.execute("UPDATE risk_agent_turns SET status='failed',error=? WHERE run_id=? AND status IN ('reserved','responded')",(message,identifier))
-                if pending:self.lab.db.execute("UPDATE fraud_live_control SET blocked_reason='A research model call failed. Review its receipt; no retry was made.' WHERE id=1")
+                if pending and not self.meter.accounted_rejection(exc,pending):self.lab.db.execute("UPDATE fraud_live_control SET blocked_reason='A research model call failed. Review its receipt; no retry was made.' WHERE id=1")
         finally:
             with self.lab.lock,self.lab.db:
-                self.lab.db.execute("UPDATE risk_studies SET status='interrupted',error='No final validation was submitted.' WHERE id=? AND status IN ('scientist','validator','planned')",(identifier,))
+                self.lab.db.execute("UPDATE risk_studies SET status='interrupted',error='No final validation was submitted.' WHERE id=? AND status IN ('scientist','validator','planned','refiner','refined')",(identifier,))
                 self.runner.pending.discard(identifier)
             self.meter.checkpoint()
 
@@ -346,6 +379,9 @@ def fake_choice(packet):
 
 
 def tools_for(controller,run_id):
+    if controller.search and controller.role!='validator':
+        from risk_search import tools_for as search_tools
+        return search_tools(controller,run_id)
     from google.adk.tools.tool_context import ToolContext
     def invoke(name,args,context):
         result=controller.team.decide(controller.study_id,controller.role,name,args)

@@ -35,7 +35,9 @@ class Lab:
     def __init__(self, path, seed_history=True):
         self.lock = threading.RLock()
         self.clock_day = AS_OF
-        self.db = sqlite3.connect(str(path), check_same_thread=False)
+        # Python 3.12's shared statement cache can return inconsistent rows across
+        # threads (CPython #118172). Keep transaction locks; disable only that cache.
+        self.db = sqlite3.connect(str(path), check_same_thread=False, cached_statements=0)
         self.db.row_factory = sqlite3.Row
         self.seed_history=seed_history
         if self.db.execute("SELECT 1 FROM sqlite_master WHERE name='simulation_state'").fetchone():
