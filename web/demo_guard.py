@@ -57,6 +57,8 @@ class DemoGuard:
                 usage=self.lab.db.execute('SELECT * FROM demo_daily_usage WHERE day=?',(day,)).fetchone()
                 if is_start and usage['world_steps']>=DAILY_WORLD_STEPS:
                     raise LabError('Daily world-step limit reached. Restart cannot replenish this allowance; the current scene was kept.',429)
+                if is_start and path=='/api/world/start' and body.get('mode','demo')=='demo' and usage['reports']>=DAILY_REPORTS:
+                    raise LabError('Daily scam-report allowance reached. The current scene was kept. New demos reopen at 00:00 UTC.',429)
                 for label,used,added,limit in (('write',usage['writes'],1,DAILY_WRITES),
                     ('world-step',usage['world_steps'],int(is_step),DAILY_WORLD_STEPS),
                     ('new-report',usage['reports'],int(is_report),DAILY_REPORTS),

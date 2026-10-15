@@ -36,7 +36,7 @@ class WorldDemo:
         ''')
         with self.lab.db:
             columns={r['name'] for r in self.lab.rows('PRAGMA table_info(world_demo_state)')}
-            for name,definition in {'guided':'INTEGER NOT NULL DEFAULT 0','continuous':'INTEGER NOT NULL DEFAULT 0','focus_report_id':'TEXT','event_start':'INTEGER NOT NULL DEFAULT 0'}.items():
+            for name,definition in {'guided':'INTEGER NOT NULL DEFAULT 0','continuous':'INTEGER NOT NULL DEFAULT 0','focus_report_id':'TEXT','event_start':'INTEGER NOT NULL DEFAULT 0','report_reserved':'INTEGER NOT NULL DEFAULT 0'}.items():
                 if name not in columns:self.lab.db.execute('ALTER TABLE world_demo_state ADD COLUMN '+name+' '+definition)
             self.lab.db.execute("UPDATE world_demo_state SET running=0,note='Paused after server restart' WHERE running=1")
 
@@ -68,13 +68,18 @@ class WorldDemo:
             restart_blocked=bool(self.runner.pending or self.lab.db.execute("SELECT 1 FROM fraud_agent_turns WHERE status IN ('reserved','responded') LIMIT 1").fetchone())
             if self.lab.db.execute("SELECT 1 FROM fraud_case_preparation WHERE status='running' LIMIT 1").fetchone():restart_blocked=True
             if self.environment_publisher and self.lab.db.execute("SELECT 1 FROM environment_publications WHERE status!='completed' LIMIT 1").fetchone():restart_blocked=True
+            allowance=self.guard.status() if self.guard else None
+            start_blocked='Daily scam-report allowance reached. Existing cases remain available; new demos reopen at 00:00 UTC.' if allowance and allowance['used']['reports']>=allowance['limits']['new_reports_per_day'] else None
+            failed_scene=bool(state['guided'] and not state['focus_report_id'] and any(i['id'].startswith('world-scam-'+str(state['run_id'])+'-') and i['status'] in ('budget_limited','no_funds') for i in incidents))
+            scene_blocked=(start_blocked or (state['note'] if state['note'] not in ('Paused','Running','Ready') else 'The scam report was not created. No investigation ran.')) if failed_scene else None
             return {**state,'mode':'simulation' if state['continuous'] else 'demo' if state['guided'] else 'episode',
                     'max_steps':None if state['continuous'] else RUN_STEPS,'provider':provider,'incidents':incidents,'blocked_payments':totals[0],
                     'protection':{'count':totals[0],'amount_minor':totals[1],'recent':protected},
                     'presentation_actions':{r['action']:json.loads(r['receipt']) for r in self.lab.rows('SELECT action,receipt FROM world_demo_actions WHERE run_id=?',(state['run_id'],))},
                     'knowledge_count':len(self.desk.memories()),'calls_remaining':max(0,budget['daily_call_limit']-budget['daily_calls']),
                     'phase':phase,'scene_id':scene,'focus_customer_id':focus['customer_id'] if focus else None,
-                    'restart_blocked':restart_blocked,'agent_busy':bool(self.runner.pending or (self.intake and self.intake.is_alive()))}
+                    'restart_blocked':restart_blocked,'start_blocked_reason':start_blocked,'scene_blocked_reason':scene_blocked,
+                    'agent_busy':bool(self.runner.pending or (self.intake and self.intake.is_alive()))}
 
     def start(self, expected_run, activity=2, speed=1, background=True, fresh=False, mode=None):
         if type(expected_run) is not int or type(activity) is not int or activity not in range(1,5) or type(speed) is not int or speed not in (1,2,4):
@@ -87,12 +92,20 @@ class WorldDemo:
             if type(fresh) is not bool:raise LabError('Fresh must be true or false.')
             if mode is not None and mode not in ('demo','simulation'):raise LabError('Choose demo or simulation.')
             resume=mode=='simulation' and current['continuous'] and not fresh
+            run_id=current['run_id'] if resume else current['run_id']+1
+            guided=mode=='demo' or mode is None and (fresh or current['guided'])
+            # Reserve the one guided complaint before replacing the scene. The
+            # durable daily counter survives reset; this is not extra allowance.
+            report_reserved=0
+            if guided and self.guard:
+                if current['start_blocked_reason']:raise LabError(current['start_blocked_reason'],429)
+                self.guard.allow('POST','/api/fraud-desk/report',{'request_id':'world-scam-'+str(run_id)+'-phishing-first'})
+                report_reserved=1
             if fresh:
                 if not self.resetter:raise LabError('Fresh demo reset is unavailable.',409)
                 self.resetter.reset(current['run_id']+1)
             with self.lab.db:
-                run_id=current['run_id'] if resume else current['run_id']+1
-                self.lab.db.execute("UPDATE world_demo_state SET run_id=?,running=1,steps=?,activity=?,speed=?,note='Running' WHERE id=1",(run_id,current['steps'] if resume else 0,activity,speed))
+                self.lab.db.execute("UPDATE world_demo_state SET run_id=?,running=1,steps=?,activity=?,speed=?,report_reserved=?,note='Running' WHERE id=1",(run_id,current['steps'] if resume else 0,activity,speed,report_reserved))
                 if mode:self.lab.db.execute('UPDATE world_demo_state SET guided=?,continuous=?,focus_report_id=CASE WHEN ? THEN focus_report_id ELSE NULL END WHERE id=1',(int(mode=='demo'),int(mode=='simulation'),int(mode=='demo')))
             self.checkpoint();self.stopping.clear()
             if background:
@@ -132,6 +145,8 @@ class WorldDemo:
             # One intake and one existing model worker; never accumulate an unbounded queue.
             if background and not repeat and (self.runner.pending or (self.intake and self.intake.is_alive())):return None
             if self.lab.db.execute('SELECT 1 FROM world_incidents WHERE id=?',(identifier,)).fetchone():return None
+            scene=self.lab.db.execute('SELECT run_id,guided,report_reserved FROM world_demo_state WHERE id=1').fetchone()
+            reserved=bool(scene['run_id']==run_id and scene['guided'] and scene['report_reserved'] and kind=='phishing' and not repeat and not cycle)
             cid='C002' if repeat and kind=='phishing' else 'C005' if repeat else spec['customer']
             metadata={'rail':'Wallet','device_known':spec['device_known'],'authorization_verified':spec['authorization_verified'],
                 'authorized_payee':spec['payee'],'scenario':kind,'source':'world_demo',
@@ -149,7 +164,7 @@ class WorldDemo:
                         spec['payee']=pattern['recipient_accounts'][0]
                         flags=self.desk.screen(cid,spec['payee']);break
             if repeat and not flags:return None
-            status='blocked' if flags else 'investigating';report_id=None;events=[];settled=[];total=0;memory_ids={f['memory_id'] for f in flags};manual_only=False
+            status='blocked' if flags else 'investigating';report_id=None;events=[];settled=[];total=0;memory_ids={f['memory_id'] for f in flags};manual_only=False;admission_error=None
             provider='gemini' if self.runner.agent.live_enabled() else 'fake'
             if not flags:
                 budget=self.runner.agent.budget('',provider)
@@ -160,9 +175,9 @@ class WorldDemo:
                     status='budget_limited'
                 if status=='budget_limited' and metadata['guided_demo']:
                     manual_only=True;status='needs_review'
-                if status!='budget_limited' and self.guard:
+                if status!='budget_limited' and self.guard and not reserved:
                     try:self.guard.allow('POST','/api/fraud-desk/report',{'request_id':identifier})
-                    except LabError:status='budget_limited'
+                    except LabError as exc:status='budget_limited';admission_error=str(exc)
             if status!='budget_limited':
                 with self.lab.db:
                     self.lab.db.execute('INSERT OR IGNORE INTO accounts(id,label,kind,opening_minor,balance_minor) VALUES(?,?,?,0,0)',
@@ -184,7 +199,7 @@ class WorldDemo:
                             receipt=json.loads(self.lab.db.execute('SELECT metadata FROM financial_events WHERE id=?',(eid,)).fetchone()[0])
                             memory_ids.update(f['memory_id'] for f in receipt.get('review_flags',[]) if f.get('memory_id'))
                             break  # A verification hold pauses the remaining payment batch.
-                    if settled and flags and self.guard:
+                    if settled and flags and self.guard and not reserved:
                         # A policy can expire between preview and execution. Still require
                         # case admission if an actual transfer settled in that interval.
                         try:self.guard.allow('POST','/api/fraud-desk/report',{'request_id':identifier})
@@ -200,6 +215,9 @@ class WorldDemo:
                 self.lab.db.execute('INSERT INTO world_incidents VALUES(?,?,?,?,?,?,?,?,?,?,?)',
                     (identifier,kind,spec['title']+(' · changed recipient' if learned else ''),status,cid,report_id,encoded(sorted(memory_ids)),
                      encoded(events),total,self.world.state()['tick'],now()))
+                if metadata['guided_demo'] and not repeat and not report_id:
+                    self.lab.db.execute('UPDATE world_demo_state SET running=0,note=? WHERE id=1',
+                        (admission_error or 'The scam report was not created. No investigation ran.',))
             self.checkpoint()
         if report_id:
             if manual_only:

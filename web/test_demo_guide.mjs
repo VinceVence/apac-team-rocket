@@ -40,6 +40,13 @@ test('fresh scenes and foreign cases do not carry old investigation facts',()=>{
   assert.deepEqual(demoBeats({guided:false},report),[]);
 });
 
+test('rejected report admission explains the stop without promising a scam or investigation',()=>{
+  const beats=demoBeats({...demo,focus_report_id:null,running:false,scene_blocked_reason:'Daily scam-report allowance reached.'},null);
+  assert.equal(beats.length,1);assert.equal(beats[0].exit,true);assert.match(beats[0].title,/could not open/);
+  assert.match(beats[0].copy,/allowance reached/);assert.equal(beats[0].done,undefined);
+  assert.equal(beats[0].wait,'No investigation ran');
+});
+
 test('reserved and failed requests are not presented as completed tools',()=>{
   const r={...report,decision_trail:[{...turn(1,'score_models'),status:'reserved'},{...turn(2,'return_finding'),status:'failed'}]};
   assert.equal(demoBeats(demo,r).some(b=>b.tool),false);

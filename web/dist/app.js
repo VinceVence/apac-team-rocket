@@ -24,7 +24,7 @@ function renderRunControls(){
   $('play-world').disabled=state.busy||(!demo.running&&!demo.continuous&&!!demo.restart_blocked);
   $('play-world').textContent=demo.running?'Ⅱ Pause simulation':demo.continuous?'▶ Resume simulation':'▶ Run simulation';
   $('play-world').title=demo.running?'Pause payments; active investigations can finish.':demo.continuous?'Resume this world with its cases and safeguards.':'Start an empty world. Payments continue while agents investigate.';
-  $('run-demo').title='Start a fresh guided case, from payments to reviewed protection.';
+  $('run-demo').title=demo.start_blocked_reason||'Start a fresh guided case, from payments to reviewed protection.';
 }
 const sidebarMobile=matchMedia('(max-width:1000px)');let menuOpen=false,sidebarCollapsed=false;
 try{sidebarCollapsed=localStorage.getItem('minttown-sidebar-collapsed')==='true'}catch{}
@@ -61,13 +61,13 @@ function renderWorld(){
   $('simulation-count').textContent=(generated?.counts.wallet_transactions||0).toLocaleString()+' transactions';
   $('environment-data-total').textContent=generated?`${generated.counts.wallet_transactions.toLocaleString()} transfers`:'';
   const publication=generated?.publication;
-  $('environment-data-status').textContent=publication?.enabled?`${publication.dataset} · ${publication.latest?.status==='completed'?'saved':publication.latest?'publication needs review':'publishes with the case'}`:'Local generation · 100 customers';
+  $('environment-data-status').textContent=publication?.enabled?`${publication.dataset} · ${publication.latest?.status==='completed'?'saved':publication.latest?'publication needs review':'batched sync pending'}`:'Local generation · 100 customers';
   $('environment-data-tables').replaceChildren();
   for(const [table,count] of Object.entries(generated?.counts||{})){
     const row=node('div',undefined,'environment-data-row');row.append(node('span',table),node('strong',count.toLocaleString()));$('environment-data-tables').append(row);
   }
   const wh=d.warehouse;
-  $('warehouse-note').textContent=publication?.enabled?(publication.latest?.status==='completed'?'BigQuery · 6 simulator tables':'BigQuery · publication pending'):wh?.latest_snapshot?`BigQuery · ${wh.latest_snapshot.row_count.toLocaleString()} rows · ${wh.table_count} tables`:wh?.enabled?'BigQuery ready · publishes before investigation':'Local data · warehouse off';
+  $('warehouse-note').textContent=publication?.enabled?(publication.latest?.status==='completed'?'BigQuery · 6 simulator tables':'BigQuery · batched sync pending'):wh?.latest_snapshot?`BigQuery · ${wh.latest_snapshot.row_count.toLocaleString()} rows · ${wh.table_count} tables`:wh?.enabled?'BigQuery · batched sync pending':'Local data · warehouse off';
   $('warehouse-tables').replaceChildren();
   const exportTables=publication?.enabled?Object.keys(generated.counts):wh?.tables||[];
   const exportCounts=publication?.enabled?publication.latest?.counts:wh?.latest_snapshot?.counts;
@@ -80,17 +80,17 @@ function renderWorld(){
   $('protected-count').textContent=demo.blocked_payments;$('knowledge-total').textContent=demo.knowledge_count;
   const pending=demo.incidents.filter(i=>i.report_id&&i.report_status!=='resolved').length;
   $('agent-badge').textContent=pending;$('agent-badge').hidden=!pending;
-  $('world-note').textContent=demo.calls_remaining===0?'Investigation allowance used. Approved knowledge still protects payments.':demo.running?'Each payment becomes a new transaction record.':demo.note==='Ready'?'100 residents. Opening wallet balances. No transactions yet.':demo.note;
+  $('world-note').textContent=demo.scene_blocked_reason||(!demo.running&&demo.start_blocked_reason)||(demo.calls_remaining===0?'Investigation allowance used. Approved knowledge still protects payments.':demo.running?'Each payment becomes a new transaction record.':demo.note==='Ready'?'100 residents. Opening wallet balances. No transactions yet.':demo.note);
   $('activity').disabled=state.playing;document.querySelectorAll('[data-speed]').forEach(b=>b.disabled=state.playing);
   const latest=phase==='protected'?(demo.incidents.find(i=>i.status==='blocked')||demo.incidents[0]):demo.incidents[0];$('world-alert').hidden=!latest;
-  if(latest){const person=residentLabel(latest.customer_id);$('world-alert-title').textContent=latest.status==='blocked'?'A similar request was held.':latest.report_id?person+' filed a scam report':latest.title;$('world-alert-copy').textContent=incidentCopy(latest);$('world-report').textContent=latest.status==='blocked'?'View knowledge →':'Follow the investigation →'}
+  if(latest){const person=residentLabel(latest.customer_id);$('world-alert-title').textContent=latest.status==='blocked'?'A similar request was held.':latest.report_id?person+' filed a scam report':'Scam case not created';$('world-alert-copy').textContent=demo.scene_blocked_reason||incidentCopy(latest);$('world-report').textContent=latest.status==='blocked'?'View knowledge →':'Follow the investigation →';$('world-report').hidden=!latest.report_id&&latest.status!=='blocked'}
   $('world-alert').hidden=!demo.guided||!latest;
   renderNotifications(demo);
   $('world-events').replaceChildren();
   for(const i of demo.incidents.slice(0,3)){
     const row=node('div',undefined,'world-event '+(i.status==='blocked'?'blocked':'incident')),body=node('div');
     row.append(node('span',['blocked','passed'].includes(i.status)?'✓':'!','event-icon'));body.append(node('strong',i.title),node('small',incidentCopy(i)));
-    if(i.status!=='passed'){const button=node('button',i.status==='blocked'?'View knowledge →':'Open investigation →','text-button');button.onclick=()=>openIncident(i);body.append(button)}row.append(body);$('world-events').append(row);
+    if(i.report_id||i.status==='blocked'){const button=node('button',i.status==='blocked'?'View knowledge →':'Open investigation →','text-button');button.onclick=()=>openIncident(i);body.append(button)}row.append(body);$('world-events').append(row);
   }
   const payments=d.events.filter(e=>['payment','payment_blocked','payment_declined'].includes(e.kind)).slice(0,5);
   $('transaction-ticker').textContent=payments.length?residentLabel(payments[0].customer_id)+' · '+money(payments[0].amount_minor)+' '+(payments[0].status==='blocked'?'held':payments[0].status==='declined'?'declined':'paid'):'Waiting for the first payment';

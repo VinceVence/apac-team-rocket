@@ -92,3 +92,5 @@ Prevention replay counts show matched/source variants, including partial coverag
 ## Visible agent decisions
 
 In Run demo, **Next** from the report admits the investigation exactly once. The decision map uses native tool receipts: chosen tool, the agent's public purpose, returned evidence, uncertainty and the next recorded choice. Pending requests have no invented result. Replays and manual handoffs are labeled; private reasoning is not exposed. Next/Back retain the reader's position while new receipts arrive. Run simulation still investigates automatically. Rendering and explanations make no additional model calls.
+
+Run demo reserves one of the existing 25 daily report admissions before archiving/resetting the scene. At exhaustion, it keeps the current town and explains the UTC reset instead of running a scene that cannot file a complaint. The scheduled scam consumes that reservation once; it does not create extra allowance or reserve model spend. A failed legacy scene shows its stop reason and a return button. Report reservations, model spend, exports and world steps are separate limits; eight remaining model calls do not override an exhausted report quota.

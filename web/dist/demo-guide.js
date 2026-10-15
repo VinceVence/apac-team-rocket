@@ -8,7 +8,8 @@ const short=text=>typeof text==='string'?cleanText(text).slice(0,180):'';
 export function demoBeats(demo,report){
   if(!demo?.guided)return [];
   const beats=[],add=(id,view,target,title,copy,extra={})=>beats.push({id,view,target,title,copy,...extra});
-  add('world','world','.map-shell','Everyday payments become evidence','Start with zero transactions. Watch numbered residents make payments before someone calls for help.',{who:'Live world',wait:'Waiting for a report'});
+  const stopped=!demo.focus_report_id&&demo.scene_blocked_reason;
+  add('world','world','.map-shell',stopped?'This demo could not open a scam case':'Everyday payments become evidence',stopped||'Start with zero transactions. Watch numbered residents make payments before someone calls for help.',{who:stopped?'Demo paused':'Live world',wait:stopped?'No investigation ran':'Waiting for a report',exit:!!stopped});
   if(!demo.focus_report_id)return beats;
   add('complaint','world',(demo.incidents||[]).some(i=>i.report_id===demo.focus_report_id&&i.report_status!=='resolved')?'#fraud-sprite-focus':'#world-alert','A customer reports a scam','This resident is calling for help and has filed a scam report. Follow the investigation to see what the agent checks.',{who:'Customer',next:'Follow investigation'});
   if(report?.id!==demo.focus_report_id)return beats;
@@ -126,8 +127,8 @@ export function createDemoGuide({state,openCase,showWorld,error,demoAction,resid
     root.hidden=false;app.inert=true;document.body.classList.add('guide-open');
     $('.guide-reason-label').hidden=!(b.tool||(b.id==='live'&&decisionMap(report).tool));
     $('.guide-who').textContent=b.who;$('.guide-caption h2').textContent=b.title;$('.guide-copy').textContent=b.copy;$('.guide-detail').textContent=b.detail||'';$('.guide-detail').hidden=!b.detail;
-    const stage=demoPhase(b.id);$('.guide-progress').textContent=b.done?'Demo complete':demoPhases[stage];const next=nextGuideStep(beats,current,seen);$('.guide-next').textContent=busy?'Working…':b.done?'Finish demo':'Next';$('.guide-next').disabled=busy||(!next&&!b.action&&!b.done&&b.id!=='complaint');$('.guide-back').disabled=busy||i===0;
-    $('.guide-wait').textContent=b.done?'Finish returns to the town.':$('.guide-next').disabled&&b.id==='world'?'World running · the first report will appear shortly.':b.live?'Live results continue here. Next is available when the next result is ready.':b.action==='review'?'Next records the assumed demo approval.':b.action==='activate'?'Next enables only the reviewed protection.':'Read at your pace. Click Next to continue.';
+    const stage=demoPhase(b.id);$('.guide-progress').textContent=b.exit?'Paused':b.done?'Demo complete':demoPhases[stage];const next=nextGuideStep(beats,current,seen);$('.guide-next').textContent=busy?'Working…':b.exit?'Return to town':b.done?'Finish demo':'Next';$('.guide-next').disabled=busy||(!next&&!b.action&&!b.done&&!b.exit&&b.id!=='complaint');$('.guide-back').disabled=busy||i===0;
+    $('.guide-wait').textContent=b.exit?'No model request was retried.':b.done?'Finish returns to the town.':$('.guide-next').disabled&&b.id==='world'?'World running · the first report will appear shortly.':b.live?'Live results continue here. Next is available when the next result is ready.':b.action==='review'?'Next records the assumed demo approval.':b.action==='activate'?'Next enables only the reviewed protection.':'Read at your pace. Click Next to continue.';
     $('.demo-stage-track').replaceChildren();demoPhases.forEach((label,n)=>{const done=n<stage||b.done,v=el('span',undefined,done?'complete':n===stage?'current':'');if(n===stage)v.setAttribute('aria-current','step');v.append(el('i',done?'✓':'','phase-mark'),el('span',label));$('.demo-stage-track').append(v)});
     paint(b);seen.add(current);if(!root.contains(document.activeElement))($('.guide-next').disabled?$('.guide-close'):$('.guide-next')).focus({preventScroll:true});
   }
@@ -139,7 +140,7 @@ export function createDemoGuide({state,openCase,showWorld,error,demoAction,resid
     beats=keepReadingStep(beats,demoBeats(d,report),current);if(active&&!entering)render();
   }
   async function advance(){
-    if(busy)return;const b=beats.find(b=>b.id===current);if(b?.done){close();return}
+    if(busy)return;const b=beats.find(b=>b.id===current);if(b?.done||b?.exit){close();return}
     busy=true;$('.guide-error').hidden=true;render();
     try{
       if(b?.action)await demoAction(b.action);
