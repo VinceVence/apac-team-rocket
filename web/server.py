@@ -36,7 +36,7 @@ ROOT=Path(__file__).resolve().parent
 STATIC_PATHS=frozenset(('/','/index.html','/app.js','/fraud-ui.js','/harness-ui.js',
     '/demo-guide.js','/demo-replay.js','/demo-recording.json','/evaluation-ui.js','/quick-tour.js',
     '/evaluation-summary.json','/learning-architecture.svg','/decision-map.js',
-    '/agent-ui.js','/risk-ui.js','/town.js','/town-art.js','/resident-sprites.js',
+    '/resident-phone.js','/resident.css','/agent-ui.js','/risk-ui.js','/town.js','/town-art.js','/resident-sprites.js',
     '/styles.css','/mark.svg','/favicon.svg','/fonts/OFL.txt',
     *(f'/fonts/dm-sans-{weight}.ttf' for weight in (400,500,600,700))))
 

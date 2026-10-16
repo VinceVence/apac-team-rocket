@@ -3,14 +3,29 @@ import {createFraudUI} from './fraud-ui.js';
 import {createRiskUI} from './risk-ui.js';
 import {createDemoGuide} from './demo-guide.js';
 import {createRecordedDemo} from './demo-replay.js';
-import {createQuickTour,hasSeenTour} from './quick-tour.js';
+import {createQuickTour,hasSeenTour,TOUR_KEY} from './quick-tour.js';
 import {showEvaluation} from './evaluation-ui.js';
 import {mountAgentIcons,cleanText,agentIcon,featuredIncident,needsWorldPoll} from './agent-ui.js';
 import {residentLabel,residentAlerts} from './resident-sprites.js';
+import {residentPhoneStory,renderResidentPhone} from './resident-phone.js';
 mountAgentIcons();
 showEvaluation(document.getElementById('evaluation-panel')).catch(()=>{});
 const $=id=>document.getElementById(id),drawTown=createTown($('town-map'));
-const state={data:null,view:'world',busy:false,playing:false,speed:1,stepping:false,customerId:null,hosted:false};
+const state={data:null,ready:false,view:'world',busy:false,playing:false,speed:1,stepping:false,customerId:null,hosted:false};
+let residentReport=null,quickTour=null;
+function enterTown(){
+  $('welcome').hidden=true;$('mint-town').hidden=false;
+  document.title='Mint Town · '+({world:'Environment',resolution:'Agent activity',agents:'Agents'}[state.view]);
+  try{sessionStorage.setItem('minttown-welcome-seen','true')}catch{}
+  requestAnimationFrame(()=>{if(state.data)renderWorld();quickTour?.maybeOpen();if(!document.body.classList.contains('tour-open'))$('run-demo').focus({preventScroll:true})});
+}
+function showWelcome(){
+  guide?.close();$('welcome').hidden=false;$('mint-town').hidden=true;
+  try{sessionStorage.removeItem('minttown-welcome-seen')}catch{}
+  document.title='Mint Town · A safer next payment';window.scrollTo({top:0,behavior:'instant'});$('welcome-explore').focus({preventScroll:true});
+}
+function skipIntro(){introPending=false;try{localStorage.setItem(TOUR_KEY,'seen')}catch{}}
+try{if(location.hash||sessionStorage.getItem('minttown-welcome-seen'))enterTown()}catch{}
 const money=n=>'₱'+(n/100).toLocaleString('en-PH',{maximumFractionDigits:0});
 const node=(tag,text,cls)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e};
 let pollTimer=null,lastTick=-1,lastIncident=null,lastScene=null,guide=null,introPending=!hasSeenTour();
@@ -22,6 +37,8 @@ async function api(path,body){
 function error(message){$('app-error').textContent=cleanText(message||'');$('app-error').hidden=!message}
 function setBusy(on){state.busy=on;document.querySelectorAll('[data-view]').forEach(b=>b.disabled=on);renderRunControls()}
 function renderRunControls(){
+  $('welcome-run').disabled=state.busy||!state.ready||!state.data;
+  $('welcome-replay').disabled=state.busy||!state.ready;
   const demo=state.data?.demo;if(!demo)return;
   $('run-demo').disabled=state.busy;
   $('restart-world').disabled=state.busy||!!demo.restart_blocked;
@@ -112,7 +129,15 @@ function renderWorld(){
   lastTick=w.tick;
   positionFraudAlert();
   renderResident();
-  guide?.update();
+  renderResidentExperience();
+  if($('welcome').hidden&&!introPending)guide?.update();
+}
+function renderResidentExperience(){
+  const d=state.data,visible=!!d.demo.guided&&!!d.demo.focus_report_id;
+  $('resident-experience').hidden=!visible;if(!visible)return;
+  const story=residentPhoneStory(d.demo.phase==='protected'?'protected':'complaint',d,residentReport);
+  const panel=$('resident-experience-phone'),key=JSON.stringify(story);
+  if(panel.dataset.story===key)return;panel.dataset.story=key;panel.replaceChildren();renderResidentPhone(panel,story);
 }
 function renderNotifications(demo){
   const notices=$('world-notifications');notices.replaceChildren();
@@ -149,17 +174,17 @@ $('resident-close').onclick=()=>followResident(null);
 async function refresh(){state.data=await api('/api/state');renderWorld();schedulePoll()}
 function schedulePoll(){clearTimeout(pollTimer);if(state.replay||document.hidden||!needsWorldPoll(state.data?.demo))return;pollTimer=setTimeout(async()=>{try{await refresh();const latest=state.data.demo.incidents[0]?.id;if(latest!==lastIncident&&state.view==='resolution')await fraudUI.load();lastIncident=latest}catch(e){error(e.message)}},3000)}
 async function cloudStatus(){const c=await api('/api/cloud');state.hosted=!!c.enabled;$('cloud-data-panel').hidden=!c.enabled;if(c.enabled){$('deployment-label').textContent=c.execution==='local'?'Local simulation':'Cloud simulation';$('cloud-data-status').textContent=`${c.daily_exports} export batches today`;const pending=!!sessionStorage.getItem('minttown-export-request');$('cloud-export').textContent=pending?'Check export status':'Export next batch';$('cloud-export').disabled=!c.healthy||(c.daily_export_limit!==null&&c.daily_exports>=c.daily_export_limit&&!pending)}}
-const fraudUI=createFraudUI({$,api,state,setPlaying:()=>{},setBusy,refresh,error,focusCustomer:cid=>{state.customerId=cid;renderWorld()},onRender:report=>guide?.update(report),onNavigate:()=>guide?.close()});
+const fraudUI=createFraudUI({$,api,state,setPlaying:()=>{},setBusy,refresh,error,focusCustomer:cid=>{state.customerId=cid;renderWorld()},onRender:report=>{residentReport=report;renderResidentExperience();if($('welcome').hidden&&!introPending)guide?.update(report)},onNavigate:()=>guide?.close()});
 const riskUI=createRiskUI({$,state,error,onCases:()=>fraudUI.load(true)});
-guide=createDemoGuide({state,error,canAutoOpen:()=>!introPending,onClose:()=>{if(state.replay){try{sessionStorage.setItem('minttown-guide-dismissed',state.replayReturnScene)}catch{}state.replay=null;fraudUI.reset();setBusy(true);refresh().then(()=>showView('world')).catch(e=>error(e.message)).finally(()=>setBusy(false))}},showWorld:customerId=>{if(customerId)state.customerId=customerId;return showView('world')},residentPosition:id=>drawTown.residentPosition(id),openCase:async()=>{if(!await openIncident({report_id:state.data.demo.focus_report_id}))throw Error('The saved case could not be opened. Refresh its status.');},demoAction:async action=>{if(action==='replay')return recordedDemo();await api('/api/world/demo-action',{expected_run:state.data.demo.run_id,report_id:state.data.demo.focus_report_id,action});await refresh();if(state.data.demo.focus_report_id)await fraudUI.load()}});
-async function showView(view){if(state.view!==view)window.scrollTo({top:0,behavior:'instant'});state.view=['world','resolution','agents'].includes(view)?view:'world';setMenu(false);error('');$('mint-town').dataset.view=state.view;history.replaceState(null,'',state.view==='world'?location.pathname:state.view==='agents'?'#agents':location.hash==='#models'?'#models':'#agent');document.title='Mint Town · '+({world:'Environment',resolution:'Agent activity',agents:'Agents'}[state.view]);document.querySelectorAll('[data-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===state.view)));$('case-view').hidden=state.view!=='world';$('fraud-view').hidden=state.view!=='resolution';$('agents-view').hidden=state.view!=='agents';renderWorld();document.querySelector('.demo-story').hidden=state.view!=='world'||!state.data.demo.guided;if(state.view==='resolution'){if(location.hash==='#models'||!$('risk-view').hidden)await riskUI.show(true);else await fraudUI.load(true)}else riskUI.pause()}
+guide=createDemoGuide({state,error,canAutoOpen:()=>!introPending&&$('welcome').hidden,onClose:()=>{if(state.replay){try{sessionStorage.setItem('minttown-guide-dismissed',state.replayReturnScene)}catch{}state.replay=null;fraudUI.reset();setBusy(true);refresh().then(()=>showView('world')).catch(e=>error(e.message)).finally(()=>setBusy(false))}},showWorld:customerId=>{if(customerId)state.customerId=customerId;return showView('world')},residentPosition:id=>drawTown.residentPosition(id),openCase:async()=>{if(!await openIncident({report_id:state.data.demo.focus_report_id}))throw Error('The saved case could not be opened. Refresh its status.');},demoAction:async action=>{if(action==='replay')return recordedDemo();await api('/api/world/demo-action',{expected_run:state.data.demo.run_id,report_id:state.data.demo.focus_report_id,action});await refresh();if(state.data.demo.focus_report_id)await fraudUI.load()}});
+async function showView(view){if(state.view!==view)window.scrollTo({top:0,behavior:'instant'});state.view=['world','resolution','agents'].includes(view)?view:'world';setMenu(false);error('');$('mint-town').dataset.view=state.view;history.replaceState(null,'',state.view==='world'?location.pathname:state.view==='agents'?'#agents':location.hash==='#models'?'#models':'#agent');document.title=$('welcome').hidden?'Mint Town · '+({world:'Environment',resolution:'Agent activity',agents:'Agents'}[state.view]):'Mint Town · A safer next payment';document.querySelectorAll('[data-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===state.view)));$('case-view').hidden=state.view!=='world';$('fraud-view').hidden=state.view!=='resolution';$('agents-view').hidden=state.view!=='agents';renderWorld();document.querySelector('.demo-story').hidden=state.view!=='world'||!state.data.demo.guided;if(state.view==='resolution'){if(location.hash==='#models'||!$('risk-view').hidden)await riskUI.show(true);else await fraudUI.load(true)}else riskUI.pause()}
 async function openIncident(i){try{await riskUI.show(false);await showView('resolution');if(i.report_id||state.data.demo.focus_report_id)await fraudUI.open(i.report_id||state.data.demo.focus_report_id);if(i.status==='blocked'){$('fraud-memory-panel').open=true;document.getElementById(i.report_id?'prevention-stage':'fraud-memory-panel').scrollIntoView({behavior:'smooth',block:'start'})}return true}catch(e){error(e.message);return false}}
 $('open-menu').onclick=toggleSidebar;$('close-menu').onclick=()=>{setMenu(false);$('open-menu').focus()};$('sidebar-backdrop').onclick=()=>setMenu(false);window.addEventListener('keydown',e=>{if(e.key==='Escape')setMenu(false)});
 for(const b of document.querySelectorAll('[data-view]'))b.onclick=()=>{guide.close();showView(b.dataset.view).catch(e=>error(e.message))};
 for(const b of document.querySelectorAll('[data-speed]'))b.onclick=()=>{state.speed=Number(b.dataset.speed);$('speed-label').textContent=state.speed+'×';document.querySelectorAll('[data-speed]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)))};
 $('activity').oninput=()=>{$('activity-value').textContent=$('activity').value};
 async function runWorld(mode){
-  if(state.busy||!state.data)return;setBusy(true);error('');guide.close();
+  if(state.busy||!state.data)return;if(mode==='demo')skipIntro();setBusy(true);error('');guide.close();
   try{
     const demo=state.data.demo,pausing=mode==='simulation'&&demo.running;
     if(mode==='demo'&&(demo.start_blocked_reason||demo.restart_blocked||demo.running||demo.calls_remaining<6)){await recordedDemo();return}
@@ -170,12 +195,20 @@ async function runWorld(mode){
 let recording=null;
 async function recordedDemo(){
   if(!recording){const response=await fetch('/demo-recording.json');if(!response.ok)throw Error('The saved demo could not load. Refresh this page.');recording=await response.json()}
-  clearTimeout(pollTimer);fraudUI.reset();if(!state.replay)state.replayReturnScene=state.data.demo.scene_id+':'+state.data.demo.run_id;state.replay=createRecordedDemo(recording,'REPLAY-'+crypto.randomUUID());
+  clearTimeout(pollTimer);fraudUI.reset();if(!state.replay)state.replayReturnScene=state.data?.demo?state.data.demo.scene_id+':'+state.data.demo.run_id:null;state.replay=createRecordedDemo(recording,'REPLAY-'+crypto.randomUUID());
   state.data=state.replay.snapshot();state.focusReport=null;await showView('world');
 }
 $('play-world').onclick=()=>runWorld('simulation');
 $('run-demo').onclick=()=>runWorld('demo');
-const quickTour=createQuickTour({startDemo:()=>runWorld('demo'),canOpen:()=>!!state.data&&!state.busy&&!document.body.classList.contains('guide-open'),onDismiss:()=>{introPending=false}});
+quickTour=createQuickTour({startDemo:()=>runWorld('demo'),canOpen:()=>!!state.data&&!state.busy&&$('welcome').hidden&&!document.body.classList.contains('guide-open'),onDismiss:starting=>{introPending=false;if(!starting)queueMicrotask(()=>guide?.update())}});
+$('welcome-explore').onclick=enterTown;
+document.querySelector('.sidebar-heading .brand-mark').onclick=event=>{event.preventDefault();showWelcome()};
+document.querySelector('.skip-link').addEventListener('click',enterTown);
+$('welcome-run').onclick=()=>{enterTown();runWorld('demo')};
+$('welcome-replay').onclick=async()=>{
+  if(state.busy)return;skipIntro();setBusy(true);$('welcome-error').hidden=true;
+  try{await recordedDemo();enterTown()}catch(e){$('welcome-error').textContent=e.message;$('welcome-error').hidden=false}finally{setBusy(false)}
+};
 let restartRun=null;
 $('restart-world').onclick=()=>{guide.close();restartRun=state.data.demo.run_id;$('restart-dialog').returnValue='';$('restart-dialog').showModal()};
 $('restart-dialog').addEventListener('close',async()=>{
@@ -190,5 +223,6 @@ $('restart-dialog').addEventListener('close',async()=>{
 $('world-report').onclick=()=>{const incident=featuredIncident(state.data.demo);if(incident)openIncident(incident)};
 $('cloud-export').onclick=async()=>{if(state.busy)return;setBusy(true);$('cloud-export').disabled=true;try{const id=sessionStorage.getItem('minttown-export-request')||crypto.randomUUID();sessionStorage.setItem('minttown-export-request',id);const r=await api('/api/cloud/export',{request_id:id});if(['completed','failed'].includes(r.status))sessionStorage.removeItem('minttown-export-request');$('cloud-export-result').textContent=`${r.row_count.toLocaleString()} records · ${r.status}`}catch(e){error(e.message)}finally{setBusy(false);await cloudStatus().catch(e=>error(e.message))}};
 document.addEventListener('visibilitychange',()=>{if(document.hidden){clearTimeout(pollTimer);drawTown.setVisible(false)}else refresh().catch(e=>error(e.message))});
-window.addEventListener('hashchange',()=>showView(!location.hash?'world':location.hash==='#agents'?'agents':'resolution').catch(e=>error(e.message)));
-try{await refresh();await cloudStatus();$('loading-state').hidden=true;await showView(!location.hash?'world':location.hash==='#agents'?'agents':'resolution');await document.fonts.ready;renderWorld();$('open-tour').disabled=false;quickTour.maybeOpen()}catch(e){$('loading-state').hidden=true;error('Cannot reach the simulation. '+e.message)}
+const hashView=()=>location.hash==='#agents'?'agents':['#agent','#models'].includes(location.hash)?'resolution':'world';
+window.addEventListener('hashchange',()=>showView(hashView()).catch(e=>error(e.message)));
+try{await refresh();await cloudStatus();$('loading-state').hidden=true;await showView(hashView());await document.fonts.ready;renderWorld();$('open-tour').disabled=false;if($('welcome').hidden)quickTour.maybeOpen()}catch(e){$('loading-state').hidden=true;error('Cannot reach the simulation. '+e.message)}finally{state.ready=true;renderRunControls()}

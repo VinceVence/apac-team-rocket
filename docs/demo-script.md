@@ -4,6 +4,8 @@ First-time visitors see the **Quick tour** explaining Environment, Agent activit
 
 Use the public app's **Environment**, **Agent activity**, and **Agents** tabs. The guided case starts its investigator only when you click Next from the customer report. Saved timelines and the payment proof can be shown without new model calls. Starting a new world or approving a case with a remaining learner call can consume the shared allowance.
 
+The welcome screen offers **Run demo**, **Watch saved demo** (read-only Gemini replay), and **Explore the town**. The customer phone shows the recorded request, original transfer and complaint before investigation. After the gateway check it shows the hold notice, then a separate legitimate payment receipt with the exact amount, including centavos. Optional phone buttons provide labelled demo guidance; they do not cancel/release payments or send support requests. Click the sidebar's Mint Town brand to return to the welcome screen.
+
 ## 0:00–0:30 — Run demo
 
 Click **Run demo** (4× speed is useful). A fresh scene begins with 100 numbered residents and zero transactions. Point to purchases and transfers, then the orange **!** above the victim. Use **Next** to move the spotlight through the report and actual recorded agent actions. Each explanation stays on screen until you choose to continue; **Back** revisits the previous step.
