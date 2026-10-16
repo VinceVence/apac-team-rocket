@@ -1,5 +1,7 @@
 # Live learning-loop evaluation — 16 October 2026 (Manila)
 
+**Later verification:** [The new visual demo](visual-demo.md) completed a real second investigation with memory and predictions under the unchanged context cap. Cloud Run was explicitly restarted by the owner. The earlier results and failures below remain preserved.
+
 Runtime: `cb84f17` on Cloud Run. Synthetic customer data; real Gemini tool choices and real CPU model fits. This is a bounded prototype evaluation, not production fraud accuracy. The runtime was deployed successfully and was scaled to zero at the owner's request for the night. Do not restart it or schedule more paid tests without authorization.
 
 ## What worked end to end

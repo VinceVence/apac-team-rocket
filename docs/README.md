@@ -4,6 +4,7 @@
 |---|---|
 | Run the app and protect costs | [Operations](operations.md) |
 | Open the public demo and understand team access | [Hosting and shutdown guard](hosting.md) |
+| See the latest hosted visual test | [Live walkthrough and results](visual-demo.md) |
 | Present the saved cases in three minutes | [Demo script](demo-script.md) |
 | Inspect/export data matching Gab’s dictionary | [Simulation data contract](environment-data.md) |
 | Follow environment → BigQuery → investigation | [Architecture](architecture.md) |
