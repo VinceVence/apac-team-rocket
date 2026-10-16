@@ -19,8 +19,8 @@ from fraud_models import manifests
 from fraud_knowledge import redact as redact_memory
 
 MODEL = 'gemini-3.5-flash-lite'
-PROMPT_VERSION = 'fraud-investigator-v11'
-TOOL_CONTRACT_VERSION = 11
+PROMPT_VERSION = 'fraud-investigator-v12'
+TOOL_CONTRACT_VERSION = 12
 MAX_INPUT_BYTES = 16000
 MAX_OUTPUT_TOKENS = 512
 RESERVE_MICROUSD = 10000

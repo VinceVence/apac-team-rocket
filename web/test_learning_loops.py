@@ -44,12 +44,24 @@ class LearningLoopChecks(unittest.TestCase):
         self.assertEqual(self.s.prevention.activate(job['rule']['id'],True)['playbook']['id'],entry['id'])
         with self.assertRaises(sqlite3.IntegrityError),self.s.lab.db:self.s.lab.db.execute("UPDATE fraud_playbook_entries SET payload='{}'")
         later=desk.demo('phishing','ace-later')
+        request_sizes=[];reserve=self.s.fraud_agent.reserve
+        def measured_reserve(run_id,request):
+            from lab import encoded
+            request_sizes.append(len(encoded(request.model_dump(mode='json',exclude={'tools_dict'},exclude_none=True)).encode()))
+            return reserve(run_id,request)
+        self.s.fraud_agent.reserve=measured_reserve
         def with_memory(packet):
             observed={o['tool']:o['result'] for o in packet['observations']}
             if 'get_case_evidence' in observed and 'search_reviewed_cases' not in observed:
                 return 'search_reviewed_cases',{'query':'safe account secrecy','purpose':'Retrieve a reviewed strategy for this independently investigated request.'}
             return choose(packet)
         follow=self.finish(later['id'],with_memory)
+        self.assertTrue(request_sizes);self.assertLess(max(request_sizes),16000)
+        packet=self.s.fraud_agent.packet(follow)
+        retrieved=next(o['result']['matches'][0] for o in packet['observations'] if o['tool']=='search_reviewed_cases')
+        self.assertTrue(retrieved['playbook']['counterexample'])
+        self.assertEqual(retrieved['playbook']['fingerprint'],entry['fingerprint'])
+        self.assertTrue(self.s.fraud_agent.harness.receipts(follow['id'])[0]['input_hash'])
         self.assertEqual(follow['context']['memories'][0]['playbook']['fingerprint'],entry['fingerprint'])
         desk.review(later['id'],follow['id'],'confirmed_scam','request_recall','Independently reviewed the later synthetic case.',False,'','')
         self.assertEqual(for_memory(self.s.lab,memory)['feedback']['helpful'],1)

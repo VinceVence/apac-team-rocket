@@ -65,7 +65,7 @@ export function decisionMap(report,selected=null){
 const el=(tag,value,cls)=>{const n=document.createElement(tag);if(value!==undefined)n.textContent=value;if(cls)n.className=cls;return n};
 export function renderDecisionMap(root,report,{selected=null,compact=false,onSelect}={}){
   const d=decisionMap(report,selected);root.replaceChildren();root.classList.add('decision-map');root.classList.toggle('decision-map-compact',compact);root.dataset.phase=d.phase;
-  const header=el('header',undefined,'decision-map-heading'),title=el('div');title.append(agentIcon('resolution'),el('strong','Agent decision map'));
+  const header=el('header',undefined,'decision-map-heading'),title=el('div');title.append(agentIcon('resolution'),el('strong',compact?'Inside the investigation':'Agent decisions'));
   header.append(title,el('span',d.badge,'decision-origin'));root.append(header);
   if(onSelect&&selected!==null){const follow=el('button','Follow latest','text-button');follow.type='button';follow.onclick=()=>onSelect(null);header.append(follow)}
   const path=el('ol',undefined,'decision-path');path.setAttribute('aria-label','Actual tool choices in recorded order');
@@ -73,13 +73,13 @@ export function renderDecisionMap(root,report,{selected=null,compact=false,onSel
   if(d.trail.length)root.append(path);
   const loop=el('div',undefined,'decision-loop');loop.setAttribute('role','group');loop.setAttribute('aria-label',`${d.actor} chooses ${d.toolLabel}, then reads the recorded result`);
   function node(role,label,caption,cls){const n=el('section',undefined,'decision-node '+cls);n.append(agentIcon(role),el('strong',label));if(caption)n.append(el('small',caption));return n}
-  const actor=node(d.actorIcon,d.actor,{choosing:'Choosing the next action',recorded:'Decision recorded',executing:'Tool requested',stopped:'Request stopped',waiting:d.manual?'Manual evidence review':'Waiting for evidence'}[d.phase],'decision-actor');
+  const actor=node(d.actorIcon,d.actor,{choosing:'Choosing a check',recorded:'Chooses',executing:'Tool requested',stopped:'Request stopped',waiting:d.manual?'Manual evidence review':'Waiting for evidence'}[d.phase],'decision-actor');
   if(d.phase==='choosing'&&d.live)actor.classList.add('is-working');
   const tool=node(['delegate_question','return_finding'].includes(d.tool)?'specialist':d.tool?.includes('submit')?'judge':'knowledge',d.toolLabel,
     d.phase==='executing'?'Request validated · running':d.tool?'Selected by the agent':'Waiting for a choice','decision-tool');
   if(d.tool)tool.append(el('code',d.tool,'decision-tool-name'));
   if(d.phase==='executing'&&d.live)tool.classList.add('is-working');
-  const outcome=node(d.tool==='return_finding'?'resolution':'judge',d.phase==='stopped'?'No result recorded':d.phase!=='recorded'?'Awaiting result':d.tool==='return_finding'?'Back to the lead':'Recorded result',null,'decision-outcome');
+  const outcome=node(d.tool==='return_finding'?'resolution':'judge',d.phase==='stopped'?'No result recorded':d.phase!=='recorded'?'Awaiting result':d.tool==='return_finding'?'Back to the lead':'Evidence returned',null,'decision-outcome');
   const facts=el('ul');for(const fact of (d.result.facts.length?d.result.facts:[d.result.summary]).slice(0,2)){const li=el('li',fact.length>110?fact.slice(0,107)+'…':fact);li.setAttribute('aria-label',fact);facts.append(li)}outcome.append(facts);
   for(const n of [actor,el('span','→','decision-arrow'),tool,el('span','→','decision-arrow'),outcome])loop.append(n);root.append(loop);
   const feedback=el('div',undefined,'decision-feedback');

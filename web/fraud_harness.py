@@ -153,10 +153,13 @@ class FraudHarness:
 
     @staticmethod
     def compact_receipt(r):
-        keys=('receipt_id','model_id','model_version','feature_version','input_hash','snapshot_id','event_ids','score_kind','target','calibrated','status','missing_inputs','reason')
+        # Predictor targets are already in the pinned model menu. Keep versions,
+        # scoped results and limitations here; full hashes remain in audit receipts.
+        keys=('receipt_id','model_id','model_version','feature_version','event_ids','score_kind','calibrated','status','missing_inputs','reason')
         out={k:r[k] for k in keys if k in r}
         if r.get('prediction'):
-            out['prediction']={k:r['prediction'][k] for k in ('available','signal_score','result','predictions')}
+            out['prediction']={k:r['prediction'][k] for k in ('available','signal_score','result')}
+            out['prediction']['events']=[{k:p[k] for k in ('event_id','available','signal_score','missing_inputs') if k in p} for p in r['prediction'].get('predictions',[])]
         return out
 
     def compact(self,packet):
@@ -175,6 +178,19 @@ class FraudHarness:
                 result={'models':[{k:v for k,v in m.items() if k in ('model_id','name','task','required_inputs','score_kind','release_status','limitation','available')} for m in result['models']]}
             if item['tool']=='get_case_evidence':
                 g=result['guidance'];result['guidance']={'version':g['version'],'steps':g['steps'],'do_not_collect':g['do_not_collect']}
+                if result.get('warehouse',{}).get('source'):
+                    result['warehouse']=dict(result['warehouse'])
+                    result['warehouse']['source']={k:v for k,v in result['warehouse']['source'].items() if k in ('provider','snapshot_id','feature_version','cutoff','analytics_sync','record_count')}
+            if item['tool']=='search_reviewed_cases':
+                matches=[]
+                for memory in result.get('matches',[]):
+                    m={k:memory[k] for k in ('id','version','lesson','next_question','counterexamples','expires_at') if k in memory}
+                    if memory.get('applicability'):m['applicability']={k:v for k,v in memory['applicability'].items() if k in ('signals','requirement')}
+                    if memory.get('playbook'):
+                        p=memory['playbook'];m['playbook']={k:p[k] for k in ('id','version','fingerprint','strategy','verification_question','counterexample','applicability_signals') if k in p}
+                        m['playbook']['recommended_models']=[{k:v for k,v in model.items() if k in ('model_id','version')} for model in p.get('recommended_models',[])]
+                    matches.append(m)
+                result={'matches':matches}
             observations.append({'tool':item['tool'],'result':result})
         packet['observations']=observations
         return packet
