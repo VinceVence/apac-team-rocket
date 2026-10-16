@@ -1,0 +1,17 @@
+{
+  "rows": 600,
+  "positives": 47,
+  "test_average_precision": 0.4402,
+  "test_brier": 0.0539,
+  "validation_threshold": 0.65,
+  "validation_recall": 0.3333,
+  "validation_false_positive_rate": 0.0,
+  "source": "CPU-trained on AE ledger rows; labels used only offline.",
+  "feature_version": "ledger-features-v1",
+  "excluded_predictor_inputs": [
+    "is_fraud",
+    "scam_type",
+    "risk_score",
+    "risk_factors"
+  ]
+}

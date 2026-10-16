@@ -41,6 +41,20 @@
       "artifact_sha256": "786ca1ab9d083eca0c06aeddaa9ef0fb7a3598f1e60158c15c0486cab85306d5",
       "evaluation_reference": "web/model_artifacts/request_evaluation.json",
       "limitation": "Advisory only; uncalibrated and not approved to block payments. Failed the synthetic prevention gate."
+    },
+    {
+      "model_id": "ledger_transaction_v1",
+      "version": "1.0",
+      "name": "Ledger transaction classifier",
+      "task": "Observed wallet transfer patterns compared with generator-labelled fraud examples",
+      "positive_class": "Generator-labelled fraudulent transfer",
+      "release_status": "synthetic_advisory_only",
+      "training_cutoff": "2026-10-06T23:59:59Z",
+      "eligible_population": "Case payments with a matching AE ledger projection",
+      "file": "ledger_transaction_v1.json",
+      "artifact_sha256": "00aaf6f4ca9eee11f426963e5b5bf89d315e83dc57185b2ce088efa11f17bc35",
+      "evaluation_reference": "web/model_artifacts/ledger_transaction_evaluation.json",
+      "limitation": "Advisory only; uncalibrated and not approved to block payments. Trained without BigQuery ML."
     }
   ]
 }

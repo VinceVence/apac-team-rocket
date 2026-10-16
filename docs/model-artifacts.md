@@ -27,6 +27,16 @@ For a new feature set, add a versioned trusted builder and adapter with cutoff/a
 
 Run the offline tests and compare JSON inference with the original estimator before merging. Registration enables investigation only. Promotion to payment serving requires a separate reviewed operating threshold, replay evidence, human activation and revocation path. Training and uploading an artifact never release it automatically.
 
+## Ledger classifier (no BigQuery ML)
+
+`ledger_transaction_v1` uses `ledger-features-v1` built from the AE ledger projection (`web/ledger_fraud_features.py`). Train locally:
+
+```sh
+uv run --locked python -B web/train_ledger_classifier.py
+```
+
+Optional: export rows with `sql/ledger_fraud_export.sql`, convert to the AE jsonl layout, then `uv run --locked python -B web/train_ledger_classifier.py --export path/to/export`. The agent calls it through `score_models` like the other registered predictors.
+
 ## Request-learning tools
 
 `request_models.py` exports `request_logistic`: fixed word/character hashing blocks plus observed transaction features, bounded coefficients and a validation-selected threshold. `train_request_predictors.py` builds our two additional advisory tools. The model input is the recorded prepayment request, not the later complaint.

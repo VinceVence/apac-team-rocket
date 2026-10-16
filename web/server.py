@@ -78,6 +78,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
     resetter=DemoReset(lab,world,fraud_runner,cloud,baseline);world_demo.resetter=resetter
     risk_lab=RiskLab(fraud_agent,fraud_runner)
     environment_data=EnvironmentData(lab,world,fraud_desk)
+    lab.environment_data=environment_data
     world.environment_data=environment_data
     initialize_environment_publications(lab)
     environment_publisher=EnvironmentPublisher(environment_data,cloud,os.environ['MINTTOWN_ENV_DATASET']) if cloud and os.getenv('MINTTOWN_ENV_DATASET') else None
