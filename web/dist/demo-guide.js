@@ -1,6 +1,7 @@
 import {decisionMap,decisionTrail,renderDecisionMap,manualInvestigation} from './decision-map.js';
 import {roleNames} from './harness-ui.js';
 import {cleanText,toolLabels,caseActivity,agentIcon,pretty} from './agent-ui.js';
+import {residentPhoneStory,renderResidentPhone} from './resident-phone.js';
 
 const short=text=>typeof text==='string'?cleanText(text).slice(0,180):'';
 
@@ -12,6 +13,8 @@ export function demoBeats(demo,report){
   add('world','world','.map-shell',stopped?'Open the recorded Gemini case':'A small town. Real decisions.',stopped||(demo.replay?'Follow a saved Gemini investigation. No new calls or changes are made.':'Residents shop and send money. Every payment becomes evidence the agents can use.'),{who:stopped?'Recorded demo available':demo.replay?'Recorded world':'Live world',wait:stopped?'No investigation ran':'Waiting for a report',action:stopped?'replay':demo.replay&&demo.replay_stage==='empty'?'payments':null});
   if(demo.replay&&demo.replay_stage!=='empty')add('payments','world','.map-shell','Residents make ordinary payments','These recorded payments become account history. Next shows the deceptive transfer and the resident’s complaint.',{who:'Recorded transactions',action:demo.replay_stage==='payments'?'scam':null});
   if(!demo.focus_report_id)return beats;
+  add('message','world','.map-shell','It starts with a message','A sender claims to be bank security and asks the resident to move money. Read the recorded request from the customer’s side.',{who:'Customer’s phone'});
+  add('payment','world','.map-shell','The resident follows the request','The earlier transfer becomes evidence. A payment authorized on a familiar phone can still follow a deceptive request.',{who:'Before learning'});
   add('complaint','world',(demo.incidents||[]).some(i=>i.report_id===demo.focus_report_id&&i.report_status!=='resolved')?'#fraud-sprite-focus':'#world-alert','Someone needs help.','A resident reports a suspicious transfer. Follow the case to see what the investigator checks.',{who:'Customer',next:'Follow investigation'});
   if(report?.id!==demo.focus_report_id)return beats;
   const waitingForNext=!report.investigation&&report.preparation?.status==='waiting'&&report.preparation?.stage==='demo_investigation';
@@ -41,7 +44,10 @@ export function demoBeats(demo,report){
     add('prevention','resolution','#prevention-panel',working?'The prevention agent tests the lesson':passed?'Prepare the next payment check':'Use the approved recipient watch',working?'The learner checks a narrow candidate against similar requests and legitimate controls.':passed?'The candidate passed synthetic replay. Next applies the assumed demo analyst activation.':'A broader candidate is unavailable or did not pass. The approved recipient watch still checks the next payment locally.',{who:'Prevention',live:working,action:!working&&!actions.activate?'activate':null});
   }
   if(actions.activate)add('repeat','world','.map-shell','A similar scam happens again','Another resident receives a suspicious request. Next sends the attempt through the actual payment check before any debit.',{who:'Next payment',action:demo.phase==='protected'?null:'prove'});
-  if(demo.phase==='protected')add('protected','world','.map-shell','The scam was stopped before debit','The suspicious transfer was held. A legitimate control payment completed. The payment gateway used approved knowledge without another model call.',{who:'Protection verified',done:true});
+  if(demo.phase==='protected'){
+    add('protected','world','.map-shell','A pause. A chance to check.','The suspicious transfer was held before debit. The resident receives a verification notice from the approved safeguard. A hold signals suspicion; it does not prove fraud.',{who:'Customer protection'});
+    add('payment-sent','world','.map-shell','Everyday payments still go through','The legitimate control payment completed. Both payment checks used approved knowledge locally, without another model call.',{who:'Payment receipt',done:true});
+  }
   return beats;
 }
 
@@ -61,7 +67,7 @@ export function nextGuideStep(beats,current,seen=new Set()){
   return beats[i+1]?.id||null;
 }
 export const demoPhases=['World','Report','Investigate','Review','Learn','Protect'];
-export function demoPhase(id){return ['world','payments'].includes(id)?0:['complaint','report'].includes(id)?1:id==='review'?3:['knowledge','prevention'].includes(id)?4:['repeat','protected'].includes(id)?5:2}
+export function demoPhase(id){return ['world','payments'].includes(id)?0:['message','payment','complaint','report'].includes(id)?1:id==='review'?3:['knowledge','prevention'].includes(id)?4:['repeat','protected','payment-sent'].includes(id)?5:2}
 export function investigationProgress(report,demo={}){
   const a=caseActivity(report,demo),rows=[],completed=a.completed,last=a.latest;
   if(!report?.investigation){rows.push({label:'Customer report saved',status:'done'});if(a.active)rows.push({label:a.title,status:'active',detail:a.detail})}
@@ -107,7 +113,14 @@ export function createDemoGuide({state,openCase,showWorld,error,demoAction,resid
   function paint(b){
     cancelAnimationFrame(canvasFrame);worldCanvas=null;visual.replaceChildren();root.dataset.scene=b.id;root.dataset.actor=b.who;
     const d=state.data.demo,run=report?.investigation,job=report?.prevention,rule=job?.rule,actions=d.presentation_actions||{},tx=report?.transactions||[],total=tx.reduce((s,t)=>s+t.amount_minor,0);
-    if(['world','payments','complaint','repeat','protected'].includes(b.id)){
+    visual.classList.toggle('demo-phone-scene',['message','payment','complaint','repeat','protected','payment-sent'].includes(b.id));
+    if(['message','payment','complaint','repeat','protected','payment-sent'].includes(b.id)){
+      const backdrop=el('div',undefined,'phone-town-backdrop');visual.append(backdrop);
+      const canvas=el('canvas');canvas.width=960;canvas.height=600;canvas.setAttribute('aria-hidden','true');canvas.getContext('2d').drawImage(document.getElementById('town-map'),0,0,960,600);backdrop.append(canvas);
+      const label=el('div',undefined,'phone-scene-caption');label.append(el('span',b.id==='protected'?'AFTER REVIEW & ACTIVATION':b.id==='payment-sent'?'THE LEGITIMATE CONTROL':b.id==='repeat'?'THE NEXT REQUEST':'THE CUSTOMER’S SIDE'),el('strong',b.id==='protected'?'Your money stays with you.':b.id==='payment-sent'?'Protection with room for everyday life.':b.id==='repeat'?'A learned safeguard gets its test.':'One message can change the day.'));visual.append(label);
+      renderResidentPhone(visual,residentPhoneStory(b.id,state.data,report));return;
+    }
+    if(['world','payments'].includes(b.id)){
       const heading=el('div',undefined,'demo-scene-label');heading.append(agentIcon(['repeat','protected'].includes(b.id)?'prevention':b.id==='complaint'?'human':'knowledge'),el('strong',b.id==='protected'?'The next payment was protected':b.id==='repeat'?'Resident 2 receives a suspicious request':b.id==='complaint'?'Resident '+Number((d.focus_customer_id||'C001').slice(1))+' asks for help':'Watch the town transact'));visual.append(heading);sceneCanvas();
       const results=el('div',undefined,'demo-world-results');
       if(b.id==='protected')facts(results,[['Scam payment','Held before debit'],['Normal payment','Completed'],['Gateway','Local check']]);
@@ -169,15 +182,16 @@ export function createDemoGuide({state,openCase,showWorld,error,demoAction,resid
     try{
       if(b?.action)await demoAction(b.action);
       if(b?.id==='complaint'&&!report){entering=true;try{await openCase()}finally{entering=false}beats=demoBeats(state.data.demo,report)}
-      const target=nextGuideStep(beats,current,seen);if(target){current=target;const next=beats.find(n=>n.id===current);if(next.view!==state.view){entering=true;try{if(next.view==='world')await showWorld(['repeat','protected'].includes(next.id)?'C002':undefined);else await openCase()}finally{entering=false}}}
+      const target=nextGuideStep(beats,current,seen);if(target){current=target;const next=beats.find(n=>n.id===current);if(next.view!==state.view){entering=true;try{if(next.view==='world')await showWorld(['repeat','protected','payment-sent'].includes(next.id)?'C002':undefined);else await openCase()}finally{entering=false}}}
     }catch(e){$('.guide-error').textContent=cleanText(e.message);$('.guide-error').hidden=false}
     finally{busy=false;render();$('.guide-next').focus({preventScroll:true})}
   }
   $('.guide-next').onclick=advance;
-  $('.guide-back').onclick=async()=>{if(busy)return;current=beats[Math.max(0,beats.findIndex(b=>b.id===current)-1)].id;const b=beats.find(b=>b.id===current);if(b.view!==state.view){entering=true;try{if(b.view==='world')await showWorld(['repeat','protected'].includes(b.id)?'C002':undefined);else await openCase()}finally{entering=false}}render()};
+  $('.guide-back').onclick=async()=>{if(busy)return;current=beats[Math.max(0,beats.findIndex(b=>b.id===current)-1)].id;const b=beats.find(b=>b.id===current);if(b.view!==state.view){entering=true;try{if(b.view==='world')await showWorld(['repeat','protected','payment-sent'].includes(b.id)?'C002':undefined);else await openCase()}finally{entering=false}}render()};
   $('.guide-close').onclick=close;
-  window.addEventListener('wheel',e=>{if(active)e.preventDefault()},{passive:false});window.addEventListener('touchmove',e=>{if(active)e.preventDefault()},{passive:false});
-  window.addEventListener('keydown',e=>{if(!active)return;if(e.key==='Escape'){e.preventDefault();close();return}if(['PageDown','PageUp','Home','End','ArrowDown','ArrowUp',' '].includes(e.key)){e.preventDefault();return}if(e.key==='Tab'){const buttons=[...root.querySelectorAll('button:not(:disabled)')];e.preventDefault();const i=buttons.indexOf(document.activeElement);buttons[(i+(e.shiftKey?-1:1)+buttons.length)%buttons.length]?.focus()}});
+  const phoneScroll=target=>target instanceof Element&&!!target.closest('.phone-screen');
+  window.addEventListener('wheel',e=>{if(active&&!phoneScroll(e.target))e.preventDefault()},{passive:false});window.addEventListener('touchmove',e=>{if(active&&!phoneScroll(e.target))e.preventDefault()},{passive:false});
+  window.addEventListener('keydown',e=>{if(!active)return;if(e.key==='Escape'){e.preventDefault();close();return}if(['PageDown','PageUp','Home','End','ArrowDown','ArrowUp',' '].includes(e.key)&&!phoneScroll(e.target)){e.preventDefault();return}if(e.key==='Tab'){const buttons=[...root.querySelectorAll('button:not(:disabled),summary,[tabindex="0"]')];e.preventDefault();const i=buttons.indexOf(document.activeElement);buttons[(i+(e.shiftKey?-1:1)+buttons.length)%buttons.length]?.focus()}});
   document.getElementById('fraud-select').addEventListener('change',close);document.getElementById('risk-models-tab').addEventListener('click',close);
   return {update,close};
 }

@@ -23,7 +23,7 @@ test('latest real hold gets a shield without old reports overwriting it',()=>{
 });
 test('the guide highlights the reporting sprite, with a fallback for saved resolved cases',()=>{
   const demo={guided:true,focus_report_id:'case',incidents:[{report_id:'case',report_status:'awaiting_review'}]};
-  assert.equal(demoBeats(demo,null)[1].target,'#fraud-sprite-focus');
+  assert.equal(demoBeats(demo,null).find(b=>b.id==='complaint').target,'#fraud-sprite-focus');
   demo.incidents[0].report_status='resolved';
-  assert.equal(demoBeats(demo,null)[1].target,'#world-alert');
+  assert.equal(demoBeats(demo,null).find(b=>b.id==='complaint').target,'#world-alert');
 });
