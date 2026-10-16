@@ -35,7 +35,24 @@ Run the offline tests and compare JSON inference with the original estimator bef
 uv run --locked python -B web/train_ledger_classifier.py
 ```
 
-Optional: export rows with `sql/ledger_fraud_export.sql`, convert to the AE jsonl layout, then `uv run --locked python -B web/train_ledger_classifier.py --export path/to/export`. The agent calls it through `score_models` like the other registered predictors.
+**From Gab’s BigQuery dataset** (`minttown-apac-2026.minttown_simulated_env`):
+
+```sh
+gcloud auth application-default login
+chmod +x scripts/retrain_and_deploy_ledger_model.sh
+./scripts/retrain_and_deploy_ledger_model.sh
+```
+
+That script runs `sql/ledger_fraud_export_simulated_env.sql` (standard SQL only), retrains `ledger_transaction_v1.json`, runs tests, builds the container, and deploys Cloud Run. Labels stay offline; the agent never receives `is_fraud` / `risk_score`.
+
+Manual steps:
+
+```sh
+uv run --locked python -B web/fetch_ledger_training_csv.py --output data/ledger_train_minttown_simulated_env.csv
+uv run --locked python -B web/train_ledger_classifier.py --bigquery-csv data/ledger_train_minttown_simulated_env.csv
+```
+
+Optional: export `minttown_world` with `sql/ledger_fraud_export.sql` and AE jsonl via `train_ledger_classifier.py --export`. The agent calls the model through `score_models` like the other registered predictors.
 
 ## Request-learning tools
 

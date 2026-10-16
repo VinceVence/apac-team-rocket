@@ -10,6 +10,7 @@ dependencies = [
 
 [dependency-groups]
 figures = ["reportlab==4.4.9", "pymupdf>=1.26,<2"]
+training = ["google-cloud-bigquery>=3.25,<4"]
 
 [tool.uv]
 package = false

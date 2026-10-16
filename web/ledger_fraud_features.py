@@ -87,6 +87,61 @@ def vector_from_ae_row(t, tables):
     }
 
 
+def _truthy(value):
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).strip().lower() in ('true', 't', '1')
+
+
+def _float(value, default=0.0):
+    if value is None or value == '':
+        return default
+    return float(value)
+
+
+def training_row_from_flat_export(record):
+    ratio_raw = record.get('amount_to_balance_ratio')
+    ratio = 10.0 if ratio_raw in (None, '') else min(10.0, _float(ratio_raw, 10.0))
+    return {
+        'transaction_id': record['transaction_id'],
+        'label': _truthy(record['is_fraud']),
+        'features': {
+            'amount_php': _float(record['amount_php']),
+            'transaction_type_code': _code(record.get('transaction_type'), TRANSACTION_TYPES),
+            'channel_code': _code(record.get('channel'), CHANNELS),
+            'sender_kyc_code': _code(record.get('sender_kyc_status'), KYC),
+            'sender_risk_tier_code': _code(record.get('sender_risk_tier'), RISK),
+            'sender_account_age_days': _float(record.get('sender_account_age_days')),
+            'sender_wallet_type_code': _code(record.get('sender_wallet_type'), WALLET_TYPES),
+            'sender_balance_php': _float(record.get('sender_balance_php')),
+            'sender_daily_spent_php': _float(record.get('sender_daily_spent_php')),
+            'sender_wallet_status_code': _code(record.get('sender_wallet_status'), WALLET_STATUS),
+            'amount_to_balance_ratio': ratio,
+            'receiver_kyc_code': _code(record.get('receiver_kyc_status'), KYC),
+            'receiver_risk_tier_code': _code(record.get('receiver_risk_tier'), RISK),
+            'receiver_wallet_type_code': _code(record.get('receiver_wallet_type'), WALLET_TYPES),
+            'receiver_wallet_status_code': _code(record.get('receiver_wallet_status'), WALLET_STATUS),
+            'device_trust_score': _float(record.get('device_trust_score'), 0.5),
+            'device_model_code': _code(record.get('device_model'), DEVICE_MODELS),
+        },
+        'feature_version': VERSION,
+    }
+
+
+def load_bigquery_csv(path):
+    import csv
+
+    rows = []
+    with Path(path).open(newline='', encoding='utf-8') as handle:
+        for record in csv.DictReader(handle):
+            rows.append(training_row_from_flat_export(record))
+    if not rows:
+        raise ValueError('BigQuery export CSV is empty.')
+    return rows
+
+
 def load_export_rows(export_dir):
     root = Path(export_dir)
     tables = {}
