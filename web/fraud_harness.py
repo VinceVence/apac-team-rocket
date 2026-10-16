@@ -40,6 +40,15 @@ def policy_issues(draft):
     return [message for message,pattern in patterns.items() if re.search(pattern,prose,re.I)]
 
 
+def elevated_signal(receipt):
+    prediction=receipt.get('prediction') or {}
+    if not prediction.get('available'):return None
+    score=prediction.get('signal_score');threshold=prediction.get('threshold')
+    if isinstance(score,(int,float)) and isinstance(threshold,(int,float)):return score>=threshold
+    if receipt.get('score_kind')=='rule_signal' and score in (0,1):return score==1
+    return None
+
+
 class FraudHarness:
     def __init__(self,agent):
         self.agent,self.lab,self.desk=agent,agent.lab,agent.desk
@@ -158,7 +167,8 @@ class FraudHarness:
         keys=('receipt_id','model_id','model_version','feature_version','event_ids','score_kind','calibrated','status','missing_inputs','reason')
         out={k:r[k] for k in keys if k in r}
         if r.get('prediction'):
-            out['prediction']={k:r['prediction'][k] for k in ('available','signal_score','result','limitation') if k in r['prediction']}
+            out['prediction']={k:r['prediction'][k] for k in ('available','signal_score','threshold','result','limitation') if k in r['prediction']}
+            out['prediction']['signal_elevated']=elevated_signal(r)
             out['prediction']['events']=[{k:p[k] for k in ('event_id','available','signal_score','missing_inputs') if k in p} for p in r['prediction'].get('predictions',[])]
         return out
 
@@ -248,6 +258,12 @@ safeguard, determine liability or claim that funds were recovered. Keep prose un
             if not r:continue
             if r['snapshot_hash']!=snapshot['evidence_hash']:models.append('A model receipt uses different evidence.')
             if r['status'] in ('scored','partial') and r['manifest']!=current.get(r['model_id']):models.append('A used model or feature implementation changed.')
+        # Ground an explicit positive-model claim in recorded operating thresholds.
+        prose=' '.join(str(draft.get(k,'')) for k in ('summary','customer_message'))
+        positive_claim=re.search(r'\b(?:models?|classifiers?|predictors?)\b[^.!?]{0,70}\b(?:elevated|high[- ]risk|flagged|detected fraud|confirmed fraud)\b',prose,re.I)
+        if positive_claim and re.search(r'\b(?:not|no|without)\b',positive_claim.group(),re.I):positive_claim=None
+        if positive_claim and not any(elevated_signal(known[i]) is True for i in cited if i in known):
+            models.append('The draft claims an elevated model signal, but no cited receipt meets its operating threshold. Correct the model interpretation; complaint evidence may still warrant investigation.')
         if draft.get('disposition')=='likely_legitimate' and any(r.get('prediction',{}).get('signal_score')==1 for r in known.values() if r.get('prediction')):
             if not context.get('specialist_findings') and not report['answers']:resolution.append('A strong signal needs a documented alternative or customer clarification before a legitimate conclusion.')
         if not draft.get('uncertainties'):resolution.append('The draft must state what remains unverified.')

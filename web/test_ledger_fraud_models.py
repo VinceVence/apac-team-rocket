@@ -72,6 +72,28 @@ class LedgerClassifierChecks(unittest.TestCase):
         pinned = manifests(self.server.lab);pinned[self.model_id]['version']='stale'
         result = predict([self.model_id], self.report['event_ids'], self.snapshot, pinned, self.report['customer_id'], self.server.lab)[0]
         self.assertEqual(result['status'], 'not_available')
+        self.assertIsNone(result['prediction'])
+
+    def test_below_threshold_claim_is_blocked_before_analyst_approval(self):
+        from fraud_harness import FraudHarness
+        agent=self.server.fraud_agent
+        snapshot=self.snapshot
+        run=agent.step(self.run['id'],self.run['step'])
+        scored=agent.harness.score(run,self.report,snapshot,{'model_ids':[self.model_id],'event_ids':self.report['event_ids']})
+        receipt=scored['receipts'][0]
+        # Use a captured below-threshold result to isolate the semantic guard.
+        receipt=copy.deepcopy(receipt);receipt['prediction'].update(available=True,signal_score=.58,threshold=.7,result='no elevated learned signal')
+        self.assertFalse(FraudHarness.compact_receipt(receipt)['prediction']['signal_elevated'])
+        draft={'summary':'Models note elevated risk signals.','customer_message':'An analyst will review the report.',
+               'evidence_ids':self.report['event_ids'],'memory_ids':[],'uncertainties':['Identity is unverified.']}
+        with patch.object(agent.harness,'receipts',return_value=[receipt]):
+            checked=agent.harness.check(run,draft,[receipt['receipt_id']],record=False)
+        self.assertFalse(checked['passed'])
+        self.assertIn('operating threshold',' '.join(checked['judges'][1]['blockers']))
+        draft['summary']='The models report no elevated signal; the complaint still warrants investigation.'
+        with patch.object(agent.harness,'receipts',return_value=[receipt]):
+            checked=agent.harness.check(run,draft,[receipt['receipt_id']],record=False)
+        self.assertTrue(checked['passed'],checked)
 
     def test_real_harness_uses_model_receipt_and_requires_review(self):
         def policy(packet):

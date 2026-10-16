@@ -4,7 +4,7 @@ Synthetic Philippine fintech demo: transactions → complaint → Gemini investi
 
 ## Current implementation
 
-- [Final release QA](docs/final-qa.md): 200 Python tests, 38 JavaScript tests and ten harness scenarios passed. Hosted case `SC-18e89835be` completed with real Gemini and a zero-debit changed-recipient hold; four calls cost $0.00385. Earlier failure records remain preserved.
+- [Ledger integration QA](docs/ledger-model.md): 207 Python tests, 39 JavaScript checks and ten harness scenarios passed. Live case `SC-6b94691bf7` chose the AE ledger model in three calls/$0.00356. Its below-threshold result was misstated in the draft; the added model-claim judge blocks approval until corrected. The case was not retried. [Earlier release QA](docs/final-qa.md) includes the zero-debit changed-recipient hold. Preserve earlier traces and failures.
 
 - AE-shaped data: `customers`, `wallets`, `devices`, `wallet_transactions`, plus reviewed knowledge tables. Source dictionary follows Gab’s `f03a384`; his generator/loader were not merged. AE owns source data; DS owns reviewed model artifacts; agent work owns routing, scoped tools, checkpoints and review.
 - Native ADK harness: a case lead and 0–1 scoped specialist/critic, versioned model receipts, local judges and human review. Parent finishes before child scheduling; one worker, no nested `AgentTool` calls. Judges check contracts, not factual certainty.
