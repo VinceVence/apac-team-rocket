@@ -60,7 +60,7 @@ def predict(model_ids,event_ids,snapshot,pinned,customer_id,lab=None):
         stale=pinned.get(model_id)!=card
         learned=model_id not in REGISTRY
         if learned and not stale and card.get('available'):
-            result,inputs=trained_models.predict(model_id,selected,lab)
+            result,inputs=trained_models.predict(model_id,selected,lab,snapshot)
         else:
             inputs=input_records(model_id,selected) if not learned else []
             result=predict_case([model_id],selected)['detectors'][0] if not learned and not stale else None
@@ -80,6 +80,6 @@ def predict(model_ids,event_ids,snapshot,pinned,customer_id,lab=None):
             'status':'not_available' if stale or not result or not result['available'] else 'partial' if missing else 'scored',
             'reason':'Pinned model or feature implementation changed.' if stale else card.get('unavailable_reason','Registered artifact is unavailable.') if learned and not card.get('available') else 'Required evidence is missing.' if missing else None,
             'prediction':result,'input_fields':list(card['required_inputs']),
-            'input_source':'Versioned prepayment feature snapshot' if learned else 'Frozen payment observations',
+            'input_source':card.get('input_source','Versioned prepayment feature snapshot' if learned else 'Frozen payment observations'),
             'case_feature_source':snapshot['data'].get('customer_features',{}).get('source')})
     return results

@@ -2,6 +2,8 @@
 
 The investigator calls `score_models` with registered model IDs and case-bound transaction IDs. Trusted code binds the customer, immutable evidence, feature versions and artifact digest. Models provide advisory evidence; they cannot approve cases or activate prevention.
 
+Karlo's [AE ledger model](ledger-model.md) is now available as `ledger_transaction_v1` version 2. Its separate `ledger-features-v2` contract freezes transaction/history inputs in each new case; it never reads mutable wallet state at inference. Temporal holdout results and low-sensitivity limitations travel with the tool. No Vertex endpoint or BQML prediction job is needed.
+
 The built-in `synthetic_triage_v1` is a real locally fitted logistic baseline, not Karlo's model. It uses generator labels, failed the final prevention gate and is explicitly investigation-only. Its scores are **not calibrated fraud probabilities**. Three existing predictor adapters remain labelled demo rules.
 
 ## Files to contribute

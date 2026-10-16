@@ -82,3 +82,5 @@ export function renderCaseTracker(report,demo,onNavigate){
   document.getElementById('resolution-stage-status').textContent=p.statuses[0];document.getElementById('human-stage-status').textContent=p.statuses[1];document.getElementById('prevention-stage-status').textContent=p.statuses[2];
   return p;
 }
+// Presentation phases can wait for a reader indefinitely. Only real backend work needs polling.
+export const needsWorldPoll = demo => Boolean(demo?.running || demo?.agent_busy);

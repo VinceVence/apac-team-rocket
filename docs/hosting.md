@@ -8,6 +8,8 @@ The October 13 limit increase preserves all existing usage and case histories. A
 
 The local shared-ledger process must remain stopped while Cloud Run serves this database. The cloud deployment keeps one maximum instance, zero minimum instances and the existing global request, report, warehouse and model limits. All data is synthetic. Public visitors share the same demo, including case approvals; do not enter real customer information.
 
+Evaluation-period optimization: idle guided phases stop polling until a user action, while actual world/agent work continues refreshing. Background workers retain CPU allocation. Karlo's [ledger classifier](ledger-model.md) runs inside the existing service without another endpoint; its deployment script reuses image layers and preserves the single writer and all cost controls.
+
 ## Cost controls
 
 - Native spend caps are **$8/month for Vertex AI** and **$5/month for Cloud Run**, scoped to this project. These can stop the demo before the project-wide guard triggers.

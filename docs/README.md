@@ -19,6 +19,7 @@
 | Inspect real Gemini outcomes, failures and spend | [Live learning-loop results](learning-evaluation.md) |
 | Follow ACE playbooks and MLE-STAR model refinement | [Two learning loops](learning-loops.md) |
 | Contribute Karlo's trained model | [Model artifact contract](model-artifacts.md) |
+| Run Karlo's AE-trained classifier and inspect its limits | [Ledger model integration](ledger-model.md) |
 | Find a backend file or endpoint | [Application map](../web/README.md) |
 
 Start with one complete case. A normal demo follows **Run world → complaint → selected tools → analyst review → approved knowledge → later payment hold**. A stopped investigation is a visible result, not a reason to silently retry it.

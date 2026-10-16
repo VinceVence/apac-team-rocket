@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {caseProgress,publicEvidence,cleanText,caseActivity,demoAnalystState,featuredIncident} from './dist/agent-ui.js';
+import {caseProgress,publicEvidence,cleanText,caseActivity,demoAnalystState,featuredIncident,needsWorldPoll} from './dist/agent-ui.js';
+
+test('waiting for demo Next does not keep Cloud Run warm with polling',()=>{
+  for(const phase of ['complaint','investigation','prevention','protected'])assert.equal(needsWorldPoll({phase,running:false,agent_busy:false}),false);
+  assert.equal(needsWorldPoll({running:true}),true);
+  assert.equal(needsWorldPoll({agent_busy:true}),true);
+});
 
 test('the protection link follows the held scam even when a later legitimate payment is first',()=>{
   const held={id:'held',status:'blocked',report_id:'source'},normal={id:'normal',status:'passed'};

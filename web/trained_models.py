@@ -24,7 +24,8 @@ def catalog(lab=None):
 
 
 def artifact(entry,lab=None):
-    from risk_models import ALLOWED,VERSION
+    from ledger_fraud_features import ALLOWED as LEDGER_ALLOWED, VERSION as LEDGER_VERSION
+    from risk_models import ALLOWED, VERSION as RISK_VERSION
     if entry.get('_registry_id'):
         if not lab:raise LabError('Registered artifact store is unavailable.',409)
         row=lab.db.execute("SELECT artifact_json FROM risk_model_registry WHERE id=? AND status='advisory'",(entry['_registry_id'],)).fetchone()
@@ -39,7 +40,9 @@ def artifact(entry,lab=None):
         from request_models import validate_artifact
         return validate_artifact(model)
     names=model.get('features',[])
-    if model.get('feature_version')!=VERSION or not names or len(names)!=len(set(names)) or not set(names)<=ALLOWED:raise LabError('Unsupported trained feature contract.',422)
+    feature_version=model.get('feature_version')
+    allowed=LEDGER_ALLOWED if feature_version==LEDGER_VERSION else ALLOWED if feature_version==RISK_VERSION else None
+    if allowed is None or not names or len(names)!=len(set(names)) or not set(names)<=allowed:raise LabError('Unsupported trained feature contract.',422)
     if model.get('kind') not in ('logistic','boosted_tree'):raise LabError('Unsupported data-only model format.',422)
     if model['kind']=='logistic':
         if any(len(model.get(k,[]))!=len(names) for k in ('coefficients','means','scales')) or any(v<=0 for v in model['scales']):raise LabError('Invalid logistic model dimensions.',422)
@@ -85,14 +88,22 @@ def manifests(lab=None):
             feature_builder_sha256=hashlib.sha256(Path(__file__).with_name('risk_models.py').read_bytes()+Path(__file__).with_name('prevention.py').read_bytes()+Path(__file__).with_name('request_models.py').read_bytes()).hexdigest())
         try:
             model=artifact(entry,lab);card['required_inputs']=model.get('features',model.get('numeric_features',[])+(['recorded_prepayment_message'] if any(b!='transaction' for b in model.get('blocks',[])) else []));card['available']=True;card['feature_version']=model['feature_version']
+            if model['feature_version']=='ledger-features-v2':
+                card['feature_builder_sha256']=hashlib.sha256(Path(__file__).with_name('ledger_fraud_features.py').read_bytes()+Path(__file__).with_name('ledger_fraud_models.py').read_bytes()).hexdigest()
+                card['input_source']='Frozen case-time ledger with strictly earlier wallet history; AE-compatible contract.'
         except (LabError,ValueError,KeyError,OSError,TypeError) as exc:card.update(available=False,required_inputs=[],unavailable_reason=str(exc))
         result[entry['model_id']]=card
     return result
 
 
-def predict(model_id,transactions,lab=None):
+def predict(model_id,transactions,lab=None,snapshot=None):
+    from ledger_fraud_features import VERSION as LEDGER_VERSION
     from risk_models import VERSION
-    entry=next(e for e in catalog(lab) if e['model_id']==model_id);model=artifact(entry,lab);records=[];predictions=[]
+    entry=next(e for e in catalog(lab) if e['model_id']==model_id);model=artifact(entry,lab)
+    if model.get('feature_version')==LEDGER_VERSION:
+        from ledger_fraud_models import predict as predict_ledger
+        return predict_ledger(model_id,transactions,lab,entry,model,snapshot)
+    records=[];predictions=[]
     for tx in transactions:
         m=tx['metadata'];saved=m.get('risk_features',{});missing=[]
         if model['kind']=='request_logistic':
@@ -123,3 +134,4 @@ def predict(model_id,transactions,lab=None):
         'result':'elevated learned signal' if value is not None and value>=model['threshold'] else 'no elevated learned signal' if valid else 'insufficient evidence',
         'threshold':model['threshold'],'kind':'trained_synthetic_advisory','predictions':predictions,
         'limitation':entry['limitation'],'input_source':'Immutable prepayment feature snapshot; no complaint, outcome or hidden label inputs.'},records
+

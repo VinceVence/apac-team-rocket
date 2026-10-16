@@ -1,0 +1,65 @@
+{
+  "rows": 2031,
+  "customers": 100,
+  "positives": 1292,
+  "split": "chronological 60/20/20; timestamp ties kept together; threshold selected only on validation",
+  "partitions": {
+    "train": {
+      "rows": 1219,
+      "positives": 784,
+      "start": "2026-07-15T20:04:27Z",
+      "end": "2026-09-07T18:07:36Z"
+    },
+    "validation": {
+      "rows": 406,
+      "positives": 253,
+      "start": "2026-09-07T18:35:46Z",
+      "end": "2026-09-24T23:07:41Z"
+    },
+    "test": {
+      "rows": 406,
+      "positives": 255,
+      "start": "2026-09-24T23:09:12Z",
+      "end": "2026-10-13T19:35:04Z"
+    }
+  },
+  "validation": {
+    "threshold": 0.7,
+    "tp": 19,
+    "fp": 6,
+    "fn": 234,
+    "tn": 147,
+    "recall": 0.07509881422924901,
+    "false_positive_rate": 0.0392156862745098
+  },
+  "test": {
+    "tp": 20,
+    "fp": 6,
+    "fn": 235,
+    "tn": 145,
+    "recall": 0.0784313725490196,
+    "false_positive_rate": 0.039735099337748346
+  },
+  "test_average_precision": 0.658572977368406,
+  "json_parity_max_error": 1.1102230246251565e-16,
+  "train_test_customer_overlap": 100,
+  "limitations": [
+    "Synthetic AE labels, not measured real-world fraud accuracy.",
+    "Temporal test can share customers; no unseen-customer or unseen-scam guarantee.",
+    "Uncalibrated advisory score; not approved for payment blocking."
+  ],
+  "source": "minttown-apac-2026.minttown_simulated_env; 100 customers; read-only bounded export",
+  "feature_version": "ledger-features-v2",
+  "excluded_predictor_inputs": [
+    "is_fraud",
+    "scam_type",
+    "risk_score",
+    "risk_factors",
+    "current_balance",
+    "daily_spent",
+    "wallet_status",
+    "risk_tier",
+    "trust_score",
+    "demographics"
+  ]
+}

@@ -24,6 +24,8 @@ get_case_evidence verifies case-bound payments, pinned features and complaint gu
 for each predictor's target, score kind and limitations. Prefer useful human-reviewed advisory tools, not every
 model. All learned scores are uncalibrated; demo rules are signals, not fraud probabilities. Never average
 incompatible targets. Normal authorization does not exclude deception. Missing inputs stay unknown.
+For transaction amount or timing questions, the AE ledger classifier can corroborate wallet behavior.
+Its weak measured sensitivity means a low score cannot clear a complaint. Compare with independent evidence.
 Retrieve a reviewed playbook when it can resolve ambiguity. Its strategy, model hints and counterexamples
 are leads to verify, not proof. Distress and demographics never establish fraud.
 You may delegate ONE focused question to a specialist/critic, or ask the customer for missing testimony.

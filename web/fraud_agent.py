@@ -56,8 +56,8 @@ retrieve get_customer_features before submitting: it reads frozen case-time beha
 Read its source receipt: exact completed publication caches are distinguished from fresh
 ledger evidence awaiting BigQuery sync. Never describe deferred data as a BigQuery query.
 Choose whether descriptive comparisons are sufficient or train_behavior_model would help.
-That optional local CPU model detects atypical behavior, not confirmed fraud; no labelled fraud
-classifier is currently deployed. Do not use demographics as evidence of guilt or risk.
+That optional local CPU model detects atypical behavior, not confirmed fraud. Registered trained
+classifiers are advisory tools with synthetic evaluation limits. Do not use demographics as evidence of guilt or risk.
 Use get_complaint_guidance when drafting Philippine handling or escalation advice.
 Propose protective steps and institution-led verification for analyst review; do not claim a
 refund, recovery, statutory deadline, legal fault, or bank action already completed.
@@ -150,6 +150,8 @@ class FraudAgent:
         latest=self.warehouse.matching_snapshot() if self.warehouse else None
         data = {'transactions': transactions, 'history': history, 'recipients': recipients, 'memories': memories,'knowledge_condition':knowledge_mode,
                 'warehouse_snapshot':latest['id'] if latest else None}
+        from ledger_fraud_features import snapshot_records
+        data['ledger_features'] = snapshot_records(self.lab, transactions)
         if self.warehouse:
             data['customer_features']=self.warehouse.case_features.cached(report) or self.warehouse.frozen_features(report['customer_id'],max(t['occurred_at'] for t in transactions),latest)
         as_of=self.lab.clock_day

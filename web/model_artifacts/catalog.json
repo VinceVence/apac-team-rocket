@@ -41,6 +41,20 @@
       "artifact_sha256": "786ca1ab9d083eca0c06aeddaa9ef0fb7a3598f1e60158c15c0486cab85306d5",
       "evaluation_reference": "web/model_artifacts/request_evaluation.json",
       "limitation": "Advisory only; uncalibrated and not approved to block payments. Failed the synthetic prevention gate."
+    },
+    {
+      "model_id": "ledger_transaction_v1",
+      "version": "2.0",
+      "name": "AE ledger behavior classifier",
+      "task": "Compare transaction amount, channel, type and prior wallet activity with AE-labelled fraud patterns",
+      "positive_class": "AE generator-labelled fraudulent transfer",
+      "release_status": "synthetic_advisory_only",
+      "training_cutoff": "2026-09-07T18:07:36Z",
+      "eligible_population": "Settled synthetic wallet transfers with frozen ledger-features-v2",
+      "file": "ledger_transaction_v1.json",
+      "artifact_sha256": "8b0aa4155c0343aaa20054d9d7fd9b47c15d4c4c2d3ddb680b018e498a354d49",
+      "evaluation_reference": "web/model_artifacts/ledger_transaction_evaluation.json",
+      "limitation": "Synthetic temporal test: 20/255 fraud detected; 6/151 legitimate flagged. Low scores cannot clear a complaint. Uncalibrated; not approved to block."
     }
   ]
 }

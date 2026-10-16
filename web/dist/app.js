@@ -4,7 +4,7 @@ import {createRiskUI} from './risk-ui.js';
 import {createDemoGuide} from './demo-guide.js';
 import {createRecordedDemo} from './demo-replay.js';
 import {showEvaluation} from './evaluation-ui.js';
-import {mountAgentIcons,cleanText,agentIcon,featuredIncident} from './agent-ui.js';
+import {mountAgentIcons,cleanText,agentIcon,featuredIncident,needsWorldPoll} from './agent-ui.js';
 import {residentLabel,residentAlerts} from './resident-sprites.js';
 mountAgentIcons();
 showEvaluation(document.getElementById('evaluation-panel')).catch(()=>{});
@@ -146,7 +146,7 @@ $('town-map').addEventListener('resident-select',event=>followResident(event.det
 $('resident-picker').onchange=event=>followResident(event.target.value);
 $('resident-close').onclick=()=>followResident(null);
 async function refresh(){state.data=await api('/api/state');renderWorld();schedulePoll()}
-function schedulePoll(){clearTimeout(pollTimer);if(state.replay||document.hidden||(!state.data?.demo.running&&!state.data?.demo.agent_busy&&!['complaint','investigation','prevention'].includes(state.data?.demo.phase)))return;pollTimer=setTimeout(async()=>{try{await refresh();const latest=state.data.demo.incidents[0]?.id;if(latest!==lastIncident&&state.view==='resolution')await fraudUI.load();lastIncident=latest}catch(e){error(e.message)}},3000)}
+function schedulePoll(){clearTimeout(pollTimer);if(state.replay||document.hidden||!needsWorldPoll(state.data?.demo))return;pollTimer=setTimeout(async()=>{try{await refresh();const latest=state.data.demo.incidents[0]?.id;if(latest!==lastIncident&&state.view==='resolution')await fraudUI.load();lastIncident=latest}catch(e){error(e.message)}},3000)}
 async function cloudStatus(){const c=await api('/api/cloud');state.hosted=!!c.enabled;$('cloud-data-panel').hidden=!c.enabled;if(c.enabled){$('deployment-label').textContent=c.execution==='local'?'Local simulation':'Cloud simulation';$('cloud-data-status').textContent=`${c.daily_exports} export batches today`;const pending=!!sessionStorage.getItem('minttown-export-request');$('cloud-export').textContent=pending?'Check export status':'Export next batch';$('cloud-export').disabled=!c.healthy||(c.daily_export_limit!==null&&c.daily_exports>=c.daily_export_limit&&!pending)}}
 const fraudUI=createFraudUI({$,api,state,setPlaying:()=>{},setBusy,refresh,error,focusCustomer:cid=>{state.customerId=cid;renderWorld()},onRender:report=>guide?.update(report),onNavigate:()=>guide?.close()});
 const riskUI=createRiskUI({$,state,error,onCases:()=>fraudUI.load(true)});

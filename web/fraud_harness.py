@@ -158,7 +158,7 @@ class FraudHarness:
         keys=('receipt_id','model_id','model_version','feature_version','event_ids','score_kind','calibrated','status','missing_inputs','reason')
         out={k:r[k] for k in keys if k in r}
         if r.get('prediction'):
-            out['prediction']={k:r['prediction'][k] for k in ('available','signal_score','result')}
+            out['prediction']={k:r['prediction'][k] for k in ('available','signal_score','result','limitation') if k in r['prediction']}
             out['prediction']['events']=[{k:p[k] for k in ('event_id','available','signal_score','missing_inputs') if k in p} for p in r['prediction'].get('predictions',[])]
         return out
 
