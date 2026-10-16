@@ -4,6 +4,8 @@ Synthetic Philippine fintech demo: transactions → complaint → Gemini investi
 
 ## Current implementation
 
+- [Final release QA](docs/final-qa.md): 200 Python tests, 38 JavaScript tests and ten harness scenarios passed. Hosted case `SC-18e89835be` completed with real Gemini and a zero-debit changed-recipient hold; four calls cost $0.00385. Earlier failure records remain preserved.
+
 - AE-shaped data: `customers`, `wallets`, `devices`, `wallet_transactions`, plus reviewed knowledge tables. Source dictionary follows Gab’s `f03a384`; his generator/loader were not merged. AE owns source data; DS owns reviewed model artifacts; agent work owns routing, scoped tools, checkpoints and review.
 - Native ADK harness: a case lead and 0–1 scoped specialist/critic, versioned model receipts, local judges and human review. Parent finishes before child scheduling; one worker, no nested `AgentTool` calls. Judges check contracts, not factual certainty.
 - ACE-inspired playbooks: immutable reviewed deltas, applicability, counterexamples, feedback and revocation. MLE-STAR adaptation: scientist → refiner → validator, at most three paid generations/CPU fits and one component change. Validation selects the nominee before the sealed test. Legacy studies retain their original two-role traces.

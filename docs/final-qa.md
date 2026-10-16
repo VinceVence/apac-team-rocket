@@ -36,7 +36,13 @@ An exhausted-budget instance used the clearly labelled saved Gemini replay. It c
 
 ## Hosted verification
 
-Pending the final release deployment and one bounded live case. Existing limits remain $2/day, $0.05/case, $8 lifetime model spend, six case calls, one paid call in flight, six-second spacing and no automatic retries. The final test will not retrain models or change project access.
+Release `0291de7` deployed successfully to Cloud Run revision `minttown-00040-rrg`. Fresh case **SC-18e89835be**, world run **30**, completed with real Gemini: pinned BigQuery evidence → model tools → proposal → explicit demo analyst approval → Gemini safeguard/playbook → separate activation → changed-recipient hold. The SQL query billed 40 MiB inside the 50 MiB cap.
+
+The durable ledger independently confirms **zero journal entries and zero debit** for the held attempt; the legitimate control settled. No exact-recipient or recorded-demo fallback was used. The hosted static checks returned 200 for `HEAD /app.js` and 404 for the font directory and retired clients.
+
+The live check used **4 model calls costing $0.00385**. Shared lifetime model accounting ended at **$0.185896**. These figures exclude hosting, storage, builds and BigQuery. Existing $2/day, $0.05/case and $8 lifetime caps, six case calls, one paid call in flight, six-second spacing and no automatic retries were unchanged. No model training or IAM changes were performed during this audit.
+
+The hosted world is paused with the completed case retained. Offline preview servers were stopped and temporary viewport overrides reset. No release-blocking failure was observed in the tested paths.
 
 ## Practical limits
 
