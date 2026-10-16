@@ -88,3 +88,25 @@ test('peso amounts preserve centavos and reject absent amounts',()=>{
   assert.equal(formatPesos(5678),'₱56.78');assert.equal(formatPesos(90000),'₱900.00');
   for(const value of [null,undefined,NaN,-1,'90000'])assert.equal(formatPesos(value),'Amount unavailable');
 });
+
+test('replay never offers customer mutations even when current-world state is supplied',async()=>{
+  const {residentActions,residentActionPayload}=await import('./dist/resident-phone.js');
+  const replay=playback(),data=replay.snapshot();
+  data.resident_requests=[{event_id:data.demo.protection.recent[0].id,payment_status:'cancelled',revision:9}];
+  const story=residentPhoneStory('protected',data,replay.detail());
+  assert.equal(story.workflow,null);assert.deepEqual(residentActions(story),[]);
+  assert.throws(()=>residentActionPayload(story,'cancel','','one-request'),/unavailable/);
+});
+
+test('current-world actions carry the exact scene, held event and revision',async()=>{
+  const {residentActions,residentActionPayload}=await import('./dist/resident-phone.js');
+  const replay=playback(),data=replay.snapshot();data.demo.replay=false;
+  const heldId=data.demo.protection.recent[0].id;
+  data.resident_requests=[{event_id:'unrelated',revision:20},{event_id:heldId,revision:2,verification_status:'pending',support_status:'open',payment_status:'held'}];
+  const story=residentPhoneStory('protected',data,replay.detail());
+  assert.deepEqual(residentActions(story),['cancel']);
+  assert.deepEqual(residentActionPayload(story,'cancel','','unique-request'),{scene_id:data.demo.scene_id,event_id:heldId,expected_revision:2,request_id:'unique-request',action:'cancel',note:''});
+  story.workflow.payment_status='cancelled';assert.deepEqual(residentActions(story),[]);
+  delete story.workflow;assert.deepEqual(residentActions(story),['cancel','verify','support']);
+  story.held=false;assert.deepEqual(residentActions(story),[]);
+});

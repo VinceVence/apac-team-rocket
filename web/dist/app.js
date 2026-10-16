@@ -8,6 +8,7 @@ import {showEvaluation} from './evaluation-ui.js';
 import {mountAgentIcons,cleanText,agentIcon,featuredIncident,needsWorldPoll} from './agent-ui.js';
 import {residentLabel,residentAlerts} from './resident-sprites.js';
 import {residentPhoneStory,renderResidentPhone} from './resident-phone.js';
+import {renderResidentQueue} from './resident-queue.js';
 mountAgentIcons();
 showEvaluation(document.getElementById('evaluation-panel')).catch(()=>{});
 const $=id=>document.getElementById(id),drawTown=createTown($('town-map'));
@@ -130,14 +131,35 @@ function renderWorld(){
   positionFraudAlert();
   renderResident();
   renderResidentExperience();
+  renderCustomerQueue();
   if($('welcome').hidden&&!introPending)guide?.update();
 }
+async function residentAction(payload){
+  if(state.replay)throw Error('Recorded replay is read-only.');
+  const result=await api('/api/resident/action',payload);
+  if(state.data.demo.scene_id!==payload.scene_id)throw Error('The scene changed while saving. Open the current payment to continue.');
+  state.data.resident_requests=[result,...(state.data.resident_requests||[]).filter(r=>r.event_id!==result.event_id)];
+  // The action receipt is scoped to the original scene; a refresh reconciles other tabs.
+  if(document.body.classList.contains('guide-open'))renderResidentExperience();
+  renderCustomerQueue();return result;
+}
+async function refreshResident(eventId){
+  await refresh();return state.data.resident_requests?.find(r=>r.event_id===eventId)||null;
+}
+function renderCustomerQueue(){
+  const d=state.data;
+  renderResidentQueue($('resident-requests'),d.resident_requests||[],{sceneId:d.demo.scene_id,replay:!!state.replay,onRefresh:refresh,
+    onReview:async payload=>{if(state.replay)throw Error('Recorded replay is read-only.');await api('/api/resident/review',payload);await refresh()}});
+}
 function renderResidentExperience(){
-  const d=state.data,visible=!!d.demo.guided&&!!d.demo.focus_report_id;
+  const d=state.data,holds=d.demo.protection?.recent||[];
+  const hold=holds.find(h=>h.customer_id===state.customerId)||holds[0];
+  const visible=!!hold||!!d.demo.guided&&!!d.demo.focus_report_id;
   $('resident-experience').hidden=!visible;if(!visible)return;
-  const story=residentPhoneStory(d.demo.phase==='protected'?'protected':'complaint',d,residentReport);
+  const context=hold?{...d,demo:{...d.demo,focus_report_id:hold.source_report_id,protection:{...d.demo.protection,recent:[hold]}}}:d;
+  const story=residentPhoneStory(hold?'protected':'complaint',context,residentReport);
   const panel=$('resident-experience-phone'),key=JSON.stringify(story);
-  if(panel.dataset.story===key)return;panel.dataset.story=key;panel.replaceChildren();renderResidentPhone(panel,story);
+  if(panel.dataset.story===key)return;panel.dataset.story=key;panel.replaceChildren();renderResidentPhone(panel,story,{onAction:residentAction,onRefresh:refreshResident});
 }
 function renderNotifications(demo){
   const notices=$('world-notifications');notices.replaceChildren();
@@ -176,7 +198,7 @@ function schedulePoll(){clearTimeout(pollTimer);if(state.replay||document.hidden
 async function cloudStatus(){const c=await api('/api/cloud');state.hosted=!!c.enabled;$('cloud-data-panel').hidden=!c.enabled;if(c.enabled){$('deployment-label').textContent=c.execution==='local'?'Local simulation':'Cloud simulation';$('cloud-data-status').textContent=`${c.daily_exports} export batches today`;const pending=!!sessionStorage.getItem('minttown-export-request');$('cloud-export').textContent=pending?'Check export status':'Export next batch';$('cloud-export').disabled=!c.healthy||(c.daily_export_limit!==null&&c.daily_exports>=c.daily_export_limit&&!pending)}}
 const fraudUI=createFraudUI({$,api,state,setPlaying:()=>{},setBusy,refresh,error,focusCustomer:cid=>{state.customerId=cid;renderWorld()},onRender:report=>{residentReport=report;renderResidentExperience();if($('welcome').hidden&&!introPending)guide?.update(report)},onNavigate:()=>guide?.close()});
 const riskUI=createRiskUI({$,state,error,onCases:()=>fraudUI.load(true)});
-guide=createDemoGuide({state,error,canAutoOpen:()=>!introPending&&$('welcome').hidden,onClose:()=>{if(state.replay){try{sessionStorage.setItem('minttown-guide-dismissed',state.replayReturnScene)}catch{}state.replay=null;fraudUI.reset();setBusy(true);refresh().then(()=>showView('world')).catch(e=>error(e.message)).finally(()=>setBusy(false))}},showWorld:customerId=>{if(customerId)state.customerId=customerId;return showView('world')},residentPosition:id=>drawTown.residentPosition(id),openCase:async()=>{if(!await openIncident({report_id:state.data.demo.focus_report_id}))throw Error('The saved case could not be opened. Refresh its status.');},demoAction:async action=>{if(action==='replay')return recordedDemo();await api('/api/world/demo-action',{expected_run:state.data.demo.run_id,report_id:state.data.demo.focus_report_id,action});await refresh();if(state.data.demo.focus_report_id)await fraudUI.load()}});
+guide=createDemoGuide({state,error,residentAction,refreshResident,canAutoOpen:()=>!introPending&&$('welcome').hidden,onClose:()=>{if(state.replay){try{sessionStorage.setItem('minttown-guide-dismissed',state.replayReturnScene)}catch{}state.replay=null;fraudUI.reset();setBusy(true);refresh().then(()=>showView('world')).catch(e=>error(e.message)).finally(()=>setBusy(false))}},showWorld:customerId=>{if(customerId)state.customerId=customerId;return showView('world')},residentPosition:id=>drawTown.residentPosition(id),openCase:async()=>{if(!await openIncident({report_id:state.data.demo.focus_report_id}))throw Error('The saved case could not be opened. Refresh its status.');},demoAction:async action=>{if(action==='replay')return recordedDemo();await api('/api/world/demo-action',{expected_run:state.data.demo.run_id,report_id:state.data.demo.focus_report_id,action});await refresh();if(state.data.demo.focus_report_id)await fraudUI.load()}});
 async function showView(view){if(state.view!==view)window.scrollTo({top:0,behavior:'instant'});state.view=['world','resolution','agents'].includes(view)?view:'world';setMenu(false);error('');$('mint-town').dataset.view=state.view;history.replaceState(null,'',state.view==='world'?location.pathname:state.view==='agents'?'#agents':location.hash==='#models'?'#models':'#agent');document.title=$('welcome').hidden?'Mint Town · '+({world:'Environment',resolution:'Agent activity',agents:'Agents'}[state.view]):'Mint Town · A safer next payment';document.querySelectorAll('[data-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===state.view)));$('case-view').hidden=state.view!=='world';$('fraud-view').hidden=state.view!=='resolution';$('agents-view').hidden=state.view!=='agents';renderWorld();document.querySelector('.demo-story').hidden=state.view!=='world'||!state.data.demo.guided;if(state.view==='resolution'){if(location.hash==='#models'||!$('risk-view').hidden)await riskUI.show(true);else await fraudUI.load(true)}else riskUI.pause()}
 async function openIncident(i){try{await riskUI.show(false);await showView('resolution');if(i.report_id||state.data.demo.focus_report_id)await fraudUI.open(i.report_id||state.data.demo.focus_report_id);if(i.status==='blocked'){$('fraud-memory-panel').open=true;document.getElementById(i.report_id?'prevention-stage':'fraud-memory-panel').scrollIntoView({behavior:'smooth',block:'start'})}return true}catch(e){error(e.message);return false}}
 $('open-menu').onclick=toggleSidebar;$('close-menu').onclick=()=>{setMenu(false);$('open-menu').focus()};$('sidebar-backdrop').onclick=()=>setMenu(false);window.addEventListener('keydown',e=>{if(e.key==='Escape')setMenu(false)});

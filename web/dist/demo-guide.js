@@ -119,7 +119,7 @@ export function liveDemoState(report,demo={}){
     copy:map.tool?map.reason:progress.detail,detail:map.result.summary,live:map.live};
 }
 
-export function createDemoGuide({state,openCase,showWorld,error,demoAction,residentPosition,onClose,canAutoOpen=()=>true}){
+export function createDemoGuide({state,openCase,showWorld,error,demoAction,residentPosition,onClose,residentAction,refreshResident,canAutoOpen=()=>true}){
   const root=document.createElement('div');root.id='demo-guide';root.hidden=true;root.setAttribute('role','dialog');root.setAttribute('aria-modal','true');root.setAttribute('aria-label','Guided fraud demo');
   root.innerHTML='<section class="demo-presentation"><header class="demo-stage-header"><span class="demo-stage-brand"><img src="/mark.svg" alt="" width="30" height="30"><span>Mint Town <small>Guided demo</small></span></span><nav class="demo-stage-track" aria-label="Demo flow"></nav><button type="button" class="guide-close" aria-label="Exit demo">×</button></header><div class="demo-stage-main"><section class="demo-visual" aria-label="Current demo scene"></section><aside class="guide-caption" role="region" aria-label="Demo guide"><span class="guide-who"></span><h2></h2><span class="guide-reason-label" hidden>Why this check</span><p class="guide-copy"></p><p class="guide-detail"></p><p class="guide-error" role="alert" hidden></p><footer><span class="guide-progress"></span><button type="button" class="guide-back">Back</button><button type="button" class="primary-button guide-next">Next</button></footer><small class="guide-wait"></small></aside></div></section>';
   document.body.append(root);
@@ -145,7 +145,7 @@ export function createDemoGuide({state,openCase,showWorld,error,demoAction,resid
       const backdrop=el('div',undefined,'phone-town-backdrop');visual.append(backdrop);
       const canvas=el('canvas');canvas.width=960;canvas.height=600;canvas.setAttribute('aria-hidden','true');canvas.getContext('2d').drawImage(document.getElementById('town-map'),0,0,960,600);backdrop.append(canvas);
       const label=el('div',undefined,'phone-scene-caption');label.append(el('span',b.id==='protected'?'AFTER REVIEW & ACTIVATION':b.id==='payment-sent'?'THE LEGITIMATE CONTROL':b.id==='repeat'?'THE NEXT REQUEST':'THE CUSTOMER’S SIDE'),el('strong',b.id==='protected'?'Your money stays with you.':b.id==='payment-sent'?'Protection with room for everyday life.':b.id==='repeat'?'A learned safeguard gets its test.':'One message can change the day.'));visual.append(label);
-      renderResidentPhone(visual,residentPhoneStory(b.id,state.data,report));return;
+      renderResidentPhone(visual,residentPhoneStory(b.id,state.data,report),{onAction:residentAction,onRefresh:refreshResident});return;
     }
     if(['world','payments'].includes(b.id)){
       const heading=el('div',undefined,'demo-scene-label');heading.append(agentIcon(['repeat','protected'].includes(b.id)?'prevention':b.id==='complaint'?'human':'knowledge'),el('strong',b.id==='protected'?'The next payment was protected':b.id==='repeat'?'Resident 2 receives a suspicious request':b.id==='complaint'?'Resident '+Number((d.focus_customer_id||'C001').slice(1))+' asks for help':'Watch the town transact'));visual.append(heading);sceneCanvas();
@@ -237,7 +237,7 @@ export function createDemoGuide({state,openCase,showWorld,error,demoAction,resid
   $('.guide-close').onclick=close;
   const phoneScroll=target=>target instanceof Element&&!!target.closest('.phone-screen');
   window.addEventListener('wheel',e=>{if(active&&!phoneScroll(e.target))e.preventDefault()},{passive:false});window.addEventListener('touchmove',e=>{if(active&&!phoneScroll(e.target))e.preventDefault()},{passive:false});
-  window.addEventListener('keydown',e=>{if(!active)return;if(e.key==='Escape'){e.preventDefault();close();return}if(['PageDown','PageUp','Home','End','ArrowDown','ArrowUp',' '].includes(e.key)&&!phoneScroll(e.target)){e.preventDefault();return}if(e.key==='Tab'){const buttons=[...root.querySelectorAll('button:not(:disabled),summary,[tabindex="0"]')];e.preventDefault();const i=buttons.indexOf(document.activeElement);buttons[(i+(e.shiftKey?-1:1)+buttons.length)%buttons.length]?.focus()}});
+  window.addEventListener('keydown',e=>{if(!active)return;if(e.key==='Escape'){e.preventDefault();close();return}if(['PageDown','PageUp','Home','End','ArrowDown','ArrowUp',' '].includes(e.key)&&!phoneScroll(e.target)){e.preventDefault();return}if(e.key==='Tab'){const buttons=[...root.querySelectorAll('button:not(:disabled),textarea:not(:disabled),select:not(:disabled),summary,[tabindex="0"]')];e.preventDefault();const i=buttons.indexOf(document.activeElement);buttons[(i+(e.shiftKey?-1:1)+buttons.length)%buttons.length]?.focus()}});
   document.getElementById('fraud-select').addEventListener('change',close);document.getElementById('risk-models-tab').addEventListener('click',close);
   return {update,close};
 }
