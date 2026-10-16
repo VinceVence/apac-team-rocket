@@ -252,6 +252,9 @@ safeguard, determine liability or claim that funds were recovered. Keep prose un
         known={r['receipt_id']:r for r in self.receipts(run['id'])}
         cited=list(known) if receipt_ids is None else string_list(receipt_ids,'model receipt citations')
         if not set(cited)<=known.keys():models.append('A cited model receipt does not belong to this run.')
+        required=context.get('required_classifier_id')
+        if required and not context.get('manual_handoff') and not any(known[i]['model_id']==required for i in cited if i in known):
+            models.append('The guided case requires a cited ledger-classifier receipt, including any unavailable-input result.')
         current=manifests(self.lab)
         for identifier in cited:
             r=known.get(identifier)

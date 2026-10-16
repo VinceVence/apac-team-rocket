@@ -22,7 +22,17 @@ test('saved Gemini demo completes using Next only, without fetch or a paid call'
   assert.equal(recording.proof.wallet_debit_minor,0);assert.equal(recording.proof.legitimate_payment,'settled');
   assert.equal(replay.detail().investigation.provider,'gemini');assert.equal(decisionMap(replay.detail()).badge,'Recorded Gemini replay');
   assert.ok(seen.has('complaint')&&seen.has('turn-2')&&seen.has('review')&&seen.has('knowledge')&&seen.has('repeat'));
+  assert.ok(seen.has('classifier-result-2-0')&&seen.has('classifier-use'));
  }finally{globalThis.fetch=old}
+});
+test('replay cannot substitute a rule-only recording for the promised classifier demonstration',()=>{
+ const changed=structuredClone(recording);
+ for(const t of changed.report.decision_trail)if(t.result?.receipts)t.result.receipts=t.result.receipts.filter(r=>r.score_kind!=='uncalibrated_model_score');
+ assert.throws(()=>createRecordedDemo(changed,'missing-classifier'),/trained-classifier/);
+});
+test('a rejected recorded resolution cannot be presented as approved',()=>{
+ const changed=structuredClone(recording);changed.report.harness.checks.unshift({passed:false,judges:[{judge:'resolution',passed:false}]});
+ assert.throws(()=>createRecordedDemo(changed,'rejected'),/review checks/);
 });
 test('playback rejects mutations and preserves recorded receipts across restarts',()=>{
  const replay=createRecordedDemo(recording,'first');

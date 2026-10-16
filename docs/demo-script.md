@@ -51,3 +51,11 @@ Open **Agent activity → Model experiments**. Showing a saved study makes no mo
 > The scientist chooses a hypothesis, feature groups and bounded model recipes—or asks for more labelled data. These are real CPU fits. The amount baseline can fail, and the validator cannot waive the measured gate. Candidate selection uses validation data; the final test can only veto it. A recommendation goes to human model review and does not silently replace payment protection.
 
 Point to the dataset label. A **synthetic benchmark** result must be presented as synthetic. **Curated cases** require separate operator verification and sufficient legitimate controls, customer separation and label timing. Read the actual saved tool choices and measured results rather than promising a particular candidate will pass.
+
+## Classifier spotlight in Run demo
+
+Use only **Next**. After the evidence check, pause on **The agent calls a classifier**: the diagram shows the actual `score_models` request and the agent’s saved purpose. **Read the classifier result** shows one trained-model receipt per screen, its exact score against the operating threshold, the payment count and receipt ID. Scores are advisory signals, not fraud probabilities. Missing inputs are shown as unavailable.
+
+Next shows **The agent weighs the evidence**, pairing the model result and whether it was cited with the actual recorded resolution and uncertainty. Validation follows, then the simulated Fraud Analyst approval, shared knowledge, prevention activation and the town’s changed-recipient payment check. A rejected draft cannot be auto-approved; Next can open the labelled saved Gemini walkthrough without retrying a model.
+
+Fresh guided cases require a cited AE ledger-classifier receipt, inside the unchanged six-call allowance. Continuous simulation retains discretionary model selection. The cost-free recording uses real Gemini case `SC-18e89835be`, which called the previously approved request classifier and produced an approved changed-recipient safeguard. It does not pretend that historical case used Karlo’s newer ledger model. The recording was rebuilt and its gateway proof verified in an isolated database copy; no new Gemini call or shared-world mutation was made.

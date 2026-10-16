@@ -1,10 +1,46 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {demoBeats,keepReadingStep,nextGuideStep,demoPhase,demoPhases,investigationProgress,liveDemoState} from './dist/demo-guide.js';
+import {demoBeats,keepReadingStep,nextGuideStep,demoPhase,demoPhases,investigationProgress,liveDemoState,classifierReceipts,classifierInterpretation} from './dist/demo-guide.js';
 
 const demo={guided:true,run_id:1,scene_id:'first',focus_report_id:'case',phase:'investigation'};
 const report={id:'case',status:'investigating',reviews:[],decision_trail:[],investigation:{status:'running'}};
 const turn=(number,tool,role='resolution')=>({number,tool,role,status:'completed',purpose:'Check the recorded evidence.'});
+
+const modelTurn=()=>({...turn(2,'score_models'),result:{receipts:[{receipt_id:'receipt',model_id:'ledger_transaction_v1',score_kind:'uncalibrated_model_score',manifest:{name:'AE ledger behavior classifier'},status:'scored',event_ids:['event'],prediction:{available:true,signal_score:.585159,threshold:.7},missing_inputs:[]}]}});
+
+test('classifier screens show the real call, threshold and cited interpretation before review',()=>{
+  const r={...report,status:'awaiting_review',decision_trail:[turn(1,'get_case_evidence'),modelTurn(),turn(3,'submit_case_resolution')],
+    investigation:{status:'awaiting_review',recommendation:{summary:'The complaint requires verification despite a low model signal.',uncertainties:['Identity remains unverified.']}},
+    harness:{checks:[{passed:true,receipt_ids:['receipt'],judges:[{judge:'resolution',passed:true}]}]}};
+  const beats=demoBeats(demo,r),ids=beats.map(b=>b.id);
+  assert.equal(beats.find(b=>b.id==='turn-2').title,'The agent calls a classifier');
+  assert.ok(ids.indexOf('classifier-result-2-0')>ids.indexOf('turn-2'));
+  assert.ok(ids.indexOf('classifier-result-2-0')<ids.indexOf('turn-3'));
+  assert.ok(ids.indexOf('classifier-use')<ids.indexOf('review'));
+  const result=classifierReceipts(modelTurn())[0];assert.equal(result.score,.585159);assert.equal(result.threshold,.7);assert.equal(result.verdict,'Below threshold');
+  assert.equal(classifierInterpretation(r).rows[0].cited,true);
+  assert.equal(classifierInterpretation(r).summary,r.investigation.recommendation.summary);
+});
+
+test('rule checks, failed calls and unavailable classifier inputs are not invented successful ML results',()=>{
+  const t=modelTurn();t.result.receipts[0].score_kind='rule_signal';assert.deepEqual(classifierReceipts(t),[]);
+  t.result.receipts[0].score_kind='uncalibrated_model_score';t.status='reserved';assert.deepEqual(classifierReceipts(t),[]);
+  t.status='completed';t.result.receipts[0].status='not_available';t.result.receipts[0].prediction.available=false;
+  const r=classifierReceipts(t)[0];assert.equal(r.score,null);assert.equal(r.verdict,'Unavailable');
+});
+
+test('live Next cannot skip unread classifier results or interpretation',()=>{
+  const beats=[{id:'turn-2'},{id:'classifier-result-2-0'},{id:'classifier-use'},{id:'live'},{id:'review'}];
+  const seen=new Set(['turn-2','live']);assert.equal(nextGuideStep(beats,'live',seen),'classifier-result-2-0');
+  seen.add('classifier-result-2-0');assert.equal(nextGuideStep(beats,'live',seen),'classifier-use');
+});
+
+test('a currently rejected interpretation never offers assumed approval after an older passing check',()=>{
+  const r={...report,status:'awaiting_review',investigation:{status:'awaiting_review',recommendation:{summary:'Models note elevated risk.'}},decision_trail:[modelTurn()],
+    harness:{checks:[{passed:false,judges:[{judge:'models',passed:false,blockers:['Below threshold.']},{judge:'resolution',passed:true}]},{passed:true,judges:[{judge:'resolution',passed:true}]}]}};
+  const beats=demoBeats(demo,r);assert.equal(beats.at(-1).action,'replay');
+  assert.equal(beats.some(b=>b.action==='review'),false);assert.equal(classifierInterpretation(r).blocked,true);
+});
 
 test('evidence preparation is a live data handoff, not an invented agent decision',()=>{
   const r={id:'case',status:'reported',investigation:null,preparation:{status:'running',stage:'ledger_snapshot',detail:'Freezing payments.'}};

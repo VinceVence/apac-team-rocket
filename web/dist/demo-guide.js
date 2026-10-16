@@ -4,6 +4,29 @@ import {cleanText,toolLabels,caseActivity,agentIcon,pretty} from './agent-ui.js'
 
 const short=text=>typeof text==='string'?cleanText(text).slice(0,180):'';
 
+// Derive visuals from completed, case-scoped tool receipts; never from scenario labels.
+export function classifierReceipts(turn){
+  if(turn?.tool!=='score_models'||turn.status!=='completed')return [];
+  return (turn.result?.receipts||[]).filter(r=>r.score_kind==='uncalibrated_model_score').map(r=>{
+    const p=r.prediction||{},available=['scored','partial'].includes(r.status)&&p.available===true;
+    const score=available&&Number.isFinite(p.signal_score)?p.signal_score:null;
+    const threshold=Number.isFinite(p.threshold)?p.threshold:null;
+    return {id:r.receipt_id,modelId:r.model_id,name:cleanText(r.manifest?.name||r.model_id),score,threshold,
+      verdict:score===null||threshold===null?'Unavailable':score>=threshold?'Above threshold':'Below threshold',
+      eventCount:r.event_ids?.length||0,status:r.status,
+      missing:(r.missing_inputs||[]).flatMap(m=>m.fields||[]),source:cleanText(r.input_source||p.input_source||'Frozen case evidence')};
+  });
+}
+
+export function classifierInterpretation(report){
+  const rows=decisionTrail(report).flatMap(classifierReceipts),run=report?.investigation;
+  const check=(report?.harness?.checks||[]).find(c=>c.judges?.some(j=>j.judge==='resolution'));
+  const cited=run?.context?.submitted_receipt_ids||check?.receipt_ids||[];
+  return {rows:rows.map(r=>({...r,cited:cited.includes(r.id)})),summary:cleanText(run?.recommendation?.summary||''),
+    uncertainty:cleanText(run?.recommendation?.uncertainties?.[0]||''),blocked:check?.passed===false,
+    blockers:(check?.judges||[]).filter(j=>!j.passed).flatMap(j=>j.blockers||[])};
+}
+
 // Presentation of saved facts only. No fixed tool route, requests or mutations.
 export function demoBeats(demo,report){
   if(!demo?.guided)return [];
@@ -18,15 +41,19 @@ export function demoBeats(demo,report){
   add('report','resolution','.report-details','Read the customer’s report',waitingForNext?(demo.replay?'Next opens the original Gemini investigation: its actual tool choices, evidence and proposed resolution.':'Next starts the resolution agent. Watch it choose tools and examine the returned evidence.'):'This report is a claim to investigate. The agent must compare it with independent records.',{who:'Customer report',action:waitingForNext?'investigate':null});
   const trail=decisionTrail(report);
   for(const t of trail.filter(t=>t.tool&&t.status==='completed')){
-    add('turn-'+t.number,'resolution',`#guide-turn-${t.number}`,toolLabels[t.tool]||pretty(t.tool),t.purpose||'No public decision summary was recorded.',{who:roleNames[t.role]||'Resolution agent',tool:t.tool,detail:short(t.finding)});
+    const classifiers=classifierReceipts(t);
+    add('turn-'+t.number,'resolution',`#guide-turn-${t.number}`,classifiers.length?'The agent calls a classifier':toolLabels[t.tool]||pretty(t.tool),t.purpose||'No public decision summary was recorded.',{who:roleNames[t.role]||'Resolution agent',tool:t.tool,classifiers,detail:short(t.finding)});
+    for(const [index,result] of classifiers.entries())add(`classifier-result-${t.number}-${index}`,'resolution','#agent-live-panel','Read the classifier result',result.verdict==='Unavailable'?'Required inputs are missing. The agent receives an unavailable result, not a zero-risk score.':result.verdict==='Above threshold'?'This score crosses the model’s operating threshold. It is a signal to investigate, not proof of fraud.':'The score is below the operating threshold. A low model signal cannot rule out the customer’s complaint.',{who:'Classifier tool',classifier:result});
   }
   const activity=caseActivity(report,demo);
   if(activity.active)add('live','resolution','#agent-live-panel',activity.title,activity.detail,{who:activity.stage==='evidence'?'Evidence handoff':'Resolution agent',live:true,wait:'Following live progress'});
   const run=report.investigation,checks=report.harness?.checks||[];
   const judged=checks.find(c=>c.judges?.some(j=>j.judge==='resolution'));
+  const interpretation=classifierInterpretation(report);
+  if(interpretation.rows.length&&interpretation.summary)add('classifier-use','resolution','#fraud-packet',interpretation.blocked?'The interpretation needs correction':'The agent weighs the evidence',interpretation.blocked?'The saved draft conflicts with a validation check. It cannot be auto-approved.':'Compare the classifier receipt with the agent’s recorded resolution. The analyst still decides.',{who:'Resolution agent',interpretation});
   if(judged)add('judges','resolution','.harness-judges',judged.passed?'The draft passed local checks':'The judges withheld this draft',judged.passed?'Evidence, model contracts and resolution claims passed the checks. An analyst still makes the decision.':'A contract or claim failed validation. The draft cannot proceed as an approved resolution.',{who:'Harness judges',detail:short(judged.judges.filter(j=>!j.passed).flatMap(j=>j.blockers||[]).join(' '))});
   if(run?.recommendation)add('proposal','resolution','#fraud-packet',manualInvestigation(run)?'Read the manual review proposal':'Read the proposed resolution','Review the suggested action, cited evidence and what remains uncertain.',{who:manualInvestigation(run)?'Demo analyst':'Resolution agent',next:'Show analyst review'});
-  if(!demo.replay&&activity.stage==='blocked'){add('stopped','resolution','#agent-live-panel','Continue with a completed Gemini investigation','The live attempt stopped. Next opens a labelled saved Gemini case, including its review and changed-recipient prevention check. No request is retried.',{who:'Recorded demo available',action:'replay'});return beats}
+  if(!demo.replay&&(activity.stage==='blocked'||(judged?.passed===false&&!activity.active))){add('stopped','resolution','#agent-live-panel','Continue with a completed Gemini investigation','The live draft cannot proceed. Next opens a labelled saved Gemini case, including its classifier, review and changed-recipient prevention check. No request is retried.',{who:'Recorded demo available',action:'replay'});return beats}
   const actions=demo.presentation_actions||{};
   if(report.status==='awaiting_customer')add('reply','resolution','#agent-live-panel','The customer provides more context','Next supplies the known answer from this synthetic customer so the agent can continue.',{who:'Demo customer',action:'answer'});
   else if(!waitingForNext&&!activity.active&&report.status!=='resolved')add('review','resolution','#human-review-stage','Assume the analyst approves','For this demo, approval is assumed after reviewing the recorded transfer and scam request. Next saves the resolution and publishes its lesson.',{who:'Demo analyst',action:'review',detail:activity.stage==='blocked'?'The model draft stopped. The saved evidence goes to the simulated analyst; no model retry.':''});
@@ -57,7 +84,7 @@ export function keepReadingStep(previous,latest,current){
 }
 export function nextGuideStep(beats,current,seen=new Set()){
   const i=beats.findIndex(b=>b.id===current),b=beats[i];
-  if(b?.id==='live'){const unread=beats.find(n=>n.id.startsWith('turn-')&&!seen.has(n.id));if(unread)return unread.id}
+  if(b?.id==='live'){const unread=beats.find(n=>(n.id.startsWith('turn-')||n.id.startsWith('classifier-'))&&!seen.has(n.id));if(unread)return unread.id}
   return beats[i+1]?.id||null;
 }
 export const demoPhases=['World','Report','Investigate','Review','Learn','Protect'];
@@ -115,6 +142,25 @@ export function createDemoGuide({state,openCase,showWorld,error,demoAction,resid
       else facts(results,[['Residents',state.data.customers?.length||100],['Transactions',state.data.environment_data?.counts.wallet_transactions||0],['Scam report',d.focus_report_id?'Filed':'Not yet']]);visual.append(results);return;
     }
     if(b.id==='report'){const c=card('human','Resident '+Number((report?.customer_id||'C001').slice(1)),report?.story);facts(c,[['Reported transfer',money(total)],['Recorded payments',tx.length],['Claim',report?.scenario_title||'Customer allegation']]);return}
+    if(b.classifier){
+      const r=b.classifier,c=card('scientist',r.name);c.classList.add('demo-classifier-result');
+      c.append(el('code','score_models','classifier-tool-name'));
+      const numbers=el('div',undefined,'classifier-numbers');
+      for(const [label,value] of [['Signal score',r.score],['Threshold',r.threshold]]){const n=el('div');n.append(el('small',label),el('strong',value===null?'—':value.toFixed(3)));numbers.append(n)}c.append(numbers);
+      const verdict=el('strong',r.verdict,'classifier-verdict');verdict.dataset.result=r.verdict;c.append(verdict);
+      c.append(el('p','Advisory signal · not a fraud probability','classifier-boundary'));
+      facts(c,[['Evidence',r.eventCount+' case payment(s)'],['Receipt',r.id||'Not recorded']]);
+      if(r.missing.length)c.append(el('small','Missing: '+r.missing.map(pretty).join(', '),'classifier-source'));
+      else c.append(el('small',r.source,'classifier-source'));return;
+    }
+    if(b.id==='classifier-use'){
+      const info=b.interpretation,c=card('resolution','From model output to a proposal');c.classList.add('demo-classifier-use');
+      const strip=el('div',undefined,'classifier-cited');
+      for(const r of info.rows.slice(0,2)){const item=el('div');item.append(el('strong',r.name),el('span',r.verdict),el('small',r.cited?'Cited in the draft':'Not cited in the draft'));strip.append(item)}c.append(strip);
+      c.append(el('small','Agent’s recorded resolution','classifier-quote-label'),el('blockquote',short(info.summary)+(info.summary.length>180?'…':''),'classifier-quote'));
+      if(info.blocked)c.append(el('p',short(info.blockers[0]||'The draft needs correction.'),'classifier-blocked'));
+      else if(info.uncertainty)c.append(el('p','Still unverified: '+short(info.uncertainty),'classifier-boundary'));return;
+    }
     if(b.id==='live'&&!run){
       const p=investigationProgress(report,d),c=card('knowledge',p.title,p.detail);c.classList.add('demo-progress-card');
       const list=el('ol',undefined,'demo-live-trail');
@@ -126,9 +172,9 @@ export function createDemoGuide({state,openCase,showWorld,error,demoAction,resid
       c.append(list,el('p','No model call is needed to gather these records.','demo-progress-note'));return;
     }
     if(b.id.startsWith('turn-')||b.id==='live'){
-      const graph=el('div');visual.append(graph);renderDecisionMap(graph,report,{selected:b.id==='live'?null:Number(b.id.slice(5)),compact:true});return;
+      const graph=el('div');visual.append(graph);renderDecisionMap(graph,report,{selected:b.id==='live'?null:Number(b.id.slice(5)),compact:true});if(b.classifiers?.length)graph.append(el('p','Trained classifier selected · '+b.classifiers.map(r=>r.name).join(' + '),'classifier-selected'));return;
     }
-    if(b.id==='judges'){const c=card('judge',b.title,'Local checks validate evidence, tool contracts and the proposed action.');const checks=report?.harness?.checks?.at(-1)?.judges||[];facts(c,checks.map(j=>[pretty(j.judge),j.passed?'Passed':'Needs review']));return}
+    if(b.id==='judges'){const c=card('judge',b.title,'Local checks validate evidence, tool contracts and the proposed action.');const checks=report?.harness?.checks?.find(c=>c.judges?.some(j=>j.judge==='resolution'))?.judges||[];facts(c,checks.map(j=>[pretty(j.judge),j.passed?'Passed':'Needs review']));return}
     if(b.id==='proposal'){const c=card(manualInvestigation(run)?'human':'resolution',manualInvestigation(run)?'Manual review proposal':'Proposed resolution',run?.recommendation?.summary);facts(c,[['Action',pretty(run?.recommendation?.suggested_action)],['Evidence',tx.length+' payment(s)'],['Recovery','Not guaranteed']]);return}
     if(b.id==='reply'){card('human','The demo customer answers',run?.context?.pending_question);return}
     if(b.id==='review'){

@@ -19,7 +19,7 @@ from fraud_models import manifests
 from fraud_knowledge import redact as redact_memory
 
 MODEL = 'gemini-3.5-flash-lite'
-PROMPT_VERSION = 'fraud-investigator-v12'
+PROMPT_VERSION = 'fraud-investigator-v13'
 TOOL_CONTRACT_VERSION = 12
 MAX_INPUT_BYTES = 16000
 MAX_OUTPUT_TOKENS = 512
@@ -278,6 +278,7 @@ class FraudAgent:
             if self.harness_enabled:
                 context.setdefault('harness_version',HARNESS_VERSION);context.setdefault('model_manifests',manifests(self.lab))
                 context.setdefault('evidence_reference_version',2);context.setdefault('experiment_arm',experiment_arm or 'selective')
+                context.setdefault('required_classifier_id','ledger_transaction_v1' if any(t['metadata'].get('guided_demo') for t in snapshot['data']['transactions']) else None)
             self.lab.db.execute('UPDATE fraud_investigations SET context=? WHERE id=?', (encoded(context), run['id']))
             return self.desk.run(run['id'])
 
@@ -294,6 +295,7 @@ class FraudAgent:
                 'available_detectors':DETECTORS,
                 'harness_version':run['context'].get('harness_version'),'active_role':'case_lead',
                 'available_models':run['context'].get('model_manifests',{}),
+                'required_classifier_id':run['context'].get('required_classifier_id'),
                 'experiment_arm':run['context'].get('experiment_arm','selective'),
                 'decision_context':run['context'].get('decision_context',{}),
                 'citation_contract':{'transaction_ids':report['event_ids'],'snapshot_is_not_a_transaction':True,

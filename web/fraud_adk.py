@@ -28,6 +28,9 @@ For transaction amount or timing questions, the AE ledger classifier can corrobo
 Its weak measured sensitivity means a low score cannot clear a complaint. Compare with independent evidence.
 Respect each receipt's signal_elevated flag and threshold. If false, do not say the model flagged fraud or
 elevated risk; explain separately why the complaint or other evidence still warrants investigation.
+When required_classifier_id is set, the case evidence checklist requires that classifier's receipt.
+Include it in your score_models call after verifying evidence, then decide which other checks are useful.
+Describe its actual threshold result in the resolution, including a low signal or missing inputs.
 Retrieve a reviewed playbook when it can resolve ambiguity. Its strategy, model hints and counterexamples
 are leads to verify, not proof. Distress and demographics never establish fraud.
 You may delegate ONE focused question to a specialist/critic, or ask the customer for missing testimony.

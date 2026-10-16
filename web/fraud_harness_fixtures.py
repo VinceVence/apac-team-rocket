@@ -25,6 +25,7 @@ def choose(packet):
     legitimate=any(k in narrative for k in ('received my items','recognized the merchant','groceries','independently verified','verified with','legitimate')) and not suspected
     if 'score_models' not in observed:
         models=['device_integrity_v1','payment_velocity_v1'] if device_issue else ['device_integrity_v1','message_intent_v1']
+        if packet.get('required_classifier_id'):models=[packet['required_classifier_id'],models[-1]]
         return 'score_models',{'model_ids':models,'event_ids':packet['event_ids'],'purpose':'Test the relevant device, transaction or payment-request signals.'}
     receipts=observed['score_models']['receipts'];ids=[r['receipt_id'] for r in receipts]
     if not suspected and not legitimate and not packet['customer_replies']:

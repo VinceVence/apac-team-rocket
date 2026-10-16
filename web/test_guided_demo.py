@@ -48,6 +48,14 @@ class GuidedDemoChecks(unittest.TestCase):
         self.assertFalse(first['receipt']['assumption']);self.assertEqual(first['receipt']['actor'],'viewer')
         self.assertTrue(demo.demo_action(state['run_id'],rid,'investigate')['replayed'])
         case=self.wait(rid);self.assertEqual(case['status'],'awaiting_review')
+        self.assertEqual(case['investigation']['context']['required_classifier_id'],'ledger_transaction_v1')
+        receipt=next(r for r in case['harness']['model_receipts'] if r['model_id']=='ledger_transaction_v1')
+        self.assertEqual(receipt['status'],'scored')
+        self.assertIn(receipt['receipt_id'],case['investigation']['context']['submitted_receipt_ids'])
+        missing=[r['receipt_id'] for r in case['harness']['model_receipts'] if r['model_id']!='ledger_transaction_v1']
+        withheld=self.server.fraud_agent.harness.check(case['investigation'],case['investigation']['recommendation'],missing,record=False)
+        self.assertFalse(withheld['passed'])
+        self.assertIn('ledger-classifier',' '.join(withheld['judges'][1]['blockers']))
         count=self.lab.db.execute('SELECT count(*) FROM fraud_agent_turns').fetchone()[0]
         demo.demo_action(state['run_id'],rid,'investigate')
         self.assertEqual(self.lab.db.execute('SELECT count(*) FROM fraud_agent_turns').fetchone()[0],count)
@@ -118,7 +126,10 @@ class GuidedDemoChecks(unittest.TestCase):
             case=self.wait(state['focus_report_id']);self.assertEqual(case['investigation']['status'],'awaiting_review',case['investigation']['context'].get('stop_reason'))
             self.assertEqual(demo.status()['phase'],'review')
             models=case['investigation']['context']['detector_results']['detectors']
-            self.assertEqual(models[0]['signal_score'],0);self.assertEqual(models[1]['signal_score'],1)
+            models={m['detector_id']:m for m in models}
+            self.assertTrue(models['ledger_transaction_v1']['available'])
+            self.assertIsNone(models['ledger_transaction_v1']['calibrated_fraud_probability'])
+            self.assertEqual(models['message_intent_v1']['signal_score'],1)
             self.assertEqual(case['investigation']['budget']['case_calls'],5)
             packet=self.server.fraud_agent.packet(case['investigation'])
             self.assertNotIn('search_reviewed_cases',available_tools(packet))

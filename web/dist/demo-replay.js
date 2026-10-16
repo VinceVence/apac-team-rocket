@@ -4,6 +4,8 @@ const phases=['empty','payments','scam','investigate','review','learn','activate
 export function createRecordedDemo(recording,id){
   if(recording.schema!=='minttown-recorded-demo-v1'||recording.source.provider!=='gemini'||!recording.source.synthetic)throw Error('Invalid demo recording.');
   const original=recording.report;
+  if(!original.decision_trail.some(t=>t.tool==='score_models'&&t.status==='completed'&&t.result?.receipts?.some(r=>r.score_kind==='uncalibrated_model_score')))throw Error('The recording needs a real trained-classifier receipt.');
+  if(original.harness?.checks?.find(c=>c.judges?.some(j=>j.judge==='resolution'))?.passed!==true)throw Error('The recorded resolution did not pass its review checks.');
   if(!original.decision_trail.length||original.decision_trail.some(t=>t.provider!=='gemini'||t.status!=='completed')||!original.reviews.length||!original.prevention.rule.replay.passed||recording.proof.changed_recipient===recording.proof.source_recipient)throw Error('The recording lacks a completed investigation or changed-recipient proof.');
   let stage=0;
   function detail(){
