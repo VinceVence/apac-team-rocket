@@ -2,6 +2,7 @@
 
 | Need | Read |
 |---|---|
+| Review release fixes, tests and remaining limits | [Final QA audit](final-qa.md) |
 | Run the app and protect costs | [Operations](operations.md) |
 | Open the public demo and understand team access | [Hosting and shutdown guard](hosting.md) |
 | See the latest hosted visual test | [Live walkthrough and results](visual-demo.md) |

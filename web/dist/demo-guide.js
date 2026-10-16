@@ -78,6 +78,14 @@ export function investigationProgress(report,demo={}){
     detail:ready?'The recorded checks are ready. Next reviews each result before analyst approval.':a.detail};
 }
 
+export function liveDemoState(report,demo={}){
+  const map=decisionMap(report),progress=investigationProgress(report,demo);
+  if(!report?.investigation)return {who:'Data pipeline',title:progress.title,copy:progress.detail,
+    detail:'The agent starts after the case evidence is ready.',live:progress.active};
+  return {who:map.actor,title:map.phase==='choosing'?'The agent is choosing its next check':map.tool?map.toolLabel:progress.title,
+    copy:map.tool?map.reason:progress.detail,detail:map.result.summary,live:map.live};
+}
+
 export function createDemoGuide({state,openCase,showWorld,error,demoAction,residentPosition,onClose}){
   const root=document.createElement('div');root.id='demo-guide';root.hidden=true;root.setAttribute('role','dialog');root.setAttribute('aria-modal','true');root.setAttribute('aria-label','Guided fraud demo');
   root.innerHTML='<section class="demo-presentation"><header class="demo-stage-header"><span class="demo-stage-brand"><img src="/mark.svg" alt="" width="30" height="30"><span>Mint Town <small>Guided demo</small></span></span><nav class="demo-stage-track" aria-label="Demo flow"></nav><button type="button" class="guide-close" aria-label="Exit demo">×</button></header><div class="demo-stage-main"><section class="demo-visual" aria-label="Current demo scene"></section><aside class="guide-caption" role="region" aria-label="Demo guide"><span class="guide-who"></span><h2></h2><span class="guide-reason-label" hidden>Why this check</span><p class="guide-copy"></p><p class="guide-detail"></p><p class="guide-error" role="alert" hidden></p><footer><span class="guide-progress"></span><button type="button" class="guide-back">Back</button><button type="button" class="primary-button guide-next">Next</button></footer><small class="guide-wait"></small></aside></div></section>';
@@ -107,6 +115,16 @@ export function createDemoGuide({state,openCase,showWorld,error,demoAction,resid
       else facts(results,[['Residents',state.data.customers?.length||100],['Transactions',state.data.environment_data?.counts.wallet_transactions||0],['Scam report',d.focus_report_id?'Filed':'Not yet']]);visual.append(results);return;
     }
     if(b.id==='report'){const c=card('human','Resident '+Number((report?.customer_id||'C001').slice(1)),report?.story);facts(c,[['Reported transfer',money(total)],['Recorded payments',tx.length],['Claim',report?.scenario_title||'Customer allegation']]);return}
+    if(b.id==='live'&&!run){
+      const p=investigationProgress(report,d),c=card('knowledge',p.title,p.detail);c.classList.add('demo-progress-card');
+      const list=el('ol',undefined,'demo-live-trail');
+      for(const row of [...p.rows,{label:'Resolution agent',status:'waiting',detail:'Starts after evidence is ready'}]){
+        const li=el('li',undefined,row.status==='active'?'active':''),body=el('div');
+        li.append(el('span',row.status==='done'?'✓':row.status==='waiting'?'·':'','demo-check-mark'));
+        body.append(el('strong',row.label));if(row.detail)body.append(el('small',row.detail));li.append(body);list.append(li);
+      }
+      c.append(list,el('p','No model call is needed to gather these records.','demo-progress-note'));return;
+    }
     if(b.id.startsWith('turn-')||b.id==='live'){
       const graph=el('div');visual.append(graph);renderDecisionMap(graph,report,{selected:b.id==='live'?null:Number(b.id.slice(5)),compact:true});return;
     }
@@ -127,7 +145,7 @@ export function createDemoGuide({state,openCase,showWorld,error,demoAction,resid
   }
   function render(){
     if(!active||!beats.length)return;const i=beats.findIndex(b=>b.id===current);let b=beats[i];if(!b)return;
-    if(b.id==='live'){const map=decisionMap(report),progress=investigationProgress(report,state.data.demo);b={...b,who:map.actor,title:map.phase==='choosing'?'The agent is choosing its next check':map.tool?map.toolLabel:progress.title,copy:map.tool?map.reason:progress.detail,detail:map.result.summary,live:map.live}}
+    if(b.id==='live')b={...b,...liveDemoState(report,state.data.demo)};
     root.hidden=false;app.inert=true;document.body.classList.add('guide-open');
     $('.demo-stage-brand small').textContent=state.data.demo.replay?'Recorded Gemini replay':'Guided demo';
     $('.guide-reason-label').hidden=!(b.tool||(b.id==='live'&&decisionMap(report).tool));

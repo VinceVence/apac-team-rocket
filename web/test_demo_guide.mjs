@@ -1,10 +1,18 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {demoBeats,keepReadingStep,nextGuideStep,demoPhase,demoPhases,investigationProgress} from './dist/demo-guide.js';
+import {demoBeats,keepReadingStep,nextGuideStep,demoPhase,demoPhases,investigationProgress,liveDemoState} from './dist/demo-guide.js';
 
 const demo={guided:true,run_id:1,scene_id:'first',focus_report_id:'case',phase:'investigation'};
 const report={id:'case',status:'investigating',reviews:[],decision_trail:[],investigation:{status:'running'}};
 const turn=(number,tool,role='resolution')=>({number,tool,role,status:'completed',purpose:'Check the recorded evidence.'});
+
+test('evidence preparation is a live data handoff, not an invented agent decision',()=>{
+  const r={id:'case',status:'reported',investigation:null,preparation:{status:'running',stage:'ledger_snapshot',detail:'Freezing payments.'}};
+  const state=liveDemoState(r,demo);
+  assert.equal(state.who,'Data pipeline');assert.equal(state.live,true);
+  assert.equal(state.copy,'Freezing payments.');assert.match(state.detail,/after.*evidence/);
+  assert.equal(liveDemoState(report,demo).who,'Resolution agent');
+});
 
 test('guide follows actual tool order and does not invent a specialist',()=>{
   const r={...report,decision_trail:[turn(1,'get_case_evidence'),turn(2,'ask_customer')],status:'awaiting_customer',investigation:{status:'awaiting_customer',context:{pending_question:'Did you verify the caller?'}}};

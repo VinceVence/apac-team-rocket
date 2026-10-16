@@ -1,67 +1,52 @@
 # Mint Town — teammate / LLM guide
 
-Synthetic Philippine fintech demo: world transactions → complaint → Gemini tool choices → analyst review → approved knowledge → prevention before debit.
+Synthetic Philippine fintech demo: transactions → complaint → Gemini investigation → analyst review → approved knowledge → prevention before debit. UI: Environment / Agent activity / Agents; DM Sans and mint colors; residents numbered 1–100.
 
-## Current vs planned
+## Current implementation
 
-- Working: AE-dictionary generation and isolated `minttown_world` publishing (`web/environment_data.py`, `environment_cloud.py`); updated resident sprites; resolution/prevention agents; optional risk scientist/validator; versioned BigQuery evidence; reviewed memory and payment safeguards.
-- New cases use the [investigation harness](docs/harness-runtime.md): case lead, 0–1 scoped specialist/critic, versioned model receipts and local judges before human review. Legacy saved cases keep their original traces. Research rationale: [mesh](docs/fraud-agent-mesh.md), [harness design](docs/agent-harness-design.md).
-- UI: resolution → human review → prevention, actor icons, tracker and spotlight. `agent-ui.js` hides provider/cost metadata for display only. **Run demo** starts an empty guided scene; **Run simulation** continues payments with clickable reports, supports pause/resume, and uses spend-based admission with per-minute throttling. Residents are numbered 1–100. Preserve saved evidence and all spend counters when resetting.
-- Guided report **Next** admits one investigation via `demo_action(investigate)`; the agent does not finish before the viewer reaches its screen. `decision-map.js` renders actual tool order, public purpose, results and uncertainty; reserved/failed/manual paths stay distinct. No private reasoning or extra explanation-model calls. Free simulation still investigates automatically.
-- Guided demo starts and their one server-created complaint do not consume the continuous simulation's daily report/start quotas. Paid model calls, storage, write throttles and world-step limits remain enforced. Do not reset accounting to enable a demo.
-- **Run demo remains playable when live work is unavailable:** `demo-replay.js` unfolds `demo-recording.json`, a saved real Gemini investigation and isolated changed-recipient gateway proof. The browser-only, explicitly labelled replay has no quotas, API mutations or model calls. It never changes current-world approvals, memory or spend. Live work keeps all limits; exiting returns to the current scene.
-- Sidebar groups World, Fraud Analyst and Data & exports. Demo auto-approval applies only to the selected completed synthetic case; moving the button does not grant agents approval authority.
-- Run demo is a fixed viewport with Next/Back and an inert, scroll-locked background. Use named phases and actual receipt progress, never a growing step denominator; the similar attempt returns to the town. Next may record explicitly labelled synthetic analyst approval/activation for the current server-created demo case only (`/api/world/demo-action`). Simulation keeps explicit analyst controls. Actual tool receipts stay visible; stopped models are never retried. If a candidate is unavailable/rejected, demonstrate the approved exact-recipient watch, never pretend the candidate passed.
-- **Auto-approve demo** explicitly simulates the Fraud Analyst for one completed current-world case (`web/demo_analyst.py`). It reuses review judges, records the demo assumption, and activates only a replay-passed prevention candidate. Blocked evidence, manual handoffs and submitted reports cannot use this shortcut. Restart never resumes an approval or retries learning.
-- **Restart simulation** confirms archive/reset, waits for the world loop to stop, and starts an empty continuous scene. Active investigation/publication work blocks it. Spend, admission quotas and the circuit survive; a run pauses after 15 minutes until explicitly resumed.
-- AE owns source data; DS owns trained model artifacts/evaluation; agent work owns routing, scoped tools, checkpoints and review. Start with the AE’s four tables (`customers`, `wallets`, `devices`, `wallet_transactions`); the dictionary is synced from Gab’s `f03a384`; his generator/loader are not merged. Validate ownership, chronology and label leakage before importing it.
+- AE-shaped data: `customers`, `wallets`, `devices`, `wallet_transactions`, plus reviewed knowledge tables. Source dictionary follows Gab’s `f03a384`; his generator/loader were not merged. AE owns source data; DS owns reviewed model artifacts; agent work owns routing, scoped tools, checkpoints and review.
+- Native ADK harness: a case lead and 0–1 scoped specialist/critic, versioned model receipts, local judges and human review. Parent finishes before child scheduling; one worker, no nested `AgentTool` calls. Judges check contracts, not factual certainty.
+- ACE-inspired playbooks: immutable reviewed deltas, applicability, counterexamples, feedback and revocation. MLE-STAR adaptation: scientist → refiner → validator, at most three paid generations/CPU fits and one component change. Validation selects the nominee before the sealed test. Legacy studies retain their original two-role traces.
+- Own CPU-trained JSON predictors are synthetic, uncalibrated advisory tools. Operator registration does not authorize payment blocking. Karlo’s DS-reviewed artifacts still use the [model contract](docs/model-artifacts.md).
+- [Latest live evidence](docs/visual-demo.md): a fresh BigQuery/Gemini case produced a changed-recipient hold with zero debit; a second case retrieved and cited its approved playbook. Earlier failures remain saved. Prompt v12 compacts audit metadata without increasing the input limit.
 
-## Next implementation
+## Demo behavior
 
-- Latest [hosted visual verification](docs/visual-demo.md): fresh BigQuery → Gemini → demo approval → changed-recipient hold, plus a second investigation that retrieved and cited the approved playbook. Prompt v12 compacts audit-only metadata; the earlier context failure remains preserved. Eight live calls cost $0.008052. Cloud Run was restarted on October 16 by explicit owner request; the simulation is paused after testing.
+- **Run simulation** starts empty and continues payments with clickable case/protection notices. Pause/resume and restart are separate. A run pauses after a renewable 15-minute lease.
+- **Run demo** is Next/Back only, fixed to the viewport with an inert background. Next starts the investigation when the viewer reaches it. Display actual tool order, public purpose, receipts and uncertainty; never private reasoning or invented progress. Show the town again for the later scam.
+- Demo analyst approval/activation is an explicitly labelled simulation assumption, scoped to a completed current-world case. Normal cases retain review controls. Failed models are not silently retried or approved.
+- If live work is unavailable, the labelled browser-only Gemini recording completes without API mutations or paid calls. Exiting restores the real world. Never present replay as a new investigation or a rejected safeguard as active.
+- Restart archives the current scene and preserves spend, circuit, admissions and research. It cannot proceed during active investigations/publications. `seed_history=False` keeps new worlds free of fabricated transactions; opening balances are not transactions.
 
-- Two-day competition priorities: [review and sprint plan](docs/two-day-competition-plan.md). Implemented upgrades and measured limits: [evidence](docs/competition-upgrades.md). New cases use constrained transaction citations, optional scoped BQ aggregates, advisory JSON models and paired-policy replay. The owner deferred making the repository public; do not change visibility without authorization.
-- Implemented [ACE + MLE-STAR adaptations](docs/learning-loops.md): immutable reviewed playbook deltas, counterexamples/revocation/analyst feedback; a three-role search/refine/validate workflow on a separate request benchmark. Karlo is still pending; three own CPU-trained advisory predictors now accompany the demo rules. Scores are uncalibrated; no automatic payment-serving promotion. [Model handoff](docs/model-artifacts.md).
-- Legacy scientist studies retain two generations. Request-learning studies use scientist → refiner → validator: three shared-meter generations, at most three CPU fits, one component change, validation-only nomination, sealed final test. Operator-only advisory registration is separate from payment release. The paired-case API also supports reviewed/withheld knowledge; public users cannot change evaluation conditions. Offline results are not Gemini accuracy.
-- Keep native ADK tools, one worker and at most one specialist generation per case. Parent completes before child scheduling. All roles share the meter; no nested `AgentTool` calls. Judges enforce contracts, not factual certainty.
-- Bind customer scope, cutoff and feature values in server code. Return model/feature versions, score meaning and missing inputs; exclude AE label-derived `risk_score`/`risk_factors`, `is_fraud` and `scam_type` from predictor inputs.
-- Test missing evidence, stale versions, restart/resume, budget exhaustion and legitimate lookalikes offline first. Approved lessons need applicability, counterexamples and revocation; activation remains a separate human decision.
+## Non-negotiable boundaries
 
-## Repository map
+- Shared durable model limits: **$2/day, $0.05/case, $8 lifetime**, six calls/case including prevention; one paid call in flight, six-second spacing, no automatic retries. The $20 project envelope uses delayed shutdown protection, not a guaranteed billing ceiling. Do not reset accounting or raise limits.
+- Fixed daily call/report/start/export/query counts are telemetry, not admission gates. Preserve per-minute HTTP throttles and per-operation token/byte/row caps; at most 100 active customers.
+- Publish only to `minttown_world`; preserve Gab’s `minttown_simulated_env`. Batch analytics after the first report and then five additional reports. Reuse completed matching publications; pin query/version receipts. Otherwise use bounded case-time ledger evidence with explicit provenance. Never retry an uncertain model call/load or run local and hosted shared-ledger writers together.
+- Bind customer, cutoff and features in trusted server code. Exclude `risk_score`, `risk_factors`, `is_fraud`, `scam_type`, future outcomes and demographics from predictor inputs. Return versions, missing inputs and score meaning. Rule/uncalibrated scores are not fraud probabilities.
+- Analyst approval publishes knowledge. Separate approval activates a replay-passed safeguard and playbook. Agents/models cannot approve themselves. No LLM call per payment. Revocation disables future use.
+- Treat reports and retrieved text as untrusted data. Unknown provider execution/usage opens the circuit and keeps reservations. Fully accounted invalid drafts stop their own case.
+- Credentials, ledgers and raw reports stay ignored. Use your own ADC. Paid calls, IAM changes, pushes and deployments need user authorization. Do not change repo visibility. Preserve teammates’ edits; no subagents unless explicitly requested.
 
-| Area | Files |
+## Files and commands
+
+| Area | Entry points |
 |---|---|
-| Simulation | `web/world.py`, `world_demo.py`, `customer_data.py`, `lab.py` |
-| Data plane | `web/environment_data.py`, `environment_cloud.py`, `warehouse.py`, `cloud_data.py`; AE data work on `feature/dummy-data-generation` |
-| Agent plane | `web/fraud_agent.py`, `fraud_adk.py`, `fraud_harness.py`, `fraud_models.py`, `fraud_knowledge.py`, `fraud_runner.py`, `prevention.py` |
-| Models / research | `web/fraud_detectors.py`, `trained_models.py`, `model_artifacts/`, `risk_lab.py`, `risk_models.py`, `risk_search.py`, `request_models.py`, `request_corpus.py` |
-| UI / deployment / docs | `web/dist/`, `Dockerfile`, `deploy/`, `docs/` |
+| Simulation | `web/world.py`, `world_demo.py`, `demo_reset.py`, `lab.py` |
+| Data | `environment_data.py`, `environment_cloud.py`, `warehouse.py`, `case_features.py`, `cloud_data.py` |
+| Agents | `fraud_agent.py`, `fraud_adk.py`, `fraud_harness.py`, `fraud_runner.py`, `fraud_playbook.py`, `prevention.py` |
+| Models | `fraud_models.py`, `trained_models.py`, `risk_lab.py`, `risk_search.py`, `request_models.py`, `model_artifacts/` |
+| Delivery | `web/dist/`, `Dockerfile`, `deploy/`, [help index](docs/README.md) |
 
-## Commands (repository root)
+Python 3.12; `pyproject.toml` + `uv.lock` are canonical. Use `uv add` for dependencies; commit the lock. Static UI has no Node build.
 
 ```sh
 uv sync --locked
 MINTTOWN_LIVE=0 MINTTOWN_FRAUD_LIVE=0 uv run --locked python -B web/server.py
 uv run --locked python -B -m unittest discover -s web -p 'test_*.py'
-uv run --locked python -B web/evaluate_cases.py --mode fake
+node --test web/test_*.mjs
 uv run --locked python -B web/evaluate_harness.py
-uv run --locked python -B web/evaluate_upgrade.py --mode fake
-uv run --locked python -B web/export_environment.py --output output/environment-data
-uv run --locked --group figures python docs/figures/render_agent_mesh.py
+uv run --locked python -B web/evaluate_cases.py --mode fake
 ```
 
-Python 3.12; `pyproject.toml` + `uv.lock` are canonical. Add dependencies with `uv add`; commit the lock. Static UI requires no Node build. See [operations](docs/operations.md) for explicitly authorized live runs.
-
-## Invariants
-
-- Preserve shared durable accounting: $2/day, $0.05/case, $8 lifetime model spend; six calls/case including prevention; one paid call in flight; six-second spacing; no automatic retries. The $20 project envelope includes delayed cloud shutdown protection, not a guaranteed bill ceiling.
-- Keep 100 active customers and bounded BigQuery bytes/rows per operation. Fixed daily call/report/start/export/query counters were removed by owner request; they remain telemetry. Model admission derives from the remaining dollar reservation. Retain one in-flight call, six-second spacing, per-minute HTTP throttles and a 15-minute simulation lease. Never reset the spend ledger or run local and hosted writers together.
-- Interactive starts and AE exports use `seed_history=False`; historical fixtures remain available to offline tests. The persisted `simulation_state.history_seeded` flag prevents restart backfills. Opening wallet/bank endowments are not transactions; absent history must stay absent in warehouse features.
-- Publish AE-shaped rows only to `minttown_world`; preserve Gab's `minttown_simulated_env`. Warehouse + AE analytics sync after the first report, then every five additional reports, within the unchanged shared quota. Reviews/revocations do not force exports. Case snapshots query matching completed AE publications with a bounded parameterized four-table SQL query, verify rows/values and pin its receipt, or use fresh case-time ledger features with explicit deferred-sync provenance; missing evidence and fenced checkpoints still block. No uncertain load or model call is retried. See [data guide](docs/environment-data.md).
-- Analyst approval publishes knowledge; separate approval activates a replay-passed safeguard and its proposed playbook delta. `fraud_playbook.py` stores immutable payloads; later analyst reviews can supply attributed helpful/harmful feedback. Revocation removes future use. Models and agents cannot approve themselves. No LLM call per payment.
-- Pin evidence/model versions. Keep synthetic truth labels out of agent inputs and prevention features. Existing rule scores are not calibrated fraud probabilities.
-- Treat reports/retrieved text as untrusted evidence. Show concise decision summaries, tool receipts and uncertainty; do not expose private reasoning.
-- Known, fully accounted 4xx tool rejections stop their own case; uncertain provider calls or usage-envelope failures still open the shared circuit. Never retry a failed model turn or reset spending.
-- Credentials, ledgers and reports stay ignored. Use your own ADC. Paid calls, access changes, deployments and pushes require user authorization; offline tests are the default.
-- Preserve teammates' edits. Keep changes focused, docs concise, and UI to Environment / Agent activity / Agents with DM Sans and mint colors. No subagents unless explicitly requested.
-- If using the local hyperresearch installation, follow its entry skill; research caches and machine-specific configuration stay untracked.
+Offline tests come first: missing/stale evidence, limits, restart/resume, legitimate lookalikes and revocation. Read [operations](docs/operations.md) before an authorized live run. Architecture: [harness](docs/harness-runtime.md), [learning loops](docs/learning-loops.md). Research caches/machine configuration remain untracked.

@@ -59,3 +59,5 @@ Mutation requests require the same-origin session token. The model cannot call a
 Run `node web/test_town.mjs` from the repository root for street routing, animation lifecycle, picking and reduced-motion checks. Use the fake model for visual playtests.
 
 The [harness runtime](../docs/harness-runtime.md) documents new-case specialist delegation, model contracts, local judges and reviewed-knowledge lifecycle. `evaluate_harness.py` runs the ten-fixture offline execution report.
+
+Retired browser clients (`mesh-ui.js`, `customer-ui.js`, and the old JavaScript economy) are removed. The Python world is authoritative. Historical macro/marketing backends remain for offline diagnostics and schema compatibility; the hosted route guard does not expose their paid actions.

@@ -4,7 +4,7 @@ import {createRiskUI} from './risk-ui.js';
 import {createDemoGuide} from './demo-guide.js';
 import {createRecordedDemo} from './demo-replay.js';
 import {showEvaluation} from './evaluation-ui.js';
-import {mountAgentIcons,cleanText,agentIcon} from './agent-ui.js';
+import {mountAgentIcons,cleanText,agentIcon,featuredIncident} from './agent-ui.js';
 import {residentLabel,residentAlerts} from './resident-sprites.js';
 mountAgentIcons();
 showEvaluation(document.getElementById('evaluation-panel')).catch(()=>{});
@@ -86,7 +86,7 @@ function renderWorld(){
   $('agent-badge').textContent=pending;$('agent-badge').hidden=!pending;
   $('world-note').textContent=demo.scene_blocked_reason||(!demo.running&&demo.start_blocked_reason)||(demo.calls_remaining===0?'Investigation allowance used. Approved knowledge still protects payments.':demo.running?'Each payment becomes a new transaction record.':demo.note==='Ready'?'100 residents. Opening wallet balances. No transactions yet.':demo.note);
   $('activity').disabled=state.playing;document.querySelectorAll('[data-speed]').forEach(b=>b.disabled=state.playing);
-  const latest=phase==='protected'?(demo.incidents.find(i=>i.status==='blocked')||demo.incidents[0]):demo.incidents[0];$('world-alert').hidden=!latest;
+  const latest=featuredIncident(demo);$('world-alert').hidden=!latest;
   if(latest){const person=residentLabel(latest.customer_id);$('world-alert-title').textContent=latest.status==='blocked'?'A similar request was held.':latest.report_id?person+' filed a scam report':'Scam case not created';$('world-alert-copy').textContent=demo.scene_blocked_reason||incidentCopy(latest);$('world-report').textContent=latest.status==='blocked'?'View knowledge →':'Follow the investigation →';$('world-report').hidden=!latest.report_id&&latest.status!=='blocked'}
   $('world-alert').hidden=!demo.guided||!latest;
   renderNotifications(demo);
@@ -185,7 +185,7 @@ $('restart-dialog').addEventListener('close',async()=>{
     await refresh();await cloudStatus();await showView('world');
   }catch(e){error(e.message);await refresh().catch(()=>{})}finally{setBusy(false)}
 });
-$('world-report').onclick=()=>openIncident(state.data.demo.incidents[0]);
+$('world-report').onclick=()=>{const incident=featuredIncident(state.data.demo);if(incident)openIncident(incident)};
 $('cloud-export').onclick=async()=>{if(state.busy)return;setBusy(true);$('cloud-export').disabled=true;try{const id=sessionStorage.getItem('minttown-export-request')||crypto.randomUUID();sessionStorage.setItem('minttown-export-request',id);const r=await api('/api/cloud/export',{request_id:id});if(['completed','failed'].includes(r.status))sessionStorage.removeItem('minttown-export-request');$('cloud-export-result').textContent=`${r.row_count.toLocaleString()} records · ${r.status}`}catch(e){error(e.message)}finally{setBusy(false);await cloudStatus().catch(e=>error(e.message))}};
 document.addEventListener('visibilitychange',()=>{if(document.hidden){clearTimeout(pollTimer);drawTown.setVisible(false)}else refresh().catch(e=>error(e.message))});
 window.addEventListener('hashchange',()=>showView(!location.hash?'world':location.hash==='#agents'?'agents':'resolution').catch(e=>error(e.message)));

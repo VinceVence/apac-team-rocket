@@ -80,5 +80,23 @@ class GuardChecks(unittest.TestCase):
         self.assertEqual(self.guard.status()['used']['reports'],10000)
         self.assertIsNone(self.guard.status()['limits']['writes_per_day'])
 
+    def test_get_and_head_share_the_static_asset_boundary(self):
+        from server import make_server
+        from agents import Config
+        server=make_server(0,Path(self.temp.name)/'assets.db',Config(live=False),seed_history=False)
+        thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+        base='http://127.0.0.1:'+str(server.server_port)
+        try:
+            for method in ('GET','HEAD'):
+                for path,code in [('/app.js',200),('/fonts/dm-sans-400.ttf',200),('/fonts/',404),
+                    ('/mesh-ui.js',404),('/customer-ui.js',404),('/economy.js',404),('/server.py',404),('/.env.vertex',404)]:
+                    response=requests.request(method,base+path,timeout=10)
+                    self.assertEqual(response.status_code,code,(method,path))
+                    if method=='HEAD':self.assertEqual(response.content,b'')
+                response=requests.request(method,base+'/app.js',headers={'Host':'untrusted.example'},timeout=10)
+                self.assertEqual(response.status_code,403)
+            self.assertEqual(server.lab.db.execute('SELECT count(*) FROM fraud_agent_turns').fetchone()[0],0)
+        finally:server.shutdown();server.server_close();thread.join();server.lab.db.close()
+
 
 if __name__=='__main__':unittest.main()

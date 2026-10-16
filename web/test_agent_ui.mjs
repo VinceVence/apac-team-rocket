@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {caseProgress,publicEvidence,cleanText,caseActivity,demoAnalystState} from './dist/agent-ui.js';
+import {caseProgress,publicEvidence,cleanText,caseActivity,demoAnalystState,featuredIncident} from './dist/agent-ui.js';
+
+test('the protection link follows the held scam even when a later legitimate payment is first',()=>{
+  const held={id:'held',status:'blocked',report_id:'source'},normal={id:'normal',status:'passed'};
+  assert.equal(featuredIncident({phase:'protected',incidents:[normal,held]}),held);
+  assert.equal(featuredIncident({phase:'world',incidents:[normal,held]}),normal);
+  assert.equal(featuredIncident({incidents:[]}),null);
+});
 
 test('demo analyst requires server eligibility and distinguishes blocked evidence from approval',()=>{
   const blocked={status:'reported',preparation:{status:'blocked'},demo_analyst:{eligible:false,detail:'Evidence is blocked.'}};

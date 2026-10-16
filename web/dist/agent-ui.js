@@ -50,6 +50,11 @@ export function renderPreventionFlow(job){
     const n=document.createElement('div');n.className='activity-node '+state;n.append(agentIcon(icon));const title=document.createElement('strong'),status=document.createElement('small');title.textContent=label;status.textContent=state==='complete'?'Ready':state==='blocked'?'Needs review':state==='active'?(working?'Working':'Your turn'):'Next';n.append(title,status);root.append(n);
   }
 }
+export function featuredIncident(demo){
+  const incidents=demo?.incidents||[];
+  return (demo?.phase==='protected'&&incidents.find(i=>i.status==='blocked'))||incidents[0]||null;
+}
+
 export function caseProgress(report,demo={}){
   const run=report?.investigation,job=report?.prevention,reviewed=!!report?.reviews?.length&&report.status==='resolved';
   const stopped=['failed','interrupted','budget_exhausted'].includes(run?.status);

@@ -1,4 +1,4 @@
-"""Loopback-only local server. Database and credentials are outside the public directory."""
+"""Bounded local/hosted demo API. Data and credentials stay outside public assets."""
 import argparse
 import functools
 import json
@@ -33,6 +33,12 @@ from environment_data import EnvironmentData
 from environment_cloud import EnvironmentPublisher, initialize as initialize_environment_publications
 
 ROOT=Path(__file__).resolve().parent
+STATIC_PATHS=frozenset(('/','/index.html','/app.js','/fraud-ui.js','/harness-ui.js',
+    '/demo-guide.js','/demo-replay.js','/demo-recording.json','/evaluation-ui.js',
+    '/evaluation-summary.json','/learning-architecture.svg','/decision-map.js',
+    '/agent-ui.js','/risk-ui.js','/town.js','/town-art.js','/resident-sprites.js',
+    '/styles.css','/mark.svg','/favicon.svg','/fonts/OFL.txt',
+    *(f'/fonts/dm-sans-{weight}.ttf' for weight in (400,500,600,700))))
 
 
 class MintTownServer(ThreadingHTTPServer):
@@ -88,6 +94,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
     csrf=secrets.token_urlsafe(32)
 
     class Handler(SimpleHTTPRequestHandler):
+        timeout=15  # Bound incomplete HTTP uploads; model work has its own timer.
         def __init__(self,*args,**kwargs):
             super().__init__(*args,directory=str(ROOT/'dist'),**kwargs)
 
@@ -104,7 +111,15 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
             if cloud and self.command=='POST' and status<400: cloud.save(lab)
             body=encoded(value).encode()
             self.send_response(status);self.send_header('Content-Type','application/json; charset=utf-8')
-            self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
+            self.send_header('Content-Length',str(len(body)));self.end_headers()
+            if self.command!='HEAD':self.wfile.write(body)
+
+        def do_HEAD(self):
+            path=urlsplit(self.path).path
+            if path=='/healthz':return self.reply(200 if not cloud or cloud.healthy else 503,{'healthy':not cloud or cloud.healthy})
+            if not self.allowed_host():return self.reply(403,{'error':'Use the configured demo address.'})
+            if path not in STATIC_PATHS:return self.reply(404,{'error':'File not found.'})
+            return super().do_HEAD()
 
         def do_GET(self):
             if urlsplit(self.path).path=='/healthz': return self.reply(200 if not cloud or cloud.healthy else 503,{'healthy':not cloud or cloud.healthy})
@@ -152,9 +167,8 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                     with lab.lock: run=agents.public_run(path.rsplit('/',1)[-1])
                     return self.reply(200,run)
                 if path.startswith('/api/'): return self.reply(404,{'error':'Endpoint not found.'})
-                if path not in ('/','/index.html','/app.js','/mesh-ui.js','/customer-ui.js','/fraud-ui.js','/harness-ui.js','/demo-guide.js','/demo-replay.js','/demo-recording.json','/evaluation-ui.js','/evaluation-summary.json','/learning-architecture.svg','/decision-map.js','/agent-ui.js','/risk-ui.js','/town.js','/town-art.js','/resident-sprites.js','/styles.css','/mark.svg','/favicon.svg') and not path.startswith('/fonts/'):
+                if path not in STATIC_PATHS:
                     return self.reply(404,{'error':'File not found.'})
-                if '..' in path or '%' in path: return self.reply(404,{'error':'File not found.'})
                 return super().do_GET()
             except LabError as exc: return self.reply(exc.status,{'error':str(exc)})
 

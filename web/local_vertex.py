@@ -11,7 +11,7 @@ from pathlib import Path
 
 from cloud_data import CloudData
 from server import make_server
-from settings import DAILY_MODEL_USD, CASE_USD, TOTAL_MODEL_USD, DAILY_MODEL_CALLS, MAX_CASE_CALLS
+from settings import DAILY_MODEL_USD, CASE_USD, TOTAL_MODEL_USD, MAX_CASE_CALLS
 
 PROJECT='minttown-apac-2026'
 
@@ -38,12 +38,12 @@ def main():
         if cloud.generation=='0' or not path.exists():raise ValueError('The existing shared ledger is missing. Refusing a new paid budget.')
         for name in ('MINTTOWN_LIVE','MINTTOWN_FRAUD_LIVE','MINTTOWN_CLOUD_LIVE'):os.environ[name]='1'
         os.environ['PALLET_WAREHOUSE_ENABLED']='1'
-        server=make_server(args.port,path,cloud=cloud,bind_host='127.0.0.1')
+        server=make_server(args.port,path,cloud=cloud,bind_host='127.0.0.1',seed_history=False)
         server.warehouse.provision()
         def terminate(*_):raise KeyboardInterrupt
         signal.signal(signal.SIGTERM,terminate)
         print(f'Mint Town: http://127.0.0.1:{args.port} · Vertex AI · shared ledger · Cloud Run paused',flush=True)
-        print(f'${DAILY_MODEL_USD:g}/UTC day · ${CASE_USD:g}/case · ${TOTAL_MODEL_USD:g} lifetime · {DAILY_MODEL_CALLS} calls/day · {MAX_CASE_CALLS}/case · no retries',flush=True)
+        print(f'${DAILY_MODEL_USD:g}/UTC day · ${CASE_USD:g}/case · ${TOTAL_MODEL_USD:g} lifetime · spend-based admission · {MAX_CASE_CALLS}/case · no retries',flush=True)
         try:server.serve_forever()
         except KeyboardInterrupt:pass
         finally:server.server_close();server.lab.db.close()
