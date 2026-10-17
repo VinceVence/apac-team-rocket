@@ -1,8 +1,8 @@
 // Case state and public receipts only; never model chain-of-thought.
-import {agentIcon,cleanText} from './agent-ui.js';
+import {agentIcon,publicEventText} from './agent-ui.js';
 export const roleNames={resolution:'Resolution agent',case_lead:'Resolution agent',transaction_specialist:'Transactions',device_specialist:'Device & identity',scam_specialist:'Scam context',resolution_critic:'Resolution critic'};
 const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n};
-export function renderHarness(harness){
+export function renderHarness(harness,aliases){
   const panel=document.getElementById('harness-panel');panel.hidden=!harness?.enabled;if(!harness?.enabled)return;
   panel.replaceChildren();const head=el('div',undefined,'harness-heading');
   head.append(agentIcon('judge'),el('strong','Validation checks'));panel.append(head);
@@ -14,11 +14,11 @@ export function renderHarness(harness){
   }
   panel.append(strip);
   const details=el('details',undefined,'world-details harness-details');details.append(el('summary','Specialist findings & validation details'));
-  if(task){details.append(el('p',roleNames[task.role]+': '+cleanText(task.question),'harness-question'));if(task.finding)details.append(el('p',cleanText(task.finding.summary),'harness-finding'))}
+  if(task){details.append(el('p',roleNames[task.role]+': '+publicEventText(task.question,aliases),'harness-question'));if(task.finding)details.append(el('p',publicEventText(task.finding.summary,aliases),'harness-finding'))}
   details.append(el('p','These checks support human review. They do not establish fraud.','surface-note'));
   for(const check of harness.checks){
     const item=el('div',undefined,'harness-verdict');item.append(el('strong',check.mode==='manual_handoff_checks'?'Manual evidence ready for the analyst':check.passed?'Draft passed the checks':'Draft or tool action withheld'));
-    for(const judge of check.judges){item.append(el('small',cleanText(`${judge.name}: ${judge.skipped?'previous inferences discarded':judge.passed?'passed':judge.blockers.join(' ')}`)))}details.append(item);
+    for(const judge of check.judges){item.append(el('small',publicEventText(`${judge.name}: ${judge.skipped?'previous inferences discarded':judge.passed?'passed':judge.blockers.join(' ')}`,aliases)))}details.append(item);
   }
   for(const r of harness.model_receipts){
     const item=el('div',undefined,'harness-receipt');item.append(el('strong','Evidence check · '+r.status.replaceAll('_',' ')),el('p',r.target),el('small','Signal score · not a fraud probability'));

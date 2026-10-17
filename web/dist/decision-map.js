@@ -1,5 +1,5 @@
 // A view of public tool receipts. No generated explanations or private reasoning.
-import {agentIcon,cleanText,pretty,toolLabels} from './agent-ui.js';
+import {agentIcon,cleanText,pretty,toolLabels,caseEventAliases,publicEventText} from './agent-ui.js';
 import {roleNames} from './harness-ui.js';
 
 const text=value=>typeof value==='string'?cleanText(value):'';
@@ -64,7 +64,7 @@ export function decisionMap(report,selected=null){
 
 const el=(tag,value,cls)=>{const n=document.createElement(tag);if(value!==undefined)n.textContent=value;if(cls)n.className=cls;return n};
 export function renderDecisionMap(root,report,{selected=null,compact=false,onSelect}={}){
-  const d=decisionMap(report,selected);root.replaceChildren();root.classList.add('decision-map');root.classList.toggle('decision-map-compact',compact);root.dataset.phase=d.phase;
+  const d=decisionMap(report,selected),aliases=caseEventAliases(report),show=value=>publicEventText(value,aliases);root.replaceChildren();root.classList.add('decision-map');root.classList.toggle('decision-map-compact',compact);root.dataset.phase=d.phase;
   const header=el('header',undefined,'decision-map-heading'),title=el('div');title.append(agentIcon('resolution'),el('strong',compact?'Inside the investigation':'Agent decisions'));
   header.append(title,el('span',d.badge,'decision-origin'));root.append(header);
   if(onSelect&&selected!==null){const follow=el('button','Follow latest','text-button');follow.type='button';follow.onclick=()=>onSelect(null);header.append(follow)}
@@ -80,13 +80,13 @@ export function renderDecisionMap(root,report,{selected=null,compact=false,onSel
   if(d.tool)tool.append(el('code',d.tool,'decision-tool-name'));
   if(d.phase==='executing'&&d.live)tool.classList.add('is-working');
   const outcome=node(d.tool==='return_finding'?'resolution':'judge',d.phase==='stopped'?'No result recorded':d.phase!=='recorded'?'Awaiting result':d.tool==='return_finding'?'Back to the lead':'Evidence returned',null,'decision-outcome');
-  const facts=el('ul');for(const fact of (d.result.facts.length?d.result.facts:[d.result.summary]).slice(0,2)){const li=el('li',fact.length>110?fact.slice(0,107)+'…':fact);li.setAttribute('aria-label',fact);facts.append(li)}outcome.append(facts);
+  const facts=el('ul');for(const raw of (d.result.facts.length?d.result.facts:[d.result.summary]).slice(0,2)){const fact=show(raw),li=el('li',fact.length>110?fact.slice(0,107)+'…':fact);li.setAttribute('aria-label',fact);facts.append(li)}outcome.append(facts);
   for(const n of [actor,el('span','→','decision-arrow'),tool,el('span','→','decision-arrow'),outcome])loop.append(n);root.append(loop);
   const feedback=el('div',undefined,'decision-feedback');
   feedback.innerHTML='<svg viewBox="0 0 800 45" preserveAspectRatio="none" aria-hidden="true"><path d="M714 1V20Q714 35 698 35H104Q88 35 88 20V6m-5 7 5-7 5 7" fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>';
   feedback.append(el('span',d.phase==='stopped'?'No result to continue from':d.tool==='return_finding'?'The lead receives the specialist’s finding':d.phase==='recorded'?'Result returned to the agent':d.phase==='executing'?'Waiting for the tool result':'The next tool is not predetermined'));root.append(feedback);
-  if(!compact){const why=el('div',undefined,'decision-reason');why.append(el('small','Agent’s stated reason'),el('p',d.reason));root.append(why)}
-  if(d.result.unknowns.length){const unknown=el('p',undefined,'decision-unknown');unknown.append(el('strong','Still unverified: '),document.createTextNode(d.result.unknowns[0]));root.append(unknown)}
-  root.append(el('p',d.nextAction,'decision-next'));
+  if(!compact){const why=el('div',undefined,'decision-reason');why.append(el('small','Agent’s stated reason'),el('p',show(d.reason)));root.append(why)}
+  if(d.result.unknowns.length){const unknown=el('p',undefined,'decision-unknown');unknown.append(el('strong','Still unverified: '),document.createTextNode(show(d.result.unknowns[0])));root.append(unknown)}
+  root.append(el('p',show(d.nextAction),'decision-next'));
   return d;
 }

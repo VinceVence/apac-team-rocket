@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {caseProgress,publicEvidence,cleanText,caseActivity,demoAnalystState,featuredIncident,needsWorldPoll} from './dist/agent-ui.js';
+import {caseProgress,publicEvidence,publicEventText,caseEventAliases,cleanText,caseActivity,demoAnalystState,featuredIncident,needsWorldPoll} from './dist/agent-ui.js';
 
 test('waiting for demo Next does not keep Cloud Run warm with polling',()=>{
   for(const phase of ['complaint','investigation','prevention','protected'])assert.equal(needsWorldPoll({phase,running:false,agent_busy:false}),false);
@@ -31,6 +31,24 @@ test('UI receipt projection removes provider and spending details without changi
   const original=structuredClone(receipt),visible=publicEvidence(receipt);
   assert.deepEqual(visible,{source:'snapshot',result:{receipt_id:'r1',signal_score:0,missing_inputs:['device']}});
   assert.deepEqual(receipt,original);assert.equal(cleanText('gemini-3.5-flash-lite paused at $0.05'),'agent paused at configured limit');
+});
+test('UI receipt projection hides scenario-labelled transaction IDs',()=>{
+  const id='world-scam-37-phishing-first-0';
+  const receipt={event_ids:[id],transactions:[{id}],finding:`Verified ${id}`};
+  const original=structuredClone(receipt);
+  const visible=publicEvidence(receipt,new Map([[id,'Transfer 1']]));
+  assert.deepEqual(visible,{event_ids:['Transfer 1'],transactions:[{id:'Transfer 1'}],finding:'Verified Transfer 1'});
+  assert.deepEqual(receipt,original);
+});
+test('case citations and historical receipts use stable neutral references',()=>{
+  const reported='world-scam-37-phishing-first-0',prior='world-legit-14-grocery-0';
+  const report={id:'SC-1',transactions:[{id:reported}],investigation:{trace:[{result:{history:[{id:prior}],event_ids:[reported]}}]}};
+  const aliases=caseEventAliases(report);
+  assert.equal(aliases.get(reported),'Transfer 1');
+  assert.equal(aliases.get(prior),'Transfer 2');
+  assert.equal(publicEventText(`Ledger evidence: ${reported}`,aliases),'Ledger evidence: Transfer 1');
+  assert.equal(JSON.stringify(publicEvidence(report.investigation.trace,aliases)).includes('world-'),false);
+  assert.equal(report.transactions[0].id,reported);
 });
 test('tracker distinguishes investigation, human review and prevention failures',()=>{
   assert.equal(caseProgress({status:'investigating',investigation:{context:{execution:{status:'running'}}}}).working,true);
