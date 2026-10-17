@@ -1,4 +1,5 @@
 import {createTown} from './town.js';
+import {createLandingWorld} from './landing-world.js';
 import {createFraudUI} from './fraud-ui.js';
 import {createRiskUI} from './risk-ui.js';
 import {createDemoGuide} from './demo-guide.js';
@@ -12,6 +13,7 @@ import {renderResidentQueue} from './resident-queue.js';
 mountAgentIcons();
 showEvaluation(document.getElementById('evaluation-panel')).catch(()=>{});
 const $=id=>document.getElementById(id),drawTown=createTown($('town-map'));
+createLandingWorld($('welcome-world'),$('welcome'),$('welcome-world-status'));
 const state={data:null,ready:false,view:'world',busy:false,playing:false,speed:1,stepping:false,customerId:null,hosted:false};
 let residentReport=null,quickTour=null;
 function enterTown({tutorial=false}={}){

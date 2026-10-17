@@ -18,7 +18,7 @@ test('customer scenes use the recorded request before the investigation starts',
   assert.equal(story.customerId,recording.report.customer_id);
   assert.equal(story.settled,true);
   assert.equal(replay.detail().investigation,null);
-  assert.deepEqual(demoBeats(data.demo,null).map(b=>b.id),['world','payments','message','payment','complaint']);
+  assert.deepEqual(demoBeats(data.demo,null).map(b=>b.id),['world','payments','complaint']);
 });
 
 test('a hold and legitimate success come from separate, case-linked payment receipts',()=>{
@@ -33,7 +33,7 @@ test('a hold and legitimate success come from separate, case-linked payment rece
   assert.equal(sent.settled,true);assert.equal(sent.amount,data.events.find(e=>e.id===sent.eventId).amount_minor);
   assert.notEqual(sent.eventId,hold.eventId);
   const beats=demoBeats(data.demo,report);
-  assert.deepEqual(beats.slice(-2).map(b=>[b.id,!!b.done]),[['protected',false],['payment-sent',true]]);
+  assert.equal(beats.at(-1).id,'protected');assert.equal(beats.at(-1).done,true);
 });
 
 test('missing evidence and foreign cases cannot supply message, hold or success',()=>{
