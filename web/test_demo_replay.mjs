@@ -5,6 +5,26 @@ import {createRecordedDemo} from './dist/demo-replay.js';
 import {demoBeats,nextGuideStep} from './dist/demo-guide.js';
 import {decisionMap} from './dist/decision-map.js';
 const recording=JSON.parse(readFileSync(new URL('./dist/demo-recording.json',import.meta.url)));
+test('fallback preserves Karlo classifier, approval and original hosted prevention receipts from one case',()=>{
+ assert.equal(recording.source.report_id,'SC-a1a870cc4e');
+ assert.equal(recording.report.id,recording.source.report_id);
+ const call=recording.report.decision_trail.find(t=>t.tool==='score_models');
+ const model=call.result.receipts.find(r=>r.model_id==='ledger_transaction_v1');
+ assert.equal(model.receipt_id,'PRED-d210179fb60f02520955');
+ assert.equal(model.prediction.signal_score,0.7052513220535409);
+ assert.equal(model.prediction.threshold,0.7);
+ assert.ok(recording.report.investigation.context.submitted_receipt_ids.includes(model.receipt_id));
+ assert.equal(recording.report.reviews[0].report_id,recording.report.id);
+ assert.equal(recording.lesson.source_report_id,recording.report.id);
+ assert.equal(recording.report.prevention.source.report_id,recording.report.id);
+ const held=recording.proof_events.find(e=>e.status==='blocked');
+ assert.equal(held.id,'world-scam-33-phishing-variant-0');
+ assert.equal(held.to_account,recording.proof.changed_recipient);
+ assert.ok(held.metadata.prevention_rule_ids.includes(recording.source.rule_id));
+ assert.equal(recording.proof.original_hosted_events,true);
+ assert.equal(recording.proof.held_ledger_entries,0);
+ assert.equal(recording.proof.new_model_calls,0);
+});
 test('saved Gemini demo completes using Next only, without fetch or a paid call',()=>{
  const old=globalThis.fetch;globalThis.fetch=()=>{throw Error('Playback must never use the network')};
  try{

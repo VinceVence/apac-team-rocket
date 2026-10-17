@@ -30,7 +30,7 @@ The prevention learner may consume one remaining model call from the same six-ca
 
 ## 1:55–2:25 — Learn a safeguard
 
-Show the prevention signals and replay results. Click **Next** to apply the assumed demo activation. If no candidate passed, the demo explicitly uses only the approved recipient watch.
+Show the prevention signals and replay results. Click **Next** to apply the assumed demo activation. If the live candidate is unavailable or rejected, Next offers the labelled saved Gemini walkthrough; it does not activate the rejected candidate.
 
 > A second role converts the approved resolution into a narrow, versioned safeguard. It can also decline. The proposal must catch the changed-recipient example and avoid the legitimate replay controls, then a human decides whether to activate it. These are synthetic checks, not production accuracy measurements.
 
@@ -38,7 +38,7 @@ Show the prevention signals and replay results. Click **Next** to apply the assu
 
 Click **Next** to test the similar payment. Show the green protection marker and the two outcomes.
 
-> When a behavioral safeguard passed, the scam now uses a different recipient. If it did not, the demo uses the previously reviewed recipient and labels that narrower protection. The local payment gate requests verification before any debit, while the normal payment passes. Neither payment makes a Gemini call.
+> The approved behavioral safeguard checks a scam with a different recipient. The local payment gate holds it before any debit, while the normal payment passes. Neither payment makes a Gemini call. A recorded fallback shows these original outcomes and is explicitly labelled.
 >
 > The contribution is the complete feedback loop: evidence-driven investigation, human-reviewed knowledge, a tested prevention proposal, and an observable effect on the next transaction—all within one shared cost budget.
 
@@ -58,4 +58,6 @@ Use only **Next**. After the evidence check, pause on **The agent calls a classi
 
 Next shows **The agent weighs the evidence**, pairing the model result and whether it was cited with the actual recorded resolution and uncertainty. Validation follows, then the simulated Fraud Analyst approval, shared knowledge, prevention activation and the town’s changed-recipient payment check. A rejected draft cannot be auto-approved; Next can open the labelled saved Gemini walkthrough without retrying a model.
 
-Fresh guided cases require a cited AE ledger-classifier receipt, inside the unchanged six-call allowance. Continuous simulation retains discretionary model selection. The cost-free recording uses real Gemini case `SC-18e89835be`, which called the previously approved request classifier and produced an approved changed-recipient safeguard. It does not pretend that historical case used Karlo’s newer ledger model. The recording was rebuilt and its gateway proof verified in an isolated database copy; no new Gemini call or shared-world mutation was made.
+Fresh guided cases require a cited AE ledger-classifier receipt, inside the unchanged six-call allowance. Continuous simulation retains discretionary model selection. The cost-free fallback now uses successful Gemini case **SC-a1a870cc4e** from October 17, 2026. Karlo's `ledger_transaction_v1` returned **0.705251 / 0.700**, and the agent cited its receipt before the simulated analyst approved the case. Gemini's prevention role proposed `safe_account_request` + `secrecy_request`; the approved rule held the original hosted **₱900** attempt to a different recipient, with **zero debit and zero ledger entries**, while the legitimate control settled.
+
+The original run used four Gemini calls ($0.004152). Replaying it adds no model calls or current-world actions. The fallback preserves the original hosted tool, review and payment receipts; exporting it did not generate another payment, rerun inference or regenerate the resolution. Follow **Next** from an empty recorded scene through the classifier, review, knowledge and protection. **Back** only revisits saved facts. The live cost caps remain unchanged.
