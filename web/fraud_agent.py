@@ -24,7 +24,7 @@ TOOL_CONTRACT_VERSION = 12
 MAX_INPUT_BYTES = 16000
 MAX_OUTPUT_TOKENS = 512
 RESERVE_MICROUSD = 10000
-TURN_TIMEOUT_SECONDS = 30
+TURN_TIMEOUT_SECONDS = 50
 LIVE_INTERVAL_SECONDS = 6
 TOOLS = ('get_transactions', 'compare_behavior', 'trace_recipient', 'search_reviewed_cases', 'ask_customer', 'submit_for_review',
          'get_customer_features','train_behavior_model','get_complaint_guidance','run_fraud_detectors',

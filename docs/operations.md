@@ -56,7 +56,7 @@ Restart archives the current scene while retaining accounting, research and fail
 
 **Run demo → Next** shows payments, the complaint, evidence preparation, actual selected tools, review, knowledge and a later payment. The scene stays scroll-locked and the reader controls advancement. Show public decision purposes and tool receipts, never private reasoning.
 
-If live work cannot proceed, the clearly labelled recorded Gemini demo runs entirely in the browser. It cannot approve current cases, write payments, or spend money. Exiting restores the unchanged real world. Never describe replay as fresh inference.
+Run demo stays on the live Gemini case and never silently changes to playback. Watch saved demo is a separate, explicitly selected browser-only replay. It cannot approve current cases, write payments, or spend money. Exiting restores the unchanged real world. Never describe replay as fresh inference.
 
 ```sh
 uv run --locked python -B -m unittest discover -s web -p 'test_*.py'

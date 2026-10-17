@@ -38,7 +38,7 @@ test('live Next cannot skip unread classifier results or interpretation',()=>{
 test('a currently rejected interpretation never offers assumed approval after an older passing check',()=>{
   const r={...report,status:'awaiting_review',investigation:{status:'awaiting_review',recommendation:{summary:'Models note elevated risk.'}},decision_trail:[modelTurn()],
     harness:{checks:[{passed:false,judges:[{judge:'models',passed:false,blockers:['Below threshold.']},{judge:'resolution',passed:true}]},{passed:true,judges:[{judge:'resolution',passed:true}]}]}};
-  const beats=demoBeats(demo,r);assert.equal(beats.at(-1).action,'replay');
+  const beats=demoBeats(demo,r);assert.equal(beats.at(-1).action,undefined);assert.equal(beats.at(-1).exit,true);
   assert.equal(beats.some(b=>b.action==='review'),false);assert.equal(classifierInterpretation(r).blocked,true);
 });
 
@@ -63,7 +63,7 @@ test('fast completed runs retain each tool, the specialist and judge rejection',
   const beats=demoBeats(demo,r);
   assert.equal(beats.find(b=>b.id==='turn-3').who,'Device & identity');
   assert.equal(beats.find(b=>b.id==='judges').title,'The judges withheld this draft');
-  assert.equal(beats.at(-1).id,'stopped');assert.equal(beats.at(-1).action,'replay');
+  assert.equal(beats.at(-1).id,'stopped');assert.equal(beats.at(-1).action,undefined);assert.equal(beats.at(-1).exit,true);
   assert.equal(beats.some(b=>b.id==='knowledge'),false);
 });
 
@@ -86,7 +86,7 @@ test('fresh scenes and foreign cases do not carry old investigation facts',()=>{
 
 test('rejected report admission explains the stop without promising a scam or investigation',()=>{
   const beats=demoBeats({...demo,focus_report_id:null,running:false,scene_blocked_reason:'Daily scam-report allowance reached.'},null);
-  assert.equal(beats.length,1);assert.equal(beats[0].action,'replay');assert.match(beats[0].title,/recorded Gemini/);
+  assert.equal(beats.length,1);assert.equal(beats[0].action,null);assert.equal(beats[0].exit,true);assert.match(beats[0].title,/paused/);
   assert.match(beats[0].copy,/allowance reached/);assert.equal(beats[0].done,undefined);
   assert.equal(beats[0].wait,'No investigation ran');
 });
@@ -121,9 +121,9 @@ test('Next from live activity visits unread tools instead of skipping to review'
   assert.equal(replied[1].target,'#agent-live-panel');assert.equal(nextGuideStep(replied,'reply'),'turn-3');
 });
 
-test('a rejected candidate stays inactive while Next opens a labelled Gemini recording',()=>{
+test('a rejected candidate stays inactive without switching to a recording',()=>{
   const beats=demoBeats(demo,{...report,status:'resolved',reviews:[{}],prevention:{status:'rejected',rule:{status:'rejected',replay:{passed:false}}}});
-  assert.equal(beats.at(-1).id,'prevention');assert.equal(beats.at(-1).action,'replay');assert.match(beats.at(-1).copy,/unavailable|did not pass/);
+  assert.equal(beats.at(-1).id,'prevention');assert.equal(beats.at(-1).action,undefined);assert.equal(beats.at(-1).exit,true);assert.match(beats.at(-1).copy,/review/);
 });
 
 
@@ -157,3 +157,5 @@ test('the similar attempt and blocked outcome use the environment view',()=>{
   assert.equal(beats.find(b=>b.id==='repeat').view,'world');
   assert.equal(beats.at(-1).view,'world');
 });
+
+ test('Run demo never silently switches to saved playback',async()=>{const fs=await import('node:fs/promises');const source=await fs.readFile(new URL('./dist/app.js',import.meta.url),'utf8');const fn=source.slice(source.indexOf('async function runWorld('),source.indexOf('let recording=null'));assert.doesNotMatch(fn,/recordedDemo|calls_remaining/);});

@@ -270,7 +270,7 @@ async def run_turn(controller, run, packet, *, instruction=SYSTEM, tools_factory
         from google.adk.models.google_llm import Gemini
         client = genai.Client(vertexai=True, project=os.environ['GOOGLE_CLOUD_PROJECT'],
                               location=os.getenv('GOOGLE_CLOUD_LOCATION', 'global'),
-                              http_options=types.HttpOptions(timeout=25000, retry_options=types.HttpRetryOptions(attempts=1)))
+                              http_options=types.HttpOptions(timeout=45000, retry_options=types.HttpRetryOptions(attempts=1)))
         inner = Gemini(model=MODEL, client=client, use_interactions_api=False, retry_options=types.HttpRetryOptions(attempts=1))
     else:
         inner = controller.model_factory() if controller.model_factory else FakeInvestigator()

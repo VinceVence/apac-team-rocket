@@ -213,10 +213,12 @@ async function runWorld(mode){
   if(state.busy||!state.data)return;if(mode==='demo')skipIntro();setBusy(true);error('');guide.close();
   try{
     const demo=state.data.demo,pausing=mode==='simulation'&&demo.running;
-    if(mode==='demo'&&(demo.start_blocked_reason||demo.restart_blocked||demo.running||demo.calls_remaining<6)){await recordedDemo();return}
+    if(mode==='demo'&&demo.restart_blocked)throw Error('An investigation is still running. Let it finish before starting a new demo.');
+    if(mode==='demo'&&demo.start_blocked_reason)throw Error(demo.start_blocked_reason);
+    if(mode==='demo'&&demo.running)await api('/api/world/stop',{expected_run:demo.run_id});
     await api(pausing?'/api/world/stop':'/api/world/start',pausing?{expected_run:demo.run_id}:{expected_run:demo.run_id,activity:Number($('activity').value),speed:state.speed,fresh:mode==='demo'||!demo.continuous,mode});
     await refresh();if(!pausing)await showView('world');
-  }catch(e){if(mode==='demo'){try{await recordedDemo()}catch(replayError){error(replayError.message)}}else error(e.message)}finally{setBusy(false)}
+  }catch(e){error(e.message)}finally{setBusy(false)}
 }
 let recording=null;
 async function recordedDemo(){
