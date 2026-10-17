@@ -113,7 +113,7 @@ export function liveDemoState(report,demo={}){
     copy:map.tool?map.reason:progress.detail,detail:map.result.summary,live:map.live};
 }
 
-export function createDemoGuide({state,openCase,showWorld,error,demoAction,residentPosition,onClose}){
+export function createDemoGuide({state,openCase,showWorld,error,demoAction,residentPosition,onClose,canAutoOpen=()=>true}){
   const root=document.createElement('div');root.id='demo-guide';root.hidden=true;root.setAttribute('role','dialog');root.setAttribute('aria-modal','true');root.setAttribute('aria-label','Guided fraud demo');
   root.innerHTML='<section class="demo-presentation"><header class="demo-stage-header"><span class="demo-stage-brand"><img src="/mark.svg" alt="" width="30" height="30"><span>Mint Town <small>Guided demo</small></span></span><nav class="demo-stage-track" aria-label="Demo flow"></nav><button type="button" class="guide-close" aria-label="Exit demo">×</button></header><div class="demo-stage-main"><section class="demo-visual" aria-label="Current demo scene"></section><aside class="guide-caption" role="region" aria-label="Demo guide"><span class="guide-who"></span><h2></h2><span class="guide-reason-label" hidden>Why this check</span><p class="guide-copy"></p><p class="guide-detail"></p><p class="guide-error" role="alert" hidden></p><footer><span class="guide-progress"></span><button type="button" class="guide-back">Back</button><button type="button" class="primary-button guide-next">Next</button></footer><small class="guide-wait"></small></aside></div></section>';
   document.body.append(root);
@@ -204,7 +204,7 @@ export function createDemoGuide({state,openCase,showWorld,error,demoAction,resid
   }
   function update(nextReport){
     const d=state.data?.demo;if(!d?.guided){if(active)close();return}
-    const key=d.scene_id+':'+d.run_id;if(scene!==key){scene=key;report=null;beats=[];current='world';seen.clear();priorFocus=document.activeElement;active=!!(d.running||d.focus_report_id)&&d.phase!=='protected'&&saved('minttown-guide-dismissed')!==scene}
+    const key=d.scene_id+':'+d.run_id;if(scene!==key){scene=key;report=null;beats=[];current='world';seen.clear();priorFocus=document.activeElement;active=canAutoOpen()&&!!(d.running||d.focus_report_id)&&d.phase!=='protected'&&saved('minttown-guide-dismissed')!==scene}
     if(nextReport){if(nextReport.id!==d.focus_report_id&&!entering){close();return}report=nextReport}
     if(report?.id!==d.focus_report_id)report=null;
     beats=keepReadingStep(beats,demoBeats(d,report),current);if(active&&!entering)render();

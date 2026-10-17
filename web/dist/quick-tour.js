@@ -1,6 +1,7 @@
 import {agentIcon} from './agent-ui.js';
 
 export const TOUR_KEY='minttown-quick-tour-v1';
+export function hasSeenTour(storage=()=>globalThis.localStorage){try{return storage()?.getItem(TOUR_KEY)==='seen'}catch{return false}}
 export const TOUR_STEPS=[
   {title:'A town in motion',part:'Environment',target:'[data-view="world"]',copy:'Watch residents pay and transfer money. Select a resident to follow their activity, or open a report when an alert appears.',note:'! A report needs attention.  ✓ A payment was protected.'},
   {title:'Follow the investigation',part:'Agent activity',target:'[data-view="resolution"]',copy:'See the tools used, evidence returned and proposed resolution. The Fraud Analyst reviews the case before its lesson can inform prevention.',note:'Investigation → analyst review → prevention'},
@@ -15,7 +16,7 @@ export function createTourFlow({storage=()=>globalThis.localStorage,canOpen=()=>
   const markSeen=()=>{try{storage()?.setItem(TOUR_KEY,'seen')}catch{}};
   function open(automatic=false){
     if(active||!canOpen())return false;
-    if(automatic){try{if(storage()?.getItem(TOUR_KEY)==='seen')return false}catch{}}
+    if(automatic&&hasSeenTour(storage))return false;
     active=true;index=0;render(index);return true;
   }
   function close(){if(!active)return;active=false;markSeen();onClose(false)}
@@ -28,7 +29,7 @@ export function createTourFlow({storage=()=>globalThis.localStorage,canOpen=()=>
   return {open,close,next,back(){if(active&&index>0){index--;render(index)}},get active(){return active}};
 }
 
-export function createQuickTour({startDemo,canOpen}){
+export function createQuickTour({startDemo,canOpen,onDismiss=()=>{}}){
   const dialog=document.createElement('dialog');dialog.id='quick-tour';
   dialog.setAttribute('aria-labelledby','tour-title');dialog.setAttribute('aria-describedby','tour-copy');
   dialog.innerHTML='<header class="tour-header"><span><img src="/mark.svg" width="28" height="28" alt="">Mint Town <small>Quick tour</small></span><button class="tour-close icon-button" type="button" aria-label="Skip tour" title="Skip tour">×</button></header><div class="tour-content"><div class="tour-map" aria-label="Workspace tabs"><span>Environment</span><span>Agent activity</span><span>Agents</span></div><div class="tour-art" aria-hidden="true"></div><p class="tour-part"></p><h2 id="tour-title"></h2><p id="tour-copy"></p><p class="tour-note"></p></div><footer class="tour-footer"><span class="tour-count" aria-live="polite"></span><button class="tour-back text-button" type="button">Back</button><button class="tour-next primary-button" type="button" autofocus>Next</button></footer>';
@@ -38,6 +39,7 @@ export function createQuickTour({startDemo,canOpen}){
   const clearHighlight=()=>{highlight?.classList.remove('tour-target');highlight=null};
   const icon=(role,label)=>{const item=document.createElement('div');item.append(agentIcon(role));const name=document.createElement('span');name.textContent=label;item.append(name);return item};
   const flow=createTourFlow({canOpen,onStart:startDemo,onClose:starting=>{
+    onDismiss();
     clearHighlight();document.body.classList.remove('tour-open');dialog.close();
     if(!starting){const focus=priorFocus?.isConnected&&!priorFocus.disabled&&priorFocus.tabIndex>=0?priorFocus:launcher;focus?.focus({preventScroll:true})}
   },render:index=>{

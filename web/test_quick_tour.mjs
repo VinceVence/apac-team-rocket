@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {createTourFlow,TOUR_KEY,TOUR_STEPS} from './dist/quick-tour.js';
+import {createTourFlow,hasSeenTour,TOUR_KEY,TOUR_STEPS} from './dist/quick-tour.js';
 
 function setup({storage,ready=true}={}){
   const values=new Map(),steps=[],closed=[];let starts=0,available=ready;
@@ -28,6 +28,12 @@ test('skip remembers this browser, manual replay works, and navigation never sta
 test('storage denial does not strand a visitor or run the demo',()=>{
   const t=setup({storage:{getItem(){throw Error('blocked')},setItem(){throw Error('blocked')}}});
   assert.doesNotThrow(()=>{t.flow.open(true);t.flow.close()});assert.equal(t.starts,0);
+});
+
+test('first-visit detection gives the tour priority over a saved guided session',()=>{
+  assert.equal(hasSeenTour(()=>({getItem:()=>null})),false);
+  assert.equal(hasSeenTour(()=>({getItem:()=> 'seen'})),true);
+  assert.equal(hasSeenTour(()=>{throw Error('unavailable')}),false);
 });
 
 test('an active demo or busy workspace cannot be interrupted or started twice',()=>{

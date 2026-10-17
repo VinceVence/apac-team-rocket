@@ -3,7 +3,7 @@ import {createFraudUI} from './fraud-ui.js';
 import {createRiskUI} from './risk-ui.js';
 import {createDemoGuide} from './demo-guide.js';
 import {createRecordedDemo} from './demo-replay.js';
-import {createQuickTour} from './quick-tour.js';
+import {createQuickTour,hasSeenTour} from './quick-tour.js';
 import {showEvaluation} from './evaluation-ui.js';
 import {mountAgentIcons,cleanText,agentIcon,featuredIncident,needsWorldPoll} from './agent-ui.js';
 import {residentLabel,residentAlerts} from './resident-sprites.js';
@@ -13,7 +13,7 @@ const $=id=>document.getElementById(id),drawTown=createTown($('town-map'));
 const state={data:null,view:'world',busy:false,playing:false,speed:1,stepping:false,customerId:null,hosted:false};
 const money=n=>'₱'+(n/100).toLocaleString('en-PH',{maximumFractionDigits:0});
 const node=(tag,text,cls)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e};
-let pollTimer=null,lastTick=-1,lastIncident=null,lastScene=null,guide=null;
+let pollTimer=null,lastTick=-1,lastIncident=null,lastScene=null,guide=null,introPending=!hasSeenTour();
 async function api(path,body){
   if(state.replay)return state.replay.api(path,body);
   const response=await fetch(path,body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-MintTown-Token':state.data.csrf_token},body:JSON.stringify(body)});
@@ -151,7 +151,7 @@ function schedulePoll(){clearTimeout(pollTimer);if(state.replay||document.hidden
 async function cloudStatus(){const c=await api('/api/cloud');state.hosted=!!c.enabled;$('cloud-data-panel').hidden=!c.enabled;if(c.enabled){$('deployment-label').textContent=c.execution==='local'?'Local simulation':'Cloud simulation';$('cloud-data-status').textContent=`${c.daily_exports} export batches today`;const pending=!!sessionStorage.getItem('minttown-export-request');$('cloud-export').textContent=pending?'Check export status':'Export next batch';$('cloud-export').disabled=!c.healthy||(c.daily_export_limit!==null&&c.daily_exports>=c.daily_export_limit&&!pending)}}
 const fraudUI=createFraudUI({$,api,state,setPlaying:()=>{},setBusy,refresh,error,focusCustomer:cid=>{state.customerId=cid;renderWorld()},onRender:report=>guide?.update(report),onNavigate:()=>guide?.close()});
 const riskUI=createRiskUI({$,state,error,onCases:()=>fraudUI.load(true)});
-guide=createDemoGuide({state,error,onClose:()=>{if(state.replay){try{sessionStorage.setItem('minttown-guide-dismissed',state.replayReturnScene)}catch{}state.replay=null;fraudUI.reset();setBusy(true);refresh().then(()=>showView('world')).catch(e=>error(e.message)).finally(()=>setBusy(false))}},showWorld:customerId=>{if(customerId)state.customerId=customerId;return showView('world')},residentPosition:id=>drawTown.residentPosition(id),openCase:async()=>{if(!await openIncident({report_id:state.data.demo.focus_report_id}))throw Error('The saved case could not be opened. Refresh its status.');},demoAction:async action=>{if(action==='replay')return recordedDemo();await api('/api/world/demo-action',{expected_run:state.data.demo.run_id,report_id:state.data.demo.focus_report_id,action});await refresh();if(state.data.demo.focus_report_id)await fraudUI.load()}});
+guide=createDemoGuide({state,error,canAutoOpen:()=>!introPending,onClose:()=>{if(state.replay){try{sessionStorage.setItem('minttown-guide-dismissed',state.replayReturnScene)}catch{}state.replay=null;fraudUI.reset();setBusy(true);refresh().then(()=>showView('world')).catch(e=>error(e.message)).finally(()=>setBusy(false))}},showWorld:customerId=>{if(customerId)state.customerId=customerId;return showView('world')},residentPosition:id=>drawTown.residentPosition(id),openCase:async()=>{if(!await openIncident({report_id:state.data.demo.focus_report_id}))throw Error('The saved case could not be opened. Refresh its status.');},demoAction:async action=>{if(action==='replay')return recordedDemo();await api('/api/world/demo-action',{expected_run:state.data.demo.run_id,report_id:state.data.demo.focus_report_id,action});await refresh();if(state.data.demo.focus_report_id)await fraudUI.load()}});
 async function showView(view){if(state.view!==view)window.scrollTo({top:0,behavior:'instant'});state.view=['world','resolution','agents'].includes(view)?view:'world';setMenu(false);error('');$('mint-town').dataset.view=state.view;history.replaceState(null,'',state.view==='world'?location.pathname:state.view==='agents'?'#agents':location.hash==='#models'?'#models':'#agent');document.title='Mint Town · '+({world:'Environment',resolution:'Agent activity',agents:'Agents'}[state.view]);document.querySelectorAll('[data-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===state.view)));$('case-view').hidden=state.view!=='world';$('fraud-view').hidden=state.view!=='resolution';$('agents-view').hidden=state.view!=='agents';renderWorld();document.querySelector('.demo-story').hidden=state.view!=='world'||!state.data.demo.guided;if(state.view==='resolution'){if(location.hash==='#models'||!$('risk-view').hidden)await riskUI.show(true);else await fraudUI.load(true)}else riskUI.pause()}
 async function openIncident(i){try{await riskUI.show(false);await showView('resolution');if(i.report_id||state.data.demo.focus_report_id)await fraudUI.open(i.report_id||state.data.demo.focus_report_id);if(i.status==='blocked'){$('fraud-memory-panel').open=true;document.getElementById(i.report_id?'prevention-stage':'fraud-memory-panel').scrollIntoView({behavior:'smooth',block:'start'})}return true}catch(e){error(e.message);return false}}
 $('open-menu').onclick=toggleSidebar;$('close-menu').onclick=()=>{setMenu(false);$('open-menu').focus()};$('sidebar-backdrop').onclick=()=>setMenu(false);window.addEventListener('keydown',e=>{if(e.key==='Escape')setMenu(false)});
@@ -175,7 +175,7 @@ async function recordedDemo(){
 }
 $('play-world').onclick=()=>runWorld('simulation');
 $('run-demo').onclick=()=>runWorld('demo');
-const quickTour=createQuickTour({startDemo:()=>runWorld('demo'),canOpen:()=>!!state.data&&!state.busy&&!document.body.classList.contains('guide-open')});
+const quickTour=createQuickTour({startDemo:()=>runWorld('demo'),canOpen:()=>!!state.data&&!state.busy&&!document.body.classList.contains('guide-open'),onDismiss:()=>{introPending=false}});
 let restartRun=null;
 $('restart-world').onclick=()=>{guide.close();restartRun=state.data.demo.run_id;$('restart-dialog').returnValue='';$('restart-dialog').showModal()};
 $('restart-dialog').addEventListener('close',async()=>{
