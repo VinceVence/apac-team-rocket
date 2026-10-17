@@ -17,10 +17,29 @@ export const toolLabels={get_case_evidence:'Verify the case records',get_transac
 
 // UI projection only. Billing and original receipts remain unchanged on the server.
 export function cleanText(value){return String(value??'').replace(/\b(?:gemini|gpt|claude|FakeInvestigator|FakePreventionLearner)[\w.:-]*/gi,'agent').replace(/\$\s*\d+(?:\.\d+)?(?:\s*USD)?/g,'configured limit')}
-export function publicEvidence(value){
-  if(Array.isArray(value))return value.map(publicEvidence);
-  if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).filter(([k])=>!/(?:cost|budget|usd|microusd|tokens|provider|model|manifest|artifact|calls|reservation)/i.test(k)).map(([k,v])=>[k,publicEvidence(v)]));
-  return typeof value==='string'?cleanText(value):value;
+export function caseEventAliases(report){
+  const ids=new Set();
+  const collect=(value,parent='')=>{
+    if(Array.isArray(value)){for(const item of value)collect(item,parent);return}
+    if(value&&typeof value==='object'){
+      for(const [key,item] of Object.entries(value)){
+        if(key==='id'&&['transactions','history','related_transfers'].includes(parent)&&typeof item==='string')ids.add(item);
+        collect(item,key);
+      }
+    }else if(typeof value==='string'&&['event_id','event_ids','evidence_ids'].includes(parent))ids.add(value);
+  };
+  collect(report);
+  return new Map([...ids].map((id,index)=>[id,`Transfer ${index+1}`]).sort((a,b)=>b[0].length-a[0].length));
+}
+export function publicEventText(value,aliases=new Map()){
+  let result=cleanText(value);
+  for(const [id,label] of aliases)result=result.replaceAll(id,label);
+  return result;
+}
+export function publicEvidence(value,aliases=new Map()){
+  if(Array.isArray(value))return value.map(item=>publicEvidence(item,aliases));
+  if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).filter(([k])=>!/(?:cost|budget|usd|microusd|tokens|provider|model|manifest|artifact|calls|reservation)/i.test(k)).map(([k,v])=>[publicEventText(k,aliases),publicEvidence(v,aliases)]));
+  return typeof value==='string'?publicEventText(value,aliases):value;
 }
 export function demoAnalystState(report){
   const a=report?.demo_analyst;
