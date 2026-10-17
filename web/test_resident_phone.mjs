@@ -30,7 +30,7 @@ test('a hold and legitimate success come from separate, case-linked payment rece
   assert.equal(hold.changedRecipient,true);
   assert.equal(hold.reason,report.prevention.rule.explanation);
   assert.equal(hold.ruleId,report.prevention.rule.id);
-  assert.equal(sent.settled,true);assert.equal(sent.amount,5678);
+  assert.equal(sent.settled,true);assert.equal(sent.amount,data.events.find(e=>e.id===sent.eventId).amount_minor);
   assert.notEqual(sent.eventId,hold.eventId);
   const beats=demoBeats(data.demo,report);
   assert.deepEqual(beats.slice(-2).map(b=>[b.id,!!b.done]),[['protected',false],['payment-sent',true]]);
