@@ -128,6 +128,10 @@ class LabChecks(unittest.TestCase):
         base='http://127.0.0.1:'+str(server.server_port)
         try:
             with urllib.request.urlopen(base+'/api/state') as r:state=json.load(r)
+            for path,content_type in (('/resident.css','text/css'),('/resident-phone.js','javascript')):
+                with urllib.request.urlopen(base+path) as r:
+                    self.assertEqual(r.status,200)
+                    self.assertIn(content_type,r.headers['Content-Type'])
             body=json.dumps({'case_id':'F001','mode':'baseline'}).encode()
             request=urllib.request.Request(base+'/api/analyze',data=body,headers={'Content-Type':'application/json'})
             with self.assertRaises(urllib.error.HTTPError) as e:urllib.request.urlopen(request)

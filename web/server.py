@@ -24,6 +24,7 @@ from fraud_runner import InvestigationRunner
 from demo_guard import DemoGuard
 from world_demo import WorldDemo
 from demo_analyst import DemoAnalyst
+from resident_requests import ResidentRequests
 from settings import MAX_CUSTOMERS
 from warehouse import Warehouse
 from prevention import PreventionAgent, TABLES as PREVENTION_TABLES
@@ -36,7 +37,7 @@ ROOT=Path(__file__).resolve().parent
 STATIC_PATHS=frozenset(('/','/index.html','/app.js','/fraud-ui.js','/harness-ui.js',
     '/demo-guide.js','/demo-replay.js','/demo-recording.json','/evaluation-ui.js','/quick-tour.js',
     '/evaluation-summary.json','/learning-architecture.svg','/decision-map.js',
-    '/agent-ui.js','/risk-ui.js','/town.js','/town-art.js','/resident-sprites.js',
+    '/resident-phone.js','/resident-queue.js','/resident.css','/agent-ui.js','/risk-ui.js','/town.js','/town-art.js','/resident-sprites.js',
     '/styles.css','/mark.svg','/favicon.svg','/fonts/OFL.txt',
     *(f'/fonts/dm-sans-{weight}.ttf' for weight in (400,500,600,700))))
 
@@ -71,6 +72,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
     guard=DemoGuard(lab,checkpoint,live_enabled=cloud_live) if cloud else None
     world_demo=WorldDemo(world,fraud_desk,fraud_runner,checkpoint,guard,warehouse)
     demo_analyst=DemoAnalyst(world_demo)
+    resident_requests=ResidentRequests(lab)
     def baseline():
         from cloud_data import CloudData
         with tempfile.TemporaryDirectory(prefix='pallet-baseline-') as folder:
@@ -137,6 +139,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                         result['environment_data']={**environment_data.summary(),'publication':environment_publisher.status() if environment_publisher else {'enabled':False}}
                         result['world']=world.status()
                         result['demo']=world_demo.status()
+                        result['resident_requests']=resident_requests.dashboard()
                         if result['demo'].get('guided'):
                             result['events']=lab.rows('SELECT id,customer_id,kind,amount_minor,status,occurred_at,to_account,metadata FROM financial_events WHERE rowid>? ORDER BY rowid DESC LIMIT 20',(result['demo']['event_start'],))
                             for event in result['events']:event['metadata']=json.loads(event['metadata'])
@@ -210,6 +213,8 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
                 if path=='/api/risk-lab/start':
                     if set(body)!={'request_id','source','provider'}:raise LabError('Choose a fixed dataset source and allowed provider.')
                     return self.reply(202,risk_lab.start(**body))
+                if path in ('/api/resident/action','/api/resident/review'):
+                    return self.reply(200,resident_requests.act(body,analyst=path.endswith('/review')))
                 if path=='/api/world/start':
                     if set(body)-{'expected_run','activity','speed','fresh','mode'} or not {'expected_run','activity','speed'}<=set(body):raise LabError('Invalid world start.')
                     return self.reply(200,world_demo.start(**{**body,'fresh':body.get('fresh',True)}))
@@ -388,6 +393,7 @@ def make_server(port=3000, db_path=None, config=None, cloud=None, public_host=No
     server.world_demo=world_demo
     server.warehouse=warehouse
     server.prevention=prevention
+    server.resident_requests=resident_requests
     server.risk_lab=risk_lab
     server.environment_data=environment_data
     server.environment_publisher=environment_publisher

@@ -39,7 +39,7 @@ export function createQuickTour({startDemo,canOpen,onDismiss=()=>{}}){
   const clearHighlight=()=>{highlight?.classList.remove('tour-target');highlight=null};
   const icon=(role,label)=>{const item=document.createElement('div');item.append(agentIcon(role));const name=document.createElement('span');name.textContent=label;item.append(name);return item};
   const flow=createTourFlow({canOpen,onStart:startDemo,onClose:starting=>{
-    onDismiss();
+    onDismiss(starting);
     clearHighlight();document.body.classList.remove('tour-open');dialog.close();
     if(!starting){const focus=priorFocus?.isConnected&&!priorFocus.disabled&&priorFocus.tabIndex>=0?priorFocus:launcher;focus?.focus({preventScroll:true})}
   },render:index=>{

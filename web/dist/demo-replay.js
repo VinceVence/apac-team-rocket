@@ -23,10 +23,14 @@ export function createRecordedDemo(recording,id){
     if(stage>=7)events.unshift(...copy(recording.proof_events));
     d.events=events;d.world.tick=events.length;d.world.hour=stage>=2?15:stage?12:9;
     d.environment_data.counts.wallet_transactions=events.length;d.environment_data.counts.scam_memory=stage>=4?1:0;
-    const incidents=stage<2?[]:[{id:'replay-report',customer_id:r.customer_id,report_id:r.id,report_status:r.status,kind:'phishing',title:r.scenario_title,status:'investigating',created_at:r.created_at}];
+    const incidents=stage<2?[]:[{id:'replay-report',customer_id:r.customer_id,report_id:r.id,report_status:r.status,event_ids:original.transactions.map(t=>t.id),kind:'phishing',title:r.scenario_title,status:'investigating',created_at:r.created_at}];
     const held=recording.proof_events.find(e=>e.status==='blocked');
     const protection=stage>=7?{count:1,amount_minor:held.amount_minor,recent:[{...copy(held),source_report_id:r.id,rule_ids:[recording.source.rule_id],memory_ids:[recording.lesson.id],created_at:held.occurred_at}]}:{count:0,amount_minor:0,recent:[]};
-    if(stage>=7)incidents.unshift({id:'replay-protected',customer_id:'C002',status:'blocked',created_at:held.occurred_at});
+    if(stage>=7){
+      incidents.unshift({id:'replay-protected',customer_id:'C002',status:'blocked',created_at:held.occurred_at});
+      const control=recording.proof_events.find(e=>e.kind==='payment'&&e.status==='settled');
+      if(control)incidents.push({id:'replay-control',customer_id:control.customer_id,kind:'control',status:'passed',event_ids:[control.id],created_at:control.occurred_at});
+    }
     d.demo={replay:true,replay_stage:phases[stage],recorded_at:recording.source.recorded_at,scene_id:id,run_id:1,guided:true,running:stage===0,continuous:false,agent_busy:false,restart_blocked:false,
       steps:events.length,speed:1,phase:stage>=7?'protected':stage>=6?'ready':stage>=4?'prevention':stage>=3?'review':stage>=2?'complaint':'world',
       focus_report_id:stage>=2?r.id:null,focus_customer_id:stage>=2?r.customer_id:null,incidents,protection,blocked_payments:protection.count,knowledge_count:stage>=4?1:0,
