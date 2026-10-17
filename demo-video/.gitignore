@@ -1,0 +1,33 @@
+node_modules
+dist
+.DS_Store
+.env
+
+# Ignore the output video from Git but not videos you import into src/.
+out
+public/
+*.srt
+
+tools/.venv/
+__pycache__/
+public/footage/frames/
+
+# Keep rendered movies, capture footage, raw case exports and voice caches local.
+*.mp4
+*.mov
+*.webm
+*.mkv
+*.zip
+public/footage/
+public/evidence/demo-recording.json
+public/audio/*.wav
+public/audio/*.mp3
+public/audio/*.jsonl
+public/audio/story/
+public/audio/story2/*.raw.*
+public/audio/story2/score*.wav
+
+# Archived compositions remain local; Git contains the current vector story.
+src/scenes/
+src/Composition.tsx
+src/BasicCaptions.tsx

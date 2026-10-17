@@ -1,0 +1,361 @@
+{
+  "fps": 30,
+  "voices": {
+    "narrator": {
+      "voice": "en-US-AndrewMultilingualNeural",
+      "rate": "+2%",
+      "pitch": "+0Hz",
+      "filter": ""
+    },
+    "scammer": {
+      "voice": "en-US-ChristopherNeural",
+      "rate": "+4%",
+      "pitch": "-6Hz",
+      "filter": "phone"
+    },
+    "ana": {
+      "voice": "en-US-AvaMultilingualNeural",
+      "rate": "+0%",
+      "pitch": "+0Hz",
+      "filter": ""
+    },
+    "jun": {
+      "voice": "en-PH-JamesNeural",
+      "rate": "+0%",
+      "pitch": "+0Hz",
+      "filter": ""
+    }
+  },
+  "scenes": [
+    {
+      "id": "morning",
+      "title": "Meet Ana",
+      "start": 0,
+      "duration": 17.5
+    },
+    {
+      "id": "call",
+      "title": "The phishing message",
+      "start": 17.5,
+      "duration": 20
+    },
+    {
+      "id": "after",
+      "title": "A customer needs help",
+      "start": 37.5,
+      "duration": 11
+    },
+    {
+      "id": "stakes",
+      "title": "Why it matters",
+      "start": 48.5,
+      "duration": 24
+    },
+    {
+      "id": "investigate",
+      "title": "Resolution Agent",
+      "start": 72.5,
+      "duration": 19
+    },
+    {
+      "id": "model",
+      "title": "Models as tools",
+      "start": 91.5,
+      "duration": 18
+    },
+    {
+      "id": "judgment",
+      "title": "Helping the fraud analyst",
+      "start": 109.5,
+      "duration": 16
+    },
+    {
+      "id": "lesson",
+      "title": "Learning from reviewed cases",
+      "start": 125.5,
+      "duration": 18
+    },
+    {
+      "id": "intercept",
+      "title": "Protecting the next customer",
+      "start": 143.5,
+      "duration": 22
+    },
+    {
+      "id": "return",
+      "title": "Resolution Agent",
+      "start": 165.5,
+      "duration": 10
+    }
+  ],
+  "lines": [
+    {
+      "id": "morning_1",
+      "speaker": "narrator",
+      "at": 0.35,
+      "max": 17.1,
+      "text": "Meet Ana, a resident of Mint Town. Coffee before work. Groceries for home. She checks her wallet: enough left for the week. These little payments are part of her routine. She's done this a hundred times. Then a message interrupts her morning. It says her wallet is at risk.",
+      "scene": "morning"
+    },
+    {
+      "id": "phishing_1",
+      "speaker": "narrator",
+      "at": 0.1,
+      "max": 4.2,
+      "text": "It uses the wallet's name and says she has only five minutes.",
+      "scene": "call"
+    },
+    {
+      "id": "phishing_2",
+      "speaker": "narrator",
+      "at": 5.0,
+      "max": 4.9,
+      "text": "The link opens a convincing copy of her wallet.",
+      "scene": "call"
+    },
+    {
+      "id": "phishing_3",
+      "speaker": "narrator",
+      "at": 10.3,
+      "max": 4.7,
+      "text": "Move money to a safe account. Keep it secret.",
+      "scene": "call"
+    },
+    {
+      "id": "phishing_ana",
+      "speaker": "ana",
+      "at": 15.4,
+      "max": 1.9,
+      "text": "It looks real.",
+      "scene": "call",
+      "delivery": {
+        "rate": "-2%",
+        "pitch": "+0Hz"
+      }
+    },
+    {
+      "id": "phishing_4",
+      "speaker": "narrator",
+      "at": 17.5,
+      "max": 2.3,
+      "text": "Then, nine hundred pesos disappear.",
+      "scene": "call"
+    },
+    {
+      "id": "after_hello",
+      "speaker": "ana",
+      "at": 0.15,
+      "max": 2.6,
+      "text": "Wait\u2014what? My money's gone!",
+      "scene": "after",
+      "delivery": {
+        "rate": "+9%",
+        "pitch": "+5Hz"
+      }
+    },
+    {
+      "id": "after_1",
+      "speaker": "narrator",
+      "at": 2.9,
+      "max": 7.7,
+      "text": "She files a report. Then comes the wait. Days can pass with her case unresolved.",
+      "scene": "after"
+    },
+    {
+      "id": "stakes_1",
+      "scene": "stakes",
+      "speaker": "narrator",
+      "at": 0.5,
+      "max": 9.0,
+      "text": "Her story is one of many across financial services. In six ASEAN markets, ninety-six percent worried about scams or hacking."
+    },
+    {
+      "id": "stakes_2",
+      "scene": "stakes",
+      "speaker": "narrator",
+      "at": 9.8,
+      "max": 4.2,
+      "text": "Forty-five percent of reported cases remained unresolved."
+    },
+    {
+      "id": "stakes_3",
+      "scene": "stakes",
+      "speaker": "narrator",
+      "at": 14.3,
+      "max": 5.0,
+      "text": "One wallet's published investigation window: two to seven days."
+    },
+    {
+      "id": "stakes_pivot",
+      "scene": "stakes",
+      "speaker": "narrator",
+      "at": 19.75,
+      "max": 4.0,
+      "text": "But what if there's a faster way to resolve her case?"
+    },
+    {
+      "id": "investigate_1",
+      "speaker": "narrator",
+      "at": 0.1,
+      "max": 3.55,
+      "text": "Meet Resolution Agent\u2014clarity when it matters.",
+      "scene": "investigate",
+      "delivery": {
+        "rate": "+5%",
+        "pitch": "+1Hz"
+      }
+    },
+    {
+      "id": "investigate_customer",
+      "speaker": "ana",
+      "at": 3.9,
+      "max": 3.85,
+      "text": "Please help me. I clicked the link... my money's gone!",
+      "scene": "investigate",
+      "delivery": {
+        "rate": "+5%",
+        "pitch": "+3Hz"
+      }
+    },
+    {
+      "id": "investigate_2",
+      "speaker": "narrator",
+      "at": 8.1,
+      "max": 5.3,
+      "text": "It brings her report, transactions, and wallet history into one clear case.",
+      "scene": "investigate"
+    },
+    {
+      "id": "investigate_3",
+      "speaker": "narrator",
+      "at": 14.0,
+      "max": 4.5,
+      "text": "The analyst gets connected evidence, ready to review.",
+      "scene": "investigate"
+    },
+    {
+      "id": "model_1",
+      "speaker": "narrator",
+      "at": 0.3,
+      "max": 4.4,
+      "text": "The agent can call trained models and classifiers as tools.",
+      "scene": "model"
+    },
+    {
+      "id": "model_2",
+      "speaker": "narrator",
+      "at": 4.9,
+      "max": 4.4,
+      "text": "Here, it chooses a fraud classifier for the transaction.",
+      "scene": "model"
+    },
+    {
+      "id": "model_3",
+      "speaker": "narrator",
+      "at": 9.6,
+      "max": 3.7,
+      "text": "The result becomes one piece of evidence.",
+      "scene": "model"
+    },
+    {
+      "id": "model_4",
+      "speaker": "narrator",
+      "at": 13.7,
+      "max": 4.0,
+      "text": "It combines the evidence and drafts a resolution for review.",
+      "scene": "model"
+    },
+    {
+      "id": "judgment_1",
+      "speaker": "narrator",
+      "at": 0.3,
+      "max": 4.7,
+      "text": "Resolution Agent turns scattered information into a review-ready case.",
+      "scene": "judgment"
+    },
+    {
+      "id": "judgment_2",
+      "speaker": "narrator",
+      "at": 5.4,
+      "max": 5.4,
+      "text": "A human fraud analyst verifies the evidence and decides what happens next.",
+      "scene": "judgment"
+    },
+    {
+      "id": "judgment_3",
+      "speaker": "narrator",
+      "at": 11.4,
+      "max": 4.1,
+      "text": "Less time gathering data. More time helping the customer.",
+      "scene": "judgment"
+    },
+    {
+      "id": "lesson_1",
+      "speaker": "narrator",
+      "at": 0.3,
+      "max": 4.4,
+      "text": "Reviewed cases become shared knowledge for the prevention agent.",
+      "scene": "lesson"
+    },
+    {
+      "id": "lesson_2",
+      "speaker": "narrator",
+      "at": 5.1,
+      "max": 5.4,
+      "text": "It learns the warning pattern: a safe account, and demands for secrecy.",
+      "scene": "lesson"
+    },
+    {
+      "id": "lesson_3",
+      "speaker": "narrator",
+      "at": 11.0,
+      "max": 5.8,
+      "text": "That pattern can be tested against new recipients and ordinary payments.",
+      "scene": "lesson"
+    },
+    {
+      "id": "repeat_1",
+      "speaker": "narrator",
+      "at": 0.3,
+      "max": 4.8,
+      "text": "Later, Jun gets a similar text. A new link. A different recipient.",
+      "scene": "intercept"
+    },
+    {
+      "id": "repeat_2",
+      "speaker": "narrator",
+      "at": 5.5,
+      "max": 5.6,
+      "text": "But the request repeats the same instructions: safe account, keep it secret.",
+      "scene": "intercept"
+    },
+    {
+      "id": "repeat_3",
+      "speaker": "narrator",
+      "at": 11.6,
+      "max": 2.5,
+      "text": "The reviewed safeguard recognizes the pattern.",
+      "scene": "intercept"
+    },
+    {
+      "id": "repeat_4",
+      "speaker": "narrator",
+      "at": 15.2,
+      "max": 6.4,
+      "text": "This time, the suspicious payment is paused before money leaves. His everyday coffee payment still goes through.",
+      "scene": "intercept"
+    },
+    {
+      "id": "return_1",
+      "speaker": "narrator",
+      "at": 0.6,
+      "max": 8.1,
+      "text": "Resolution Agent. Close the gap from report to resolution. Give fraud analysts clarity\u2014and customers a way forward.",
+      "scene": "return",
+      "delivery": {
+        "rate": "+1%",
+        "pitch": "+0Hz"
+      }
+    }
+  ]
+}

@@ -14,11 +14,12 @@ showEvaluation(document.getElementById('evaluation-panel')).catch(()=>{});
 const $=id=>document.getElementById(id),drawTown=createTown($('town-map'));
 const state={data:null,ready:false,view:'world',busy:false,playing:false,speed:1,stepping:false,customerId:null,hosted:false};
 let residentReport=null,quickTour=null;
-function enterTown(){
+function enterTown({tutorial=false}={}){
+  if(tutorial)introPending=true;
   $('welcome').hidden=true;$('mint-town').hidden=false;
   document.title='Mint Town · '+({world:'Environment',resolution:'Agent activity',agents:'Agents'}[state.view]);
   try{sessionStorage.setItem('minttown-welcome-seen','true')}catch{}
-  requestAnimationFrame(()=>{if(state.data)renderWorld();quickTour?.maybeOpen();if(!document.body.classList.contains('tour-open'))$('run-demo').focus({preventScroll:true})});
+  requestAnimationFrame(()=>{if(state.data)renderWorld();if(tutorial)quickTour?.open();else quickTour?.maybeOpen();if(!document.body.classList.contains('tour-open'))$('run-demo').focus({preventScroll:true})});
 }
 function showWelcome(){
   guide?.close();$('welcome').hidden=false;$('mint-town').hidden=true;
@@ -38,6 +39,7 @@ async function api(path,body){
 function error(message){$('app-error').textContent=cleanText(message||'');$('app-error').hidden=!message}
 function setBusy(on){state.busy=on;document.querySelectorAll('[data-view]').forEach(b=>b.disabled=on);renderRunControls()}
 function renderRunControls(){
+  $('welcome-explore').disabled=state.busy||!state.ready||!state.data;
   $('welcome-run').disabled=state.busy||!state.ready||!state.data;
   $('welcome-replay').disabled=state.busy||!state.ready;
   const demo=state.data?.demo;if(!demo)return;
@@ -223,10 +225,10 @@ async function recordedDemo(){
 $('play-world').onclick=()=>runWorld('simulation');
 $('run-demo').onclick=()=>runWorld('demo');
 quickTour=createQuickTour({startDemo:()=>runWorld('demo'),canOpen:()=>!!state.data&&!state.busy&&$('welcome').hidden&&!document.body.classList.contains('guide-open'),onDismiss:starting=>{introPending=false;if(!starting)queueMicrotask(()=>guide?.update())}});
-$('welcome-explore').onclick=enterTown;
+$('welcome-explore').onclick=()=>enterTown({tutorial:true});
 document.querySelector('.sidebar-heading .brand-mark').onclick=event=>{event.preventDefault();showWelcome()};
 document.querySelector('.skip-link').addEventListener('click',enterTown);
-$('welcome-run').onclick=()=>{enterTown();runWorld('demo')};
+$('welcome-run').onclick=()=>enterTown({tutorial:true});
 $('welcome-replay').onclick=async()=>{
   if(state.busy)return;skipIntro();setBusy(true);$('welcome-error').hidden=true;
   try{await recordedDemo();enterTown()}catch(e){$('welcome-error').textContent=e.message;$('welcome-error').hidden=false}finally{setBusy(false)}

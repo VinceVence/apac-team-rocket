@@ -1,0 +1,49 @@
+{
+  "name": "mint-town-demo-film",
+  "version": "1.0.0",
+  "description": "Three-minute AI Builder Cup film: a dramatized scam, a recorded Gemini investigation, and the next payment protected",
+  "repository": {},
+  "license": "UNLICENSED",
+  "engines": {
+    "node": "^20.19.0 || ^22.13.0 || >=24"
+  },
+  "private": true,
+  "dependencies": {
+    "@remotion/captions": "4.0.536",
+    "@remotion/cli": "4.0.536",
+    "@remotion/media": "4.0.536",
+    "@remotion/transitions": "4.0.536",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "remotion": "4.0.536"
+  },
+  "devDependencies": {
+    "@remotion/eslint-config-flat": "4.0.536",
+    "@types/react": "19.2.7",
+    "@types/web": "0.0.166",
+    "eslint": "10.12.0",
+    "prettier": "3.8.1",
+    "typescript": "5.9.3"
+  },
+  "scripts": {
+    "dev": "remotion studio",
+    "build": "remotion bundle",
+    "upgrade": "remotion upgrade",
+    "lint": "eslint src && tsc",
+    "render": "remotion render src/index.ts MintTown-Story out/mint-town-story-v2.mp4 --codec=h264 --crf=18 --audio-codec=aac --audio-bitrate=256k --concurrency=3",
+    "check": "tsc --noEmit",
+    "render:original": "remotion render src/index.ts MintTown-Demo out/mint-town-apac-demo.mp4 --codec=h264 --crf=18 --audio-codec=aac --audio-bitrate=192k --concurrency=3",
+    "voice": "uv run --project tools python tools/build_story_v2.py",
+    "voice:preview": "python3 tools/build_story_v2.py --estimate",
+    "score": "uv run --project tools --with numpy python tools/score_v2.py",
+    "story": "npm run voice && npm run check && npm run render",
+    "check:audio": "uv run --project tools --locked python tools/build_story_v2.py --check",
+    "prerender": "npm run check:audio && npm run polish:sfx",
+    "postrender": "uv run --project tools --locked python tools/verify_video.py --story-v2 --film out/mint-town-story-v2.mp4 --master",
+    "polish:sfx": "uv run --project tools --locked python tools/polish_sfx.py",
+    "setup:media": "uv run --project tools --locked python tools/prepare_assets.py && npm run score && npm run polish:sfx && npm run voice"
+  },
+  "allowScripts": {
+    "esbuild": false
+  }
+}
