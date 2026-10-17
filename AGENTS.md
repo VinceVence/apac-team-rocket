@@ -14,6 +14,7 @@ Synthetic Philippine fintech demo: transactions → complaint → Gemini investi
 
 ## Demo behavior
 
+- First visits show a five-part **Quick tour** of the tabs and sidebar, ending with **Start demo**. The **?** button reopens it. Reading, skipping and replaying the tour are browser-only; only the final explicit click calls the existing guarded demo entry point. Dismissal is remembered per browser.
 - **Run simulation** starts empty and continues payments with clickable case/protection notices. Pause/resume and restart are separate. A run pauses after a renewable 15-minute lease.
 - **Run demo** is Next/Back only, fixed to the viewport with an inert background. Next starts the investigation. New guided cases require a cited `ledger_transaction_v1` receipt in the shared case allowance. Show the actual classifier call, a separate score/threshold screen and the agent’s recorded interpretation before review. Rule signals must not be labelled trained classifiers; missing inputs stay unavailable. Rejected judgments cannot use assumed approval. Show the town again for the later scam.
 - Demo analyst approval/activation is an explicitly labelled simulation assumption, scoped to a completed current-world case. Normal cases retain review controls. Failed models are not silently retried or approved.

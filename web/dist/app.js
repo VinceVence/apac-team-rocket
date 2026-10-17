@@ -3,6 +3,7 @@ import {createFraudUI} from './fraud-ui.js';
 import {createRiskUI} from './risk-ui.js';
 import {createDemoGuide} from './demo-guide.js';
 import {createRecordedDemo} from './demo-replay.js';
+import {createQuickTour} from './quick-tour.js';
 import {showEvaluation} from './evaluation-ui.js';
 import {mountAgentIcons,cleanText,agentIcon,featuredIncident,needsWorldPoll} from './agent-ui.js';
 import {residentLabel,residentAlerts} from './resident-sprites.js';
@@ -174,6 +175,7 @@ async function recordedDemo(){
 }
 $('play-world').onclick=()=>runWorld('simulation');
 $('run-demo').onclick=()=>runWorld('demo');
+const quickTour=createQuickTour({startDemo:()=>runWorld('demo'),canOpen:()=>!!state.data&&!state.busy&&!document.body.classList.contains('guide-open')});
 let restartRun=null;
 $('restart-world').onclick=()=>{guide.close();restartRun=state.data.demo.run_id;$('restart-dialog').returnValue='';$('restart-dialog').showModal()};
 $('restart-dialog').addEventListener('close',async()=>{
@@ -189,4 +191,4 @@ $('world-report').onclick=()=>{const incident=featuredIncident(state.data.demo);
 $('cloud-export').onclick=async()=>{if(state.busy)return;setBusy(true);$('cloud-export').disabled=true;try{const id=sessionStorage.getItem('minttown-export-request')||crypto.randomUUID();sessionStorage.setItem('minttown-export-request',id);const r=await api('/api/cloud/export',{request_id:id});if(['completed','failed'].includes(r.status))sessionStorage.removeItem('minttown-export-request');$('cloud-export-result').textContent=`${r.row_count.toLocaleString()} records · ${r.status}`}catch(e){error(e.message)}finally{setBusy(false);await cloudStatus().catch(e=>error(e.message))}};
 document.addEventListener('visibilitychange',()=>{if(document.hidden){clearTimeout(pollTimer);drawTown.setVisible(false)}else refresh().catch(e=>error(e.message))});
 window.addEventListener('hashchange',()=>showView(!location.hash?'world':location.hash==='#agents'?'agents':'resolution').catch(e=>error(e.message)));
-try{await refresh();await cloudStatus();$('loading-state').hidden=true;await showView(!location.hash?'world':location.hash==='#agents'?'agents':'resolution');await document.fonts.ready;renderWorld()}catch(e){$('loading-state').hidden=true;error('Cannot reach the simulation. '+e.message)}
+try{await refresh();await cloudStatus();$('loading-state').hidden=true;await showView(!location.hash?'world':location.hash==='#agents'?'agents':'resolution');await document.fonts.ready;renderWorld();$('open-tour').disabled=false;quickTour.maybeOpen()}catch(e){$('loading-state').hidden=true;error('Cannot reach the simulation. '+e.message)}

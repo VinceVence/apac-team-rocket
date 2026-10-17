@@ -1,5 +1,7 @@
 # Mint Town — 3-minute guided demo
 
+First-time visitors see the **Quick tour** explaining Environment, Agent activity, Agents and the sidebar. Its final **Start demo** button opens the existing guided flow. The **?** button beside the run controls reopens the introduction; Skip and Escape dismiss it without starting any work.
+
 Use the public app's **Environment**, **Agent activity**, and **Agents** tabs. The guided case starts its investigator only when you click Next from the customer report. Saved timelines and the payment proof can be shown without new model calls. Starting a new world or approving a case with a remaining learner call can consume the shared allowance.
 
 ## 0:00–0:30 — Run demo

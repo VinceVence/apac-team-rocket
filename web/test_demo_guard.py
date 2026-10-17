@@ -88,7 +88,7 @@ class GuardChecks(unittest.TestCase):
         base='http://127.0.0.1:'+str(server.server_port)
         try:
             for method in ('GET','HEAD'):
-                for path,code in [('/app.js',200),('/fonts/dm-sans-400.ttf',200),('/fonts/',404),
+                for path,code in [('/app.js',200),('/quick-tour.js',200),('/fonts/dm-sans-400.ttf',200),('/fonts/',404),
                     ('/mesh-ui.js',404),('/customer-ui.js',404),('/economy.js',404),('/server.py',404),('/.env.vertex',404)]:
                     response=requests.request(method,base+path,timeout=10)
                     self.assertEqual(response.status_code,code,(method,path))
