@@ -43,3 +43,21 @@ test('an active demo or busy workspace cannot be interrupted or started twice',(
   t.ready=false;t.flow.next();assert.equal(t.starts,0);assert.equal(t.flow.active,true);
   t.ready=true;t.flow.next();assert.equal(t.starts,1);
 });
+
+test('section shortcuts are reversible and never start the demo',()=>{
+  const t=setup();t.flow.open();t.flow.goTo(4);assert.equal(t.steps.at(-1),4);assert.equal(t.starts,0);
+  t.flow.goTo(1);assert.equal(t.steps.at(-1),1);t.flow.back();assert.equal(t.steps.at(-1),0);
+  for(const invalid of [-1,5,1.5,'4'])t.flow.goTo(invalid);
+  assert.equal(t.steps.at(-1),0);assert.equal(t.starts,0);
+  t.flow.close();t.flow.goTo(4);assert.equal(t.steps.at(-1),0);
+});
+
+test('landing has one ready entry and the tutorial does not read the world canvas',async()=>{
+  const fs=await import('node:fs/promises');
+  const html=await fs.readFile(new URL('./dist/index.html',import.meta.url),'utf8');
+  const welcome=html.slice(html.indexOf('<section id="welcome"'),html.indexOf('<div id="mint-town"'));
+  assert.equal((welcome.match(/<button\b/g)||[]).length,1);
+  assert.doesNotMatch(welcome,/disabled|welcome-replay|welcome-intro|welcome-footer/);
+  const tour=await fs.readFile(new URL('./dist/quick-tour.js',import.meta.url),'utf8');
+  assert.doesNotMatch(tour,/town-map|drawImage|fetch\(/);
+});

@@ -54,6 +54,8 @@ Restart archives the current scene while retaining accounting, research and fail
 
 ## Demo presentation and checks
 
+The root landing shows one headline and Start here. Its decorative animation and the five-part tutorial make no simulation API requests. Start demo is the explicit handoff to live work. Back, Next and section shortcuts are browser-only. Recorded playback is available separately inside the Fraud Analyst sidebar.
+
 **Run demo → Next** shows payments, the complaint, evidence preparation, actual selected tools, review, knowledge and a later payment. The scene stays scroll-locked and the reader controls advancement. Show public decision purposes and tool receipts, never private reasoning.
 
 Run demo stays on the live Gemini case and never silently changes to playback. Watch saved demo is a separate, explicitly selected browser-only replay. It cannot approve current cases, write payments, or spend money. Exiting restores the unchanged real world. Never describe replay as fresh inference.
