@@ -13,7 +13,7 @@ test('classifier screens show the real call, threshold and cited interpretation 
     investigation:{status:'awaiting_review',recommendation:{summary:'The complaint requires verification despite a low model signal.',uncertainties:['Identity remains unverified.']}},
     harness:{checks:[{passed:true,receipt_ids:['receipt'],judges:[{judge:'resolution',passed:true}]}]}};
   const beats=demoBeats(demo,r),ids=beats.map(b=>b.id);
-  assert.equal(beats.find(b=>b.id==='turn-2').title,'The agent calls a classifier');
+  assert.equal(beats.find(b=>b.id==='turn-2').title,'Check the payment');
   assert.ok(ids.indexOf('classifier-result-2-0')>ids.indexOf('turn-2'));
   assert.ok(ids.indexOf('classifier-result-2-0')<ids.indexOf('turn-3'));
   assert.ok(ids.indexOf('classifier-use')<ids.indexOf('review'));
@@ -158,4 +158,4 @@ test('the similar attempt and blocked outcome use the environment view',()=>{
   assert.equal(beats.at(-1).view,'world');
 });
 
- test('Run demo never silently switches to saved playback',async()=>{const fs=await import('node:fs/promises');const source=await fs.readFile(new URL('./dist/app.js',import.meta.url),'utf8');const fn=source.slice(source.indexOf('async function runWorld('),source.indexOf('let recording=null'));assert.doesNotMatch(fn,/recordedDemo|calls_remaining/);});
+ test('Run demo and the final tutorial button open the same presentation-only entry',async()=>{const fs=await import('node:fs/promises');const source=await fs.readFile(new URL('./dist/app.js',import.meta.url),'utf8');assert.match(source,/\$\('run-demo'\)\.onclick=startWalkthrough/);assert.match(source,/startDemo:startWalkthrough/);const start=source.slice(source.indexOf('async function startWalkthrough('),source.indexOf('let recording=null'));assert.match(start,/recordedDemo\(\)/);assert.doesNotMatch(start,/api\(|runWorld\(|refresh\(/);});

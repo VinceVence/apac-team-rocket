@@ -1,4 +1,4 @@
-import {decisionMap,decisionTrail,renderDecisionMap,manualInvestigation} from './decision-map.js';
+import {decisionMap,decisionTrail,manualInvestigation} from './decision-map.js';
 import {roleNames} from './harness-ui.js';
 import {cleanText,toolLabels,caseActivity,agentIcon,pretty} from './agent-ui.js';
 
@@ -32,17 +32,17 @@ export function demoBeats(demo,report){
   if(!demo?.guided)return [];
   const beats=[],add=(id,view,target,title,copy,extra={})=>beats.push({id,view,target,title,copy,...extra});
   const stopped=!demo.focus_report_id&&demo.scene_blocked_reason;
-  add('world','world','.map-shell',stopped?'The world is paused':'A small town. Real decisions.',stopped||(demo.replay?'Follow a saved Gemini investigation. No new calls or changes are made.':'Residents shop and send money. Every payment becomes evidence the agents can use.'),{who:stopped?'Demo status':demo.replay?'Recorded world':'Live world',wait:stopped?'No investigation ran':'Waiting for a report',exit:!!stopped,action:demo.replay&&demo.replay_stage==='empty'?'payments':null});
-  if(demo.replay&&demo.replay_stage!=='empty')add('payments','world','.map-shell','Residents make ordinary payments','These recorded payments become account history. Next shows the deceptive transfer and the resident’s complaint.',{who:'Recorded transactions',action:demo.replay_stage==='payments'?'scam':null});
+  add('world','world','.map-shell',stopped?'The world is paused':'A small town. Real decisions.',stopped||(demo.replay?'Follow one completed case, from the first payment to prevention.':'Residents shop and send money. Every payment becomes evidence the agents can use.'),{who:stopped?'Demo status':demo.replay?'Mint Town':'Live world',wait:stopped?'No investigation ran':'Waiting for a report',exit:!!stopped,action:demo.replay&&demo.replay_stage==='empty'?'payments':null});
+  if(demo.replay&&demo.replay_stage!=='empty')add('payments','world','.map-shell','Residents make ordinary payments','Payments build a customer’s history. Next, one resident encounters a scam.',{who:'Payments',action:demo.replay_stage==='payments'?'scam':null});
   if(!demo.focus_report_id)return beats;
   add('complaint','world',(demo.incidents||[]).some(i=>i.report_id===demo.focus_report_id&&i.report_status!=='resolved')?'#fraud-sprite-focus':'#world-alert','Someone needs help.','A resident reports a suspicious transfer. Follow the case to see what the investigator checks.',{who:'Customer',next:'Follow investigation'});
   if(report?.id!==demo.focus_report_id)return beats;
   const waitingForNext=!report.investigation&&report.preparation?.status==='waiting'&&report.preparation?.stage==='demo_investigation';
-  add('report','resolution','.report-details','Read the customer’s report',waitingForNext?(demo.replay?'Next opens the original Gemini investigation: its actual tool choices, evidence and proposed resolution.':'Next starts the resolution agent. Watch it choose tools and examine the returned evidence.'):'This report is a claim to investigate. The agent must compare it with independent records.',{who:'Customer report',action:waitingForNext?'investigate':null});
+  add('report','resolution','.report-details','Read the customer’s report',waitingForNext?(demo.replay?'Next shows how the resolution agent handles this report.':'Next starts the resolution agent. Watch it choose tools and examine the returned evidence.'):'This report is a claim to investigate. The agent must compare it with independent records.',{who:'Customer report',action:waitingForNext?'investigate':null});
   const trail=decisionTrail(report);
-  for(const t of trail.filter(t=>t.tool&&t.status==='completed')){
+  for(const t of trail.filter(t=>t.tool&&t.status==='completed'&&(!demo.replay||t.tool!=='submit_case_resolution'))){
     const classifiers=classifierReceipts(t);
-    add('turn-'+t.number,'resolution',`#guide-turn-${t.number}`,classifiers.length?'The agent calls a classifier':toolLabels[t.tool]||pretty(t.tool),t.purpose||'No public decision summary was recorded.',{who:roleNames[t.role]||'Resolution agent',tool:t.tool,classifiers,detail:short(t.finding)});
+    add('turn-'+t.number,'resolution',`#guide-turn-${t.number}`,classifiers.length?'Check the payment':toolLabels[t.tool]||pretty(t.tool),(demo.replay?{get_case_evidence:'Match the complaint to the customer’s payment records.',score_models:'Use a trained fraud classifier to assess the disputed payment.',submit_case_resolution:'Bring the report, records and model findings together.'}[t.tool]:null)||t.purpose||'Review the available evidence.',{who:roleNames[t.role]||'Resolution agent',tool:t.tool,classifiers});
     for(const [index,result] of classifiers.entries())add(`classifier-result-${t.number}-${index}`,'resolution','#agent-live-panel','Read the classifier result',result.verdict==='Unavailable'?'Required inputs are missing. The agent receives an unavailable result, not a zero-risk score.':result.verdict==='Above threshold'?'This score crosses the model’s operating threshold. It is a signal to investigate, not proof of fraud.':'The score is below the operating threshold. A low model signal cannot rule out the customer’s complaint.',{who:'Classifier tool',classifier:result});
   }
   const activity=caseActivity(report,demo);
@@ -50,25 +50,25 @@ export function demoBeats(demo,report){
   const run=report.investigation,checks=report.harness?.checks||[];
   const judged=checks.find(c=>c.judges?.some(j=>j.judge==='resolution'));
   const interpretation=classifierInterpretation(report);
-  if(interpretation.rows.length&&interpretation.summary)add('classifier-use','resolution','#fraud-packet',interpretation.blocked?'The interpretation needs correction':'The agent weighs the evidence',interpretation.blocked?'The saved draft conflicts with a validation check. It cannot be auto-approved.':'Compare the classifier receipt with the agent’s recorded resolution. The analyst still decides.',{who:'Resolution agent',interpretation});
-  if(judged)add('judges','resolution','.harness-judges',judged.passed?'The draft passed local checks':'The judges withheld this draft',judged.passed?'Evidence, model contracts and resolution claims passed the checks. An analyst still makes the decision.':'A contract or claim failed validation. The draft cannot proceed as an approved resolution.',{who:'Harness judges',detail:short(judged.judges.filter(j=>!j.passed).flatMap(j=>j.blockers||[]).join(' '))});
+  if(interpretation.rows.length&&interpretation.summary)add('classifier-use','resolution','#fraud-packet',interpretation.blocked?'The interpretation needs correction':'The agent weighs the evidence',interpretation.blocked?'The saved draft conflicts with a validation check. It cannot be auto-approved.':'The classifier is one clue. The agent combines it with the report and payment history.',{who:'Resolution agent',interpretation});
+  if(judged)add('judges','resolution','.harness-judges',judged.passed?'The draft passed local checks':'The judges withheld this draft',judged.passed?'Check the evidence and the recommendation before sending it for review.':'A contract or claim failed validation. The draft cannot proceed as an approved resolution.',{who:'Harness judges',detail:short(judged.judges.filter(j=>!j.passed).flatMap(j=>j.blockers||[]).join(' '))});
   if(run?.recommendation)add('proposal','resolution','#fraud-packet',manualInvestigation(run)?'Read the manual review proposal':'Read the proposed resolution','Review the suggested action, cited evidence and what remains uncertain.',{who:manualInvestigation(run)?'Demo analyst':'Resolution agent',next:'Show analyst review'});
   if(!demo.replay&&(activity.stage==='blocked'||(judged?.passed===false&&!activity.active))){add('stopped','resolution','#agent-live-panel','Investigation paused',short(run?.context?.stop_reason||report.preparation?.detail||'The case needs attention before it can continue.'),{who:'Resolution agent',exit:true});return beats}
   const actions=demo.presentation_actions||{};
   if(report.status==='awaiting_customer')add('reply','resolution','#agent-live-panel','The customer provides more context','Next supplies the known answer from this synthetic customer so the agent can continue.',{who:'Demo customer',action:'answer'});
-  else if(!waitingForNext&&!activity.active&&report.status!=='resolved')add('review','resolution','#human-review-stage','Assume the analyst approves','For this demo, approval is assumed after reviewing the recorded transfer and scam request. Next saves the resolution and publishes its lesson.',{who:'Demo analyst',action:'review',detail:activity.stage==='blocked'?'The model draft stopped. The saved evidence goes to the simulated analyst; no model retry.':''});
+  else if(!waitingForNext&&!activity.active&&report.status!=='resolved')add('review','resolution','#human-review-stage','Fraud Analyst review','The analyst checks the evidence and confirms the next action.',{who:'Fraud Analyst',action:'review',detail:activity.stage==='blocked'?'The model draft stopped. The saved evidence goes to the simulated analyst; no model retry.':''});
   if(report.status==='resolved'){
-    add('review','resolution','#human-review-stage','The demo analyst approved','The synthetic review is recorded. No refund or recovery is being claimed.',{who:'Demo analyst'});
+    add('review','resolution','#human-review-stage','The analyst approves','The reviewed case can now inform future protection.',{who:'Fraud Analyst'});
     if(report.approved_lesson&&report.approved_lesson.lifecycle?.active!==false)add('knowledge','resolution','#fraud-memory-panel','The resolution becomes knowledge','The approved lesson and recipient can now inform the prevention agent.',{who:'Shared knowledge',action:actions.learn?null:'learn'});
   }
   const job=report.prevention,rule=job?.rule;
   if(actions.learn||job){
     const working=['ready','queued','running'].includes(job?.status),passed=rule?.replay?.passed;
     if(!working&&!passed&&!demo.replay&&!actions.activate){add('prevention','resolution','#prevention-panel','Safeguard needs review','The prevention proposal needs review before it can protect a payment.',{who:'Prevention agent',exit:true});return beats}
-    add('prevention','resolution','#prevention-panel',working?'The prevention agent tests the lesson':passed?'Prepare the next payment check':'Use the approved recipient watch',working?'The learner checks a narrow candidate against similar requests and legitimate controls.':passed?'The candidate passed synthetic replay. Next applies the assumed demo analyst activation.':'A broader candidate is unavailable or did not pass. The approved recipient watch still checks the next payment locally.',{who:'Prevention',live:working,action:!working&&!actions.activate?'activate':null});
+    add('prevention','resolution','#prevention-panel',working?'The prevention agent tests the lesson':passed?'Prepare the next payment check':'Use the approved recipient watch',working?'The learner checks a narrow candidate against similar requests and legitimate controls.':passed?'Test the safeguard against related scams and legitimate payments before enabling it.':'A broader candidate is unavailable or did not pass. The approved recipient watch still checks the next payment locally.',{who:'Prevention',live:working,action:!working&&!actions.activate?'activate':null});
   }
   if(actions.activate)add('repeat','world','.map-shell','A similar scam happens again','Another resident receives a suspicious request. Next sends the attempt through the actual payment check before any debit.',{who:'Next payment',action:demo.phase==='protected'?null:'prove'});
-  if(demo.phase==='protected')add('protected','world','.map-shell','The scam was stopped before debit','The suspicious transfer was held. A legitimate control payment completed. The payment gateway used approved knowledge without another model call.',{who:'Protection verified',done:true});
+  if(demo.phase==='protected')add('protected','world','.map-shell','The scam was stopped before debit','The related scam is held before debit. A legitimate payment goes through.',{who:'Protection verified',done:true});
   return beats;
 }
 
@@ -123,7 +123,7 @@ export function createDemoGuide({state,openCase,showWorld,error,demoAction,resid
   let scene=null,report=null,active=false,beats=[],current='world',busy=false,entering=false,priorFocus=null,canvasFrame=0,worldCanvas=null,lastPaint=0;
   const saved=(key,value)=>{try{if(value===undefined)return sessionStorage.getItem(key);sessionStorage.setItem(key,value)}catch{}return null};
   function close(){const wasActive=active;active=false;root.hidden=true;app.inert=false;document.body.classList.remove('guide-open');cancelAnimationFrame(canvasFrame);worldCanvas=null;saved('minttown-guide-dismissed',scene);const focus=priorFocus?.isConnected&&!priorFocus.disabled?priorFocus:document.getElementById('play-world');focus?.focus();priorFocus=null;if(wasActive)onClose?.()}
-  function sceneCanvas(){worldCanvas=el('canvas',undefined,'demo-world-canvas');worldCanvas.width=960;worldCanvas.height=600;worldCanvas.setAttribute('aria-label','Live Mint Town residents and recorded payment alerts');visual.append(worldCanvas);copyWorld()}
+  function sceneCanvas(){worldCanvas=el('canvas',undefined,'demo-world-canvas');worldCanvas.width=960;worldCanvas.height=600;worldCanvas.setAttribute('aria-label','Mint Town case walkthrough');visual.append(worldCanvas);copyWorld()}
   function copyWorld(time=0){cancelAnimationFrame(canvasFrame);if(!active||!worldCanvas)return;if(time-lastPaint>32||!time){const source=document.getElementById('town-map'),ctx=worldCanvas.getContext('2d');ctx.drawImage(source,0,0,960,600);
     if(current==='repeat'&&state.data.demo.phase!=='protected'){
       const p=residentPosition?.('C002');if(p){const x=Math.max(8,Math.min(780,p.x-86)),y=Math.max(8,p.y-84);ctx.fillStyle='#fff0c9';ctx.strokeStyle='#bd803e';ctx.lineWidth=2;ctx.beginPath();ctx.roundRect(x,y,172,30,7);ctx.fill();ctx.stroke();ctx.fillStyle='#785022';ctx.font='600 13px "DM Sans",sans-serif';ctx.textAlign='center';ctx.fillText('Suspicious request',x+86,y+20);ctx.beginPath();ctx.moveTo(p.x-5,y+31);ctx.lineTo(p.x,y+38);ctx.lineTo(p.x+5,y+31);ctx.fill()}
@@ -144,20 +144,19 @@ export function createDemoGuide({state,openCase,showWorld,error,demoAction,resid
     if(b.id==='report'){const c=card('human','Resident '+Number((report?.customer_id||'C001').slice(1)),report?.story);facts(c,[['Reported transfer',money(total)],['Recorded payments',tx.length],['Claim',report?.scenario_title||'Customer allegation']]);return}
     if(b.classifier){
       const r=b.classifier,c=card('scientist',r.name);c.classList.add('demo-classifier-result');
-      c.append(el('code','score_models','classifier-tool-name'));
       const numbers=el('div',undefined,'classifier-numbers');
       for(const [label,value] of [['Signal score',r.score],['Threshold',r.threshold]]){const n=el('div');n.append(el('small',label),el('strong',value===null?'—':value.toFixed(3)));numbers.append(n)}c.append(numbers);
       const verdict=el('strong',r.verdict,'classifier-verdict');verdict.dataset.result=r.verdict;c.append(verdict);
       c.append(el('p','Advisory signal · not a fraud probability','classifier-boundary'));
-      facts(c,[['Evidence',r.eventCount+' case payment(s)'],['Receipt',r.id||'Not recorded']]);
+      facts(c,[['Payment checked',r.eventCount+' transaction(s)']]);
       if(r.missing.length)c.append(el('small','Missing: '+r.missing.map(pretty).join(', '),'classifier-source'));
-      else c.append(el('small',r.source,'classifier-source'));return;
+      return;
     }
     if(b.id==='classifier-use'){
       const info=b.interpretation,c=card('resolution','From model output to a proposal');c.classList.add('demo-classifier-use');
       const strip=el('div',undefined,'classifier-cited');
-      for(const r of info.rows.slice(0,2)){const item=el('div');item.append(el('strong',r.name),el('span',r.verdict),el('small',r.cited?'Cited in the draft':'Not cited in the draft'));strip.append(item)}c.append(strip);
-      c.append(el('small','Agent’s recorded resolution','classifier-quote-label'),el('blockquote',short(info.summary)+(info.summary.length>180?'…':''),'classifier-quote'));
+      for(const r of info.rows.slice(0,2)){const item=el('div');item.append(el('strong',r.name),el('span',r.verdict),el('small',r.cited?'Used in the recommendation':'Additional evidence'));strip.append(item)}c.append(strip);
+      c.append(el('small','Recommended next action','classifier-quote-label'),el('blockquote',pretty(run?.recommendation?.suggested_action||'Review the case'),'classifier-quote'));
       if(info.blocked)c.append(el('p',short(info.blockers[0]||'The draft needs correction.'),'classifier-blocked'));
       else if(info.uncertainty)c.append(el('p','Still unverified: '+short(info.uncertainty),'classifier-boundary'));return;
     }
@@ -172,13 +171,18 @@ export function createDemoGuide({state,openCase,showWorld,error,demoAction,resid
       c.append(list,el('p','No model call is needed to gather these records.','demo-progress-note'));return;
     }
     if(b.id.startsWith('turn-')||b.id==='live'){
-      const graph=el('div');visual.append(graph);renderDecisionMap(graph,report,{selected:b.id==='live'?null:Number(b.id.slice(5)),compact:true});if(b.classifiers?.length)graph.append(el('p','Trained classifier selected · '+b.classifiers.map(r=>r.name).join(' + '),'classifier-selected'));return;
+      const scored=b.tool==='score_models',c=card(scored?'scientist':'resolution',scored?'Fraud classifier':'The reported payment');
+      const transfer=el('div',undefined,'walkthrough-payment');transfer.append(el('small','Resident '+Number((report?.customer_id||'C001').slice(1))),el('strong',money(total)),el('span','Disputed transfer'));c.append(transfer);
+      const row=el('div',undefined,'walkthrough-check');row.append(agentIcon(scored?'scientist':'knowledge'),el('span',scored?'Compare payment patterns':'Match the transaction record'),el('strong','✓'));c.append(row);
+      if(scored)c.append(el('p','The model result is next.','walkthrough-next'));
+      else c.append(el('p',tx.length+' reported payment'+(tx.length===1?'':'s')+' found.','walkthrough-next'));
+      return;
     }
-    if(b.id==='judges'){const c=card('judge',b.title,'Local checks validate evidence, tool contracts and the proposed action.');const checks=report?.harness?.checks?.find(c=>c.judges?.some(j=>j.judge==='resolution'))?.judges||[];facts(c,checks.map(j=>[pretty(j.judge),j.passed?'Passed':'Needs review']));return}
-    if(b.id==='proposal'){const c=card(manualInvestigation(run)?'human':'resolution',manualInvestigation(run)?'Manual review proposal':'Proposed resolution',run?.recommendation?.summary);facts(c,[['Action',pretty(run?.recommendation?.suggested_action)],['Evidence',tx.length+' payment(s)'],['Recovery','Not guaranteed']]);return}
+    if(b.id==='judges'){const c=card('judge','Ready for review');const checks=report?.harness?.checks?.find(c=>c.judges?.some(j=>j.judge==='resolution'))?.judges||[];facts(c,checks.map(j=>[pretty(j.judge),j.passed?'Passed':'Needs review']));return}
+    if(b.id==='proposal'){const c=card(manualInvestigation(run)?'human':'resolution',manualInvestigation(run)?'Manual review proposal':'Proposed resolution',run?.recommendation?.summary);facts(c,[['Action',pretty(run?.recommendation?.suggested_action)],['Next','Fraud Analyst review']]);return}
     if(b.id==='reply'){card('human','The demo customer answers',run?.context?.pending_question);return}
     if(b.id==='review'){
-      const c=card('human',report?.status==='resolved'?'Demo analyst approved':'Assume analyst approval','For this synthetic demo, the risk analyst verifies the report and approves a recall request. Next saves the reviewed lesson.');facts(c,[['Review','Synthetic demo assumption'],['Evidence',tx.length+' recorded payment(s)'],['Money recovered','No recovery claimed']]);
+      const c=card('human','Fraud Analyst','Verify the evidence and review the proposed resolution.');facts(c,[['Decision',report?.status==='resolved'?'Approved':'Ready for review'],['Next','Share the lesson']]);c.append(el('small','Example analyst approval','walkthrough-note'));
       const stopped=run?.context?.manual_handoff||['failed','interrupted','budget_exhausted'].includes(run?.status);if(stopped)c.append(el('p','The automated draft stopped. The demo analyst uses the saved evidence; no model request is retried.','demo-disclosure'));return;
     }
     if(b.id==='knowledge'){const c=card('knowledge','Reviewed case → shared knowledge',report?.approved_lesson?.lesson||'No published lesson is available yet.');chips(c,report?.approved_lesson?.pattern?.cues||[]);facts(c,[['Source','Demo analyst resolution'],['Scope','Reviewed recipient + case signals'],['Use','Check future payments']]);return}
@@ -193,12 +197,12 @@ export function createDemoGuide({state,openCase,showWorld,error,demoAction,resid
     if(!active||!beats.length)return;const i=beats.findIndex(b=>b.id===current);let b=beats[i];if(!b)return;
     if(b.id==='live')b={...b,...liveDemoState(report,state.data.demo)};
     root.hidden=false;app.inert=true;document.body.classList.add('guide-open');
-    $('.demo-stage-brand small').textContent=state.data.demo.replay?'Recorded Gemini replay':'Guided demo';
-    $('.guide-reason-label').hidden=!(b.tool||(b.id==='live'&&decisionMap(report).tool));
+    $('.demo-stage-brand small').textContent=state.data.demo.replay?'Case walkthrough':'Guided demo';
+    $('.guide-reason-label').hidden=true;
     $('.guide-who').textContent=b.who;$('.guide-caption h2').textContent=b.title;$('.guide-copy').textContent=b.copy;$('.guide-detail').textContent=b.detail||'';$('.guide-detail').hidden=!b.detail;
     const stage=demoPhase(b.id);$('.guide-progress').textContent=b.exit?'Paused':b.done?'Demo complete':demoPhases[stage];const next=nextGuideStep(beats,current,seen);$('.guide-next').textContent=busy?'Working…':b.exit?'Return to town':b.done?'Finish demo':'Next';$('.guide-next').disabled=busy||(!next&&!b.action&&!b.done&&!b.exit&&b.id!=='complaint');$('.guide-back').disabled=busy||i===0;
     $('.guide-wait').textContent=b.exit?'No model request was retried.':b.done?'Finish returns to the town.':$('.guide-next').disabled&&b.id==='world'?'World running · the first report will appear shortly.':b.live?'Live results continue here. Next is available when the next result is ready.':b.action==='review'?'Next records the assumed demo approval.':b.action==='activate'?'Next enables only the reviewed protection.':'Read at your pace. Click Next to continue.';
-    if(state.data.demo.replay)$('.guide-wait').textContent='Recorded Gemini case · demo analyst approval · no new calls or current-world changes.';
+    if(state.data.demo.replay)$('.guide-wait').textContent=b.id==='world'?'Completed example case · read at your pace.':'';
     $('.demo-stage-track').replaceChildren();demoPhases.forEach((label,n)=>{const done=n<stage||b.done,v=el('span',undefined,done?'complete':n===stage?'current':'');if(n===stage)v.setAttribute('aria-current','step');v.append(el('i',done?'✓':'','phase-mark'),el('span',label));$('.demo-stage-track').append(v)});
     paint(b);seen.add(current);if(!root.contains(document.activeElement))($('.guide-next').disabled?$('.guide-close'):$('.guide-next')).focus({preventScroll:true});
   }

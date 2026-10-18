@@ -54,11 +54,11 @@ Restart archives the current scene while retaining accounting, research and fail
 
 ## Demo presentation and checks
 
-The root landing shows one headline and Start here. Its decorative animation and the five-part tutorial make no simulation API requests. Start demo is the explicit handoff to live work. Back, Next and section shortcuts are browser-only. Recorded playback is available separately inside the Fraud Analyst sidebar.
+The landing is a looping town with a left vignette, one headline and Start here. It makes no simulation API requests. Start here loads the workspace and opens the quick tutorial inside it. Reading the tutorial never starts payments or agents.
 
-**Run demo → Next** shows payments, the complaint, evidence preparation, actual selected tools, review, knowledge and a later payment. The scene stays scroll-locked and the reader controls advancement. Show public decision purposes and tool receipts, never private reasoning.
+**Run demo** and the tutorial's **Start demo** open the same browser-only case walkthrough. Next shows payments, a report, evidence checks, a classifier result, a proposed resolution, example analyst approval, reviewed knowledge and a later protected payment. No API mutation, investigation or paid model call occurs in this walkthrough. The source is a completed Gemini case, retained with its original receipts. The header says Case walkthrough; do not present it as a fresh execution.
 
-Run demo stays on the live Gemini case and never silently changes to playback. Watch saved demo is a separate, explicitly selected browser-only replay. It cannot approve current cases, write payments, or spend money. Exiting restores the unchanged real world. Never describe replay as fresh inference.
+**Run simulation** remains the live path with real case investigations, shared cost caps and review requirements. Ending the walkthrough restores that current world. Failed live work cannot approve itself or activate a rejected safeguard. Website work must not edit the video.
 
 ```sh
 uv run --locked python -B -m unittest discover -s web -p 'test_*.py'
