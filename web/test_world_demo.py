@@ -36,9 +36,11 @@ class WorldDemoChecks(unittest.TestCase):
         before=self.server.fraud_agent.budget('', 'fake')
         self.demo.guard.allow('POST','/api/world/restart',{'expected_run':state['run_id']})
         usage=self.demo.guard.status()['used'].copy()
-        result=self.demo.restart(state['run_id'],background=False)
+        result=self.demo.restart(state['run_id'],background=True)
         self.assertNotEqual(result['scene_id'],state['scene_id']);self.assertEqual(result['run_id'],state['run_id']+1)
-        self.assertTrue(result['continuous']);self.assertTrue(result['running']);self.assertEqual(result['steps'],0)
+        self.assertTrue(result['continuous']);self.assertFalse(result['running']);self.assertEqual(result['steps'],0)
+        self.assertFalse(self.demo.thread and self.demo.thread.is_alive())
+        self.demo.tick(result['run_id']);self.assertEqual(self.demo.status()['steps'],0)
         for table in ('financial_events','fraud_reports','scam_memories','prevention_rules'):
             self.assertEqual(self.lab.db.execute('SELECT count(*) FROM '+table).fetchone()[0],0)
         self.assertEqual(self.lab.db.execute('SELECT count(*) FROM customers').fetchone()[0],100)
@@ -48,6 +50,8 @@ class WorldDemoChecks(unittest.TestCase):
         self.assertTrue((Path(self.temp.name)/archive).exists())
         self.assertEqual(self.demo.restart(state['run_id'],background=False)['scene_id'],result['scene_id'])
         self.assertEqual(self.lab.db.execute('SELECT count(*) FROM demo_scene_archives').fetchone()[0],2)
+        started=self.demo.start(result['run_id'],background=False,mode='simulation')
+        self.assertEqual(started['scene_id'],result['scene_id']);self.assertTrue(started['running'])
 
     def test_restart_rejects_active_work_and_exhausted_daily_steps_before_reset(self):
         from demo_guard import DemoGuard

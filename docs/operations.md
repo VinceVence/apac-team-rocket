@@ -58,7 +58,7 @@ The landing is a looping town with a left vignette, one headline and Start here.
 
 **Run demo** and the tutorial's **Start demo** open the same browser-only case walkthrough. Next shows payments, a report, evidence checks, a classifier result, a proposed resolution, example analyst approval, reviewed knowledge and a later protected payment. No API mutation, investigation or paid model call occurs in this walkthrough. The source is a completed Gemini case, retained with its original receipts. The header says Case walkthrough; do not present it as a fresh execution.
 
-**Run simulation** remains the live path with real case investigations, shared cost caps and review requirements. Ending the walkthrough restores that current world. Failed live work cannot approve itself or activate a rejected safeguard. Website work must not edit the video.
+**Start simulation** remains the live path with real case investigations, shared cost caps and review requirements. New and restarted worlds are paused. The idle control always reads Start simulation; the running control reads Pause simulation. Ending the walkthrough restores the current world without starting it. Failed live work cannot approve itself or activate a rejected safeguard. Website work must not edit the video.
 
 ```sh
 uv run --locked python -B -m unittest discover -s web -p 'test_*.py'

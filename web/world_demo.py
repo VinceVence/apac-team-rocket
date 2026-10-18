@@ -83,7 +83,7 @@ class WorldDemo:
                     'restart_blocked':restart_blocked,'start_blocked_reason':start_blocked,'scene_blocked_reason':scene_blocked,
                     'agent_busy':bool(self.runner.pending or (self.intake and self.intake.is_alive()))}
 
-    def start(self, expected_run, activity=2, speed=1, background=True, fresh=False, mode=None):
+    def start(self, expected_run, activity=2, speed=1, background=True, fresh=False, mode=None, paused=False):
         if type(expected_run) is not int or type(activity) is not int or activity not in range(1,5) or type(speed) is not int or speed not in (1,2,4):
             raise LabError('Invalid world controls.')
         with self.lab.lock:
@@ -91,7 +91,7 @@ class WorldDemo:
             if self.closed:raise LabError('The world is stopping.',503)
             if current['running'] or expected_run!=current['run_id']:return current
             if self.thread and self.thread.is_alive():raise LabError('The previous world run is stopping.',409)
-            if type(fresh) is not bool:raise LabError('Fresh must be true or false.')
+            if type(fresh) is not bool or type(paused) is not bool:raise LabError('Fresh and paused must be true or false.')
             if mode is not None and mode not in ('demo','simulation'):raise LabError('Choose demo or simulation.')
             resume=mode=='simulation' and current['continuous'] and not fresh
             run_id=current['run_id'] if resume else current['run_id']+1
@@ -103,11 +103,11 @@ class WorldDemo:
                 if not self.resetter:raise LabError('Fresh demo reset is unavailable.',409)
                 self.resetter.reset(current['run_id']+1)
             with self.lab.db:
-                self.lab.db.execute("UPDATE world_demo_state SET run_id=?,running=1,steps=?,activity=?,speed=?,report_reserved=?,note='Running' WHERE id=1",(run_id,current['steps'] if resume else 0,activity,speed,report_reserved))
-                self.lab.db.execute('UPDATE world_demo_state SET lease_until=? WHERE id=1',((dt.datetime.fromisoformat(now())+dt.timedelta(seconds=RUN_LEASE_SECONDS)).isoformat(),))
+                self.lab.db.execute("UPDATE world_demo_state SET run_id=?,running=?,steps=?,activity=?,speed=?,report_reserved=?,note=? WHERE id=1",(run_id,int(not paused),current['steps'] if resume else 0,activity,speed,report_reserved,'Paused' if paused else 'Running'))
+                self.lab.db.execute('UPDATE world_demo_state SET lease_until=? WHERE id=1',(None if paused else (dt.datetime.fromisoformat(now())+dt.timedelta(seconds=RUN_LEASE_SECONDS)).isoformat(),))
                 if mode:self.lab.db.execute('UPDATE world_demo_state SET guided=?,continuous=?,focus_report_id=CASE WHEN ? THEN focus_report_id ELSE NULL END WHERE id=1',(int(mode=='demo'),int(mode=='simulation'),int(mode=='demo')))
             self.checkpoint();self.stopping.clear()
-            if background:
+            if background and not paused:
                 self.thread=threading.Thread(target=self.work,args=(run_id,),daemon=True,name='town-world');self.thread.start()
             return self.status()
 
@@ -120,7 +120,7 @@ class WorldDemo:
         self.checkpoint();return self.status()
 
     def restart(self,expected_run,activity=2,speed=1,background=True):
-        """Archive this scene and start empty; accounting and limits survive."""
+        """Archive this scene and reset to paused; only Start simulation runs it."""
         if type(expected_run) is not int or type(activity) is not int or activity not in range(1,5) or type(speed) is not int or speed not in (1,2,4):
             raise LabError('Invalid restart controls.')
         with self.lab.lock:
@@ -132,7 +132,7 @@ class WorldDemo:
         if previous:
             previous.join(timeout=5)
             if previous.is_alive():raise LabError('The previous simulation is still stopping. Its saved scene is unchanged.',409)
-        return self.start(expected_run,activity,speed,background=background,fresh=True,mode='simulation')
+        return self.start(expected_run,activity,speed,background=background,fresh=True,mode='simulation',paused=True)
 
     def incident(self, run_id, kind, repeat=False, cycle=0, background=False):
         """A scoped simulator event; observed payments are the investigator's evidence."""
@@ -287,7 +287,7 @@ class WorldDemo:
             state=self.status()
             if not state['running'] or run_id!=state['run_id']:return state
             if state.get('lease_until') and state['lease_until']<=now():
-                with self.lab.db:self.lab.db.execute("UPDATE world_demo_state SET running=0,note='Paused after 15 minutes. Resume when ready.' WHERE id=1")
+                with self.lab.db:self.lab.db.execute("UPDATE world_demo_state SET running=0,note='Paused after 15 minutes. Click Start simulation when ready.' WHERE id=1")
                 self.checkpoint();return self.status()
             # This tick is local-only. Persist its allowance and resulting ledger together,
             # before any publication or model call, instead of uploading the full DB twice.

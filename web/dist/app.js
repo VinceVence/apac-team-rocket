@@ -45,10 +45,10 @@ function renderRunControls(){
   const demo=state.data?.demo;if(!demo)return;
   $('run-demo').disabled=state.busy;
   $('restart-world').disabled=state.busy||!!demo.restart_blocked;
-  $('restart-world').title=demo.restart_blocked?'Wait for the current agent work to finish.':'Archive this scene and start an empty simulation. Usage limits stay unchanged.';
+  $('restart-world').title=demo.restart_blocked?'Wait for the current agent work to finish.':'Archive this scene and create a paused, empty simulation. Usage limits stay unchanged.';
   $('play-world').disabled=state.busy||(!demo.running&&!demo.continuous&&!!demo.restart_blocked);
-  $('play-world').textContent=demo.running?'Ⅱ Pause simulation':demo.continuous?'▶ Resume simulation':'▶ Run simulation';
-  $('play-world').title=demo.running?'Pause payments; active investigations can finish.':demo.continuous?'Resume this world with its cases and safeguards.':'Start an empty world. Payments continue while agents investigate.';
+  $('play-world').textContent=demo.running?'Ⅱ Pause simulation':'▶ Start simulation';
+  $('play-world').title=demo.running?'Pause payments; active investigations can finish.':demo.continuous?'Start payments in this world with its cases and safeguards.':'Start an empty world. Payments continue while agents investigate.';
   $('run-demo').title='Step-by-step case walkthrough. No model calls.';
 }
 const sidebarMobile=matchMedia('(max-width:1000px)');let menuOpen=false,sidebarCollapsed=false;
@@ -76,7 +76,7 @@ function renderWorld(){
   if(lastScene&&lastScene!==demo.scene_id){state.customerId=null;state.focusReport=null;drawTown.reset();fraudUI.reset();lastTick=-1}
   lastScene=demo.scene_id;
   const phase=demo.phase||'world',stage={world:0,complaint:1,investigation:2,followup:2,review:3,prevention:4,activate:4,ready:4,protected:5,attention:3}[phase]??0;
-  const narrative={world:demo.running?'Payments are arriving. Watch for a resident asking for help.':'Press Run simulation. Start with zero transactions.',complaint:'A resident is calling for help. A scam report is being filed.',investigation:'The resident reported a scam. Follow the agent’s investigation.',followup:'The agent needs one customer answer before continuing.',review:'The resolution is ready for the human risk analyst.',prevention:'The prevention agent is learning from the reviewed case.',activate:'The safeguard passed replay. The analyst decides whether to enable it.',ready:'The safeguard is active. Test a similar request with a different recipient.',protected:'The similar request was held before debit. The legitimate payment passed.',attention:'This case needs manual attention. Open the saved evidence.'};
+  const narrative={world:demo.running?'Payments are arriving. Watch for a resident asking for help.':'Press Start simulation. Start with zero transactions.',complaint:'A resident is calling for help. A scam report is being filed.',investigation:'The resident reported a scam. Follow the agent’s investigation.',followup:'The agent needs one customer answer before continuing.',review:'The resolution is ready for the human risk analyst.',prevention:'The prevention agent is learning from the reviewed case.',activate:'The safeguard passed replay. The analyst decides whether to enable it.',ready:'The safeguard is active. Test a similar request with a different recipient.',protected:'The similar request was held before debit. The legitimate payment passed.',attention:'This case needs manual attention. Open the saved evidence.'};
   $('demo-narrative').textContent=narrative[phase]||narrative.world;document.querySelector('.demo-story').hidden=!demo.guided||state.view!=='world';
   $('world-mode-label').textContent=demo.continuous?'Live simulation':demo.guided?'Guided demo':'Choose demo or simulation';
   document.querySelectorAll('[data-demo-stage]').forEach((n,i)=>{n.classList.toggle('current',i===stage);n.classList.toggle('done',i<stage);if(i===stage)n.setAttribute('aria-current','step');else n.removeAttribute('aria-current')});
