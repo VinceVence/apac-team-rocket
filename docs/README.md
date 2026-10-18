@@ -7,6 +7,7 @@
 | Open the public demo and understand team access | [Hosting and shutdown guard](hosting.md) |
 | See the latest hosted visual test | [Live walkthrough and results](visual-demo.md) |
 | Present the saved cases in three minutes | [Demo script](demo-script.md) |
+| Generate and validate Gab’s local AE fixtures | [Data tools](../data/README.md) |
 | Inspect/export data matching Gab’s dictionary | [Simulation data contract](environment-data.md) |
 | Follow environment → BigQuery → investigation | [Architecture](architecture.md) |
 | Review simulation, data plane and agent plane | [Mesh architecture and UML figures](fraud-agent-mesh.md) |
@@ -17,13 +18,13 @@
 | See what actually passed, failed or remains unmeasured | [Evaluation](evaluation.md) |
 | Review the implemented competition upgrades and current results | [Upgrade evidence](competition-upgrades.md) |
 | Inspect real Gemini outcomes, failures and spend | [Live learning-loop results](learning-evaluation.md) |
-| Follow ACE playbooks and MLE-STAR model refinement | [Two learning loops](learning-loops.md) |
+| Follow reviewed playbooks and bounded model refinement | [Two learning loops](learning-loops.md) |
 | Contribute Karlo's trained model | [Model artifact contract](model-artifacts.md) |
 | Run Karlo's AE-trained classifier and inspect its limits | [Ledger model integration](ledger-model.md) |
 | Find a backend file or endpoint | [Application map](../web/README.md) |
 
-Start with one complete case. A normal demo follows **Run world → complaint → selected tools → analyst review → approved knowledge → later payment hold**. A stopped investigation is a visible result, not a reason to silently retry it.
+Start with one complete case. **Run demo** replays a completed case with Next/Back and no API mutations. **Start simulation** is the separate live path: payments → complaint → selected tools → analyst review → approved knowledge → later payment hold. A stopped investigation is a visible result, not a reason to silently retry it.
 
-Mint Town is the product name. Existing Google project, bucket, dataset and environment-variable names retain `minttown` so the rename does not duplicate resources or reset accounting.
+Resolution Agent is the product. Mint Town is its demonstration environment. Existing Google project, bucket, dataset and environment-variable names retain `minttown` so the rename does not duplicate resources or reset accounting.
 
 - [Investigation harness](harness-runtime.md): implemented roles, judges, model receipts, checkpoints, knowledge lifecycle and offline evaluation.

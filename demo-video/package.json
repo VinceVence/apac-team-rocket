@@ -41,7 +41,10 @@
     "prerender": "npm run check:audio && npm run polish:sfx",
     "postrender": "uv run --project tools --locked python tools/verify_video.py --story-v2 --film out/mint-town-story-v2.mp4 --master",
     "polish:sfx": "uv run --project tools --locked python tools/polish_sfx.py",
-    "setup:media": "uv run --project tools --locked python tools/prepare_assets.py && npm run score && npm run polish:sfx && npm run voice"
+    "setup:media": "uv run --project tools --locked python tools/prepare_assets.py && npm run score && npm run polish:sfx && npm run voice",
+    "render:youtube": "remotion render src/index.ts MintTown-Story out/resolution-agent-youtube-4k.mp4 --scale=2 --codec=h264 --crf=17 --audio-codec=aac --audio-bitrate=384k --pixel-format=yuv420p --x264-preset=fast --jpeg-quality=95 --concurrency=3",
+    "prerender:youtube": "npm run check:audio && npm run check",
+    "postrender:youtube": "uv run --project tools --locked python tools/verify_video.py --story-v2 --film out/resolution-agent-youtube-4k.mp4 --width 3840 --height 2160 --master"
   },
   "allowScripts": {
     "esbuild": false

@@ -35,7 +35,7 @@ Use your own ADC; no credential files belong in Git. The revised entry point is:
 ./scripts/retrain_and_deploy_ledger_model.sh --deploy-only
 ```
 
-`--all` performs both on the first run. Export goes into ignored `output/ledger-training/`, not a tracked dataset. An existing export/deploy receipt stops accidental resubmission; inspect an uncertain job before taking further action. Reuse the completed CSV for local retraining with `web/train_ledger_classifier.py`; it does not query BigQuery again.
+No argument prints help and performs no work. `--all` explicitly performs both phases. Export goes into ignored `output/ledger-training/`, not a tracked dataset. An existing export/deploy receipt stops accidental resubmission; inspect an uncertain job before taking further action. Reuse the completed CSV for local retraining with `web/train_ledger_classifier.py`; it does not query BigQuery again.
 
 Deployment uses the configured `minttown-builder` identity and dedicated staging bucket, cached image layers, a ten-minute build ceiling and only the existing service. It checks that simulation/investigation work is idle, pauses the previous writer, and preserves every environment setting, access policy and spend counter. No new model endpoint is provisioned.
 

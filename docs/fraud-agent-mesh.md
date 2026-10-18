@@ -14,7 +14,7 @@
 | **Data** | Use the AE’s `customers`, `wallets`, `devices` and `wallet_transactions` tables in BigQuery; expose the DS team’s trained models as tools | AE + DS teammates |
 | **Agent** | Choose investigations and tools, combine findings, checkpoint the case, propose a resolution, learn reviewed safeguards | Agent workstream |
 
-The AE branch is [feature/dummy-data-generation](https://github.com/VinceVence/apac-team-rocket/tree/feature/dummy-data-generation). Before ingestion, fix device ownership, account/payment chronology and duplicate IDs. Keep truth labels and label-derived risk scores in private evaluation data. SQL-generated rows are fixtures; the simulation ledger owns settlement and balances.
+The AE branch is [feature/dummy-data-generation](https://github.com/VinceVence/apac-team-rocket/tree/feature/dummy-data-generation). The integrated [data tools](../data/README.md) bound the population and validate device ownership, account/payment chronology and unique IDs before any import. Keep truth labels and label-derived risk scores in private evaluation data. SQL-generated rows are fixtures; the simulation ledger owns settlement and balances.
 
 In this proposal, the world replays AE customers and transactions while investigators query the same records. The four AE tables are the starting contract; no additional warehouse layers are required for this design. The simulator now publishes six dictionary-shaped tables and a joined view to the isolated `minttown_world` dataset; investigation tools retain their pinned evidence snapshots. Each case pins the customer, disputed events, dataset version and evidence cutoff. Missing evidence stays explicit. Prevention features must exist before the payment decision.
 

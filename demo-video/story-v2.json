@@ -146,11 +146,11 @@
       "speaker": "ana",
       "at": 0.15,
       "max": 2.6,
-      "text": "Wait\u2014what? My money's gone!",
+      "text": "Oh no... my money's gone!",
       "scene": "after",
       "delivery": {
-        "rate": "+9%",
-        "pitch": "+5Hz"
+        "rate": "+5%",
+        "pitch": "+2Hz"
       }
     },
     {

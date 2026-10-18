@@ -3,8 +3,8 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-MODE="${1:---all}"
-case "$MODE" in --all|--train-only|--deploy-only) ;; *) echo 'Use --all, --train-only or --deploy-only'; exit 2;; esac
+MODE="${1:---help}"
+case "$MODE" in --help|-h) echo "Choose --train-only, --deploy-only, or --all explicitly. Training exports BigQuery data; deployment uses Cloud Build/Run."; exit 0;; --all|--train-only|--deploy-only) ;; *) echo 'Use --all, --train-only or --deploy-only'; exit 2;; esac
 CSV="$ROOT/output/ledger-training/ledger_train.csv"
 if [ "$MODE" != '--deploy-only' ]; then
   uv run --locked python -B web/fetch_ledger_training_csv.py --output "$CSV"

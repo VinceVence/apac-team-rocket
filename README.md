@@ -1,81 +1,86 @@
-# Mint Town
+<p align="center"><img src="docs/figures/resolution-agent.svg" width="88" alt="Resolution Agent"></p>
 
-A synthetic Philippine fintech environment with a **real Gemini investigation loop**. Customers transact, complaints arrive, customer features are published to BigQuery, and the agent chooses tools before proposing a resolution. An analyst controls approval and memory publication.
+# Resolution Agent
 
-The app has three tabs: **Environment**, **Agent activity**, and **Agents**. Active simulation and warehouse exports are capped at **100 customers**. Every new world starts a fresh scene with seeded customer history; prior cases are privately archived and spending remains counted.
+**Customer complaint in. A resolution ready for human review.**
 
-[Open the public live demo](https://minttown-1040017899050.us-central1.run.app/). Gemini investigations are enabled within the shared budget. See [hosting and cost protection](docs/hosting.md) and the [three-minute demo script](docs/demo-script.md).
+Resolution Agent investigates a customer's fraud complaint, gathers transaction evidence, calls relevant model tools and proposes the next action. A fraud analyst verifies the resolution. Approved lessons can protect a later payment, even when the scam uses a different recipient.
+
+[Open the prototype](https://minttown-1040017899050.us-central1.run.app/) · [Demo script](docs/demo-script.md) · [Architecture](docs/harness-runtime.md) · [Team guide](AGENTS.md)
+
+![Mint Town: residents transact and a customer reports a scam](docs/figures/mint-town-world-current.png)
+
+## Try it
+
+Click **Start here**, follow the quick tour, then choose **Run demo**. Use **Next** and **Back** to follow the complaint, evidence checks, classifier result, proposed resolution, analyst review and prevention of a similar scam.
+
+**Run demo** is a browser-only walkthrough of completed case evidence. It makes no model calls or API mutations. **Start simulation** is the separate active environment: it opens paused, with zero transactions and no old cases. Only an explicit start generates payments and reports. Restart preserves spending and safety counters.
+
+## Architecture
+
+![Simulation, data and agent planes with reviewed knowledge and model tools](docs/figures/mint-town-investigation-harness.png)
+
+| Component | Responsibility |
+|---|---|
+| Mint Town | Up to 100 residents generate wallet transactions and complaint events. |
+| Data plane | BigQuery stores AE-shaped tables; trusted code freezes customer-scoped evidence at the case cutoff. |
+| Resolution Agent | Gemini on Vertex AI and Google ADK choose tools, ask for missing information and draft a cited resolution. |
+| Harness and analyst | Local checks validate tool contracts and evidence references. The human analyst owns approval. |
+| Prevention Agent | Tests candidate safeguards against scams and legitimate lookalikes before separate human activation. |
+| Payment gate | Applies active safeguards locally before debit, without an LLM call per payment. |
+
+Shared checkpoints preserve case progress, receipts, approved knowledge and cost accounting. The case lead can request one scoped specialist or critic. A separate scientist/refiner/validator workflow produces advisory model candidates; it does not silently deploy them into payment decisions.
+
+[Editable diagrams](docs/fraud-agent-mesh.md) · [Learning loops and research references](docs/learning-loops.md) · [Model tool contract](docs/model-artifacts.md)
 
 ## Start locally
 
-Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then sync the locked Python 3.12 environment:
+Requires Python 3.12 and [uv](https://docs.astral.sh/uv/getting-started/installation/). The static web interface needs no frontend build.
 
 ```sh
 uv sync --locked
-```
-
-For an offline preview:
-
-```sh
 MINTTOWN_LIVE=0 MINTTOWN_FRAUD_LIVE=0 uv run --locked python -B web/server.py
 ```
 
-For live Vertex AI, load your ignored local credential configuration and start the guarded launcher:
+Open **http://localhost:3000/**. Offline investigations use an explicit fake model to exercise tool contracts. For real Vertex AI calls, follow [operations](docs/operations.md) with your own ADC and the shared allowance. Never run local and hosted writers against the shared ledger together.
 
-```sh
-set -a
-source web/.env.vertex
-set +a
-uv run --locked python -B web/local_vertex.py --live
-```
+## Data and model contributions
 
-Open **http://localhost:3000/** and choose **Run world**. The live launcher requires Cloud Run to be disabled with manual scaling zero, restores the existing shared spend ledger, provisions the bounded warehouse, and binds only to loopback. It refuses to create a fresh paid ledger. See [operations](docs/operations.md) for authentication and hosting controls.
+Gab's [dictionary and data tools](data/README.md) define `customers`, `wallets`, `devices` and `wallet_transactions`. Local generation is repeatable and capped at 100 residents. Validation is offline by default. Explicit imports can only fill empty, owned simulator tables; the AE's `minttown_simulated_env` stays protected.
 
-## Demo
+Karlo's [ledger classifier](docs/ledger-model.md) is available through `score_models`. The integration preserves frozen temporal features, bounded exports, JSON inference parity and versioned receipts. Its measured recall is low: a low score cannot clear a complaint. Labels, demographics and label-derived risk scores are excluded from predictor inputs.
 
-1. **Run world:** a fresh scene starts. Customers transact, a victim gets an orange **!**, and a complaint is filed automatically. The world pauses so judges can follow the case.
-2. **Agent activity:** Gemini selects validated evidence and detector tools. Device integrity can look normal while the payment-request detector finds a scam signal. The timeline shows each call, public purpose, model version and result.
-3. **Analyst review:** inspect the resolution, uncertainty and lesson, then **Approve & learn**. Only the human review publishes knowledge.
-4. **Prevention agent:** one remaining case call proposes a narrow safeguard or declines. The app replays the changed-recipient attempt and 20 legitimate controls. Inspect the results, then **Enable safeguard**.
-5. **Test a similar payment:** the new recipient is held before debit while a normal payment passes, with **zero additional Gemini calls**. **Run new world** archives this scene and starts over without resetting limits.
+## Evidence and limits
 
-All identities, payments and bank actions are synthetic. Registered detectors are versioned rules, not calibrated fraud probabilities. The optional CPU model is unsupervised anomaly detection. The prevention check runs inside this simulator's payment gateway; a device-edge deployment is future work.
+- A saved live Gemini case selected the ledger classifier and proposed a resolution. Its reviewed prevention rule held a changed-recipient attempt with zero debit.
+- An **offline synthetic** replay held **34/50** scam attempts and allowed **50/50** legitimate controls. These are test-bank results, not production fraud accuracy.
+- Residents, payments and bank actions are simulated. Production resolution-time savings, real bank recovery and device-edge deployment remain unvalidated.
 
-**Model experiments:** open the subtab in Agent activity to follow a risk scientist choosing bounded experiments and a validator reviewing actual fitted models. Compare rejected baselines and candidate results. Trusted operators can curate reviewed cases or explicitly use the labelled synthetic benchmark. Candidates await human model review and do not change payment decisions. See the [risk lab guide](docs/risk-lab.md).
+[Live results](docs/visual-demo.md) · [Evaluation scope](docs/evaluation.md) · [Model limitations](docs/ledger-model.md). Earlier failures remain documented.
 
-## Limits
+## Cost and security
 
-**$2 per UTC day · $0.05 per case · $8 lifetime model spend · 100 model calls/day · six/case shared by resolution and prevention · 25 new reports/day.** No automatic model retries, fallback upgrades, or unbounded agent loops. Local and hosted execution share the same durable ledger.
+Shared model limits: **$2/day, $0.05/case, $8 lifetime, six calls/case**, one paid call in flight, six-second spacing and no automatic retries. Restarts preserve accounting. BigQuery retains row, byte and scan caps. The $20 project envelope uses delayed shutdown protection, not a guaranteed final-bill ceiling.
 
-BigQuery is bounded to 25 publications/day, 20,000 rows and 16 MiB per publication, 100 queries/day, and 50 MiB per query. The project's 1 GiB/day query quota remains. Typed tables expire seven days after provisioning; historical event-date partitions are retained within that table lifetime. Cloud Run serves the public live demo; the shared-ledger local process is stopped. Cloud infrastructure remains metered; the [$16 shutdown trigger](docs/hosting.md) is additional protection, not a guaranteed $20 final-bill ceiling.
+Credentials, raw exports, local ledgers and rendered video/audio stay out of Git. CI scans history for credential patterns and runs offline checks. See [SECURITY.md](SECURITY.md), the [release audit](docs/release-audit.md) and [hosting controls](docs/hosting.md).
 
-## Repository map
-
-Start with [AGENTS.md](AGENTS.md) for teammate and LLM instructions. Review the proposed [three-plane agent mesh](docs/fraud-agent-mesh.md) before extending the current investigator.
-
-| Area | Location |
-|---|---|
-| Simulation, data and agent Python modules | `web/` — [application map](web/README.md) |
-| Static UI and DM Sans fonts | `web/dist/` |
-| Locked runtime and optional figure tools | `pyproject.toml`, `uv.lock` |
-| Cloud build and provisioning | `Dockerfile`, `deploy/` |
-| Guides and editable architecture figures | `docs/`, `docs/figures/` |
-
-Use `uv add PACKAGE` for runtime dependencies or `uv add --group figures PACKAGE` for drawing tools. Commit `pyproject.toml` and `uv.lock` together. Docker uses the same runtime lock; figure tools are excluded from its image.
-
-## Help and verification
-
-- [Help index](docs/README.md)
-- [Architecture and seven-table data model](docs/architecture.md)
-- [Agent roles and extension guide](docs/agents.md)
-- [Curated data, scientist and validator](docs/risk-lab.md)
-- [Operations and cost controls](docs/operations.md)
-- [Research and Philippine complaint workflow](docs/research.md)
-- [Evaluation results and limitations](docs/evaluation.md)
+## Develop and verify
 
 ```sh
 uv run --locked python -B -m unittest discover -s web -p 'test_*.py'
+node --test web/test_*.mjs
+uv run --locked python -B web/evaluate_harness.py
 uv run --locked python -B web/evaluate_cases.py --mode fake
 ```
 
-The fake suite uses injected expected decisions to test execution contracts; it is not an AI-accuracy evaluation. Live evaluation requires explicit authorization and the shared allowance; see [operations](docs/operations.md). Detailed synthetic receipts stay under ignored `web/reports/`; source-controlled summaries contain no credentials.
+| Area | Entry point |
+|---|---|
+| Simulator, app and agents | [web/README.md](web/README.md) |
+| AE data tools | [data/README.md](data/README.md) |
+| Deployment | `Dockerfile`, `deploy/`, `scripts/` |
+| Editable video source | [demo-video/README.md](demo-video/README.md) |
+| Guides and diagrams | [docs/README.md](docs/README.md) |
+
+Use `uv add` and commit `pyproject.toml` with `uv.lock`. Read [AGENTS.md](AGENTS.md) before changing permissions, evidence handling or shared accounting.
+
+Built by **Team Rocket** for the AI Builder Cup BFSI challenge. Team leader: **Lanz Vincent Vencer**.

@@ -18,8 +18,9 @@ export const After: React.FC = () => {
   const waitAt = word(L, "Days");
   const formOn = t >= reportAt;
   const dayLength = (10.5 - waitAt) / 3;
-  const day = Math.max(1, Math.min(3, 1 + Math.floor((t - waitAt) / dayLength)));
-  const dayAt = waitAt + (day - 1) * dayLength;
+  const dayIndex = Math.max(0, Math.min(2, Math.floor((t - waitAt) / dayLength)));
+  const day = [1, 4, 7][dayIndex];
+  const dayAt = waitAt + dayIndex * dayLength;
   return (
     <>
       <StoryFrame brand="town" label="Illustrated story">

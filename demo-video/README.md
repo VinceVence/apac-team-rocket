@@ -6,6 +6,8 @@
 
 The compact submission is `out/resolution-agent-case-first.mp4` (720p H.264/AAC, strictly below 20,000,000 bytes). The updated full-quality source is `out/resolution-agent-case-first-master.mp4`. Both keep the same 175.5-second story. The bridge asks whether there is a faster way to resolve Ana’s case. A calendar illustrates days passing, and Ana reacts in a close-up. The closing is **“Close the gap. From report to resolution.”**
 
+The revised YouTube export is `out/resolution-agent-youtube-4k.mp4`: **3840×2160, 30 fps**, with the same **175.5-second** story. Ana says “Oh no... my money’s gone!” and the calendar advances through days **1, 4, 7**. Earlier MP4s remain unchanged. Recreate the source render with `npm run render:youtube -- --browser-executable="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"`. Media files stay local and out of GitHub. The retained duration is the user's explicit choice; it is below the submission form's stated three-minute minimum.
+
 To recreate the small copy from a mastered export, choose a new destination filename:
 
 ```sh

@@ -20,3 +20,19 @@ web/legacy/
 /.agents/
 /.codex/
 /CLAUDE.md
+
+# Credentials, keys and local training exports never belong in source control.
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+application_default_credentials.json
+*service-account*.json
+*service_account*.json
+credentials*.json
+*.tfstate*
+/data/**/*.csv
+/data/**/*.parquet
+/data/**/*.ndjson
