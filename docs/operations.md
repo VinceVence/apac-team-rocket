@@ -54,7 +54,7 @@ Restart archives the current scene while retaining accounting, research and fail
 
 ## Demo presentation and checks
 
-The landing is a looping town with a left vignette, one headline and Start here. It makes no simulation API requests. Start here loads the workspace and opens the quick tutorial inside it. Reading the tutorial never starts payments or agents.
+The landing is a looping town with a left vignette, one headline and Start here. It makes no simulation API requests. On workspace entry, any previous scene is archived and reset to an empty, paused world before it is displayed. The reset preserves spend, admission counters, research and the failure circuit. Active investigations/publications still block a reset. Start here opens the quick tutorial inside the clean workspace. Reading the tutorial never starts payments or agents.
 
 **Run demo** and the tutorial's **Start demo** open the same browser-only case walkthrough. Next shows payments, a report, evidence checks, a classifier result, a proposed resolution, example analyst approval, reviewed knowledge and a later protected payment. No API mutation, investigation or paid model call occurs in this walkthrough. The source is a completed Gemini case, retained with its original receipts. The header says Case walkthrough; do not present it as a fresh execution.
 

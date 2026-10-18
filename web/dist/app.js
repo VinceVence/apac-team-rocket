@@ -258,7 +258,14 @@ async function loadWorkspace(){
   if(workspaceLoading)return workspaceLoading;
   setBusy(true);
   workspaceLoading=(async()=>{
-    await refresh();await cloudStatus();
+    await refresh();
+    const current=state.data,demo=current.demo;
+    const previousScene=demo.running||demo.steps>0||current.environment_data?.counts.wallet_transactions>0||current.tables.fraud_reports>0||demo.knowledge_count>0||demo.blocked_payments>0;
+    if(previousScene){
+      await api('/api/world/restart',{expected_run:demo.run_id,activity:Number($('activity').value),speed:state.speed});
+      await refresh();
+    }
+    await cloudStatus();
     $('loading-state').hidden=true;state.ready=true;$('open-tour').disabled=false;
     showEvaluation(document.getElementById('evaluation-panel')).catch(()=>{});
   })();
